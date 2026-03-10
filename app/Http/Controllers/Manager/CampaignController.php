@@ -1,0 +1,591 @@
+<?php
+
+namespace App\Http\Controllers\Manager;
+
+use App\Http\Controllers\Controller;
+use App\Models\Campaign;
+use App\Models\CampaignActivity;
+use App\Models\CampaignContact;
+use App\Models\User;
+use App\Models\WhatsAppMessage;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use App\Models\Setting;
+use Maatwebsite\Excel\Facades\Excel;
+
+class CampaignController extends Controller
+{
+    // ─── Campaign List ────────────────────────────────────────────────────────
+
+    public function index()
+    {
+        $base = Campaign::where('created_by', Auth::id());
+
+        $totalStats = [
+            'total'     => (clone $base)->count(),
+            'active'    => (clone $base)->where('status', 'active')->count(),
+            'paused'    => (clone $base)->where('status', 'paused')->count(),
+            'completed' => (clone $base)->where('status', 'completed')->count(),
+        ];
+
+        $campaigns = Campaign::where('created_by', Auth::id())
+            ->withCount('contacts')
+            ->latest()
+            ->paginate(15);
+
+        return view('manager.campaigns.index', compact('campaigns', 'totalStats'));
+    }
+
+    // ─── Create Campaign Form ─────────────────────────────────────────────────
+
+    public function create()
+    {
+        return view('manager.campaigns.create');
+    }
+
+    // ─── Store New Campaign ───────────────────────────────────────────────────
+
+    public function store(Request $request)
+    {
+        $request->validate([
+            'name'        => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+        ]);
+
+        $campaign = Campaign::create([
+            'name'        => $request->name,
+            'description' => $request->description,
+            'status'      => 'active',
+            'created_by'  => Auth::id(),
+        ]);
+
+        return redirect()->route('manager.campaigns.import', encrypt($campaign->id))
+            ->with('success', 'Campaign created. Now upload your student database.');
+    }
+
+    // ─── Show Campaign Detail ─────────────────────────────────────────────────
+
+    public function show(Request $request, string $id)
+    {
+        $id       = decrypt($id);
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($id);
+
+        $query = $campaign->contacts()->with('assignedUser');
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('telecaller')) {
+            $query->where('assigned_to', $request->telecaller);
+        }
+        if ($request->filled('search')) {
+            $q = $request->search;
+            $query->where(function ($sub) use ($q) {
+                $sub->where('name', 'like', "%{$q}%")
+                    ->orWhere('phone', 'like', "%{$q}%")
+                    ->orWhere('email', 'like', "%{$q}%");
+            });
+        }
+
+        $contacts    = $query->latest()->paginate(25)->withQueryString();
+        $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
+
+        $stats = [
+            'total'      => $campaign->contacts()->count(),
+            'pending'    => $campaign->contacts()->where('status', 'pending')->count(),
+            'interested' => $campaign->contacts()->where('status', 'interested')->count(),
+            'converted'  => $campaign->contacts()->where('status', 'converted')->count(),
+            'called'     => $campaign->contacts()->where('status', '!=', 'pending')->count(),
+        ];
+
+        return view('manager.campaigns.show', compact('campaign', 'contacts', 'telecallers', 'stats'));
+    }
+
+    // ─── Import Form ──────────────────────────────────────────────────────────
+
+    public function importForm(string $id)
+    {
+        $id       = decrypt($id);
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($id);
+        return view('manager.campaigns.import', compact('campaign'));
+    }
+
+    // ─── Preview Upload ───────────────────────────────────────────────────────
+
+    public function importPreview(Request $request, string $id)
+    {
+        $id       = decrypt($id);
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($id);
+
+        $request->validate(['file' => 'required|mimes:xlsx,csv,xls']);
+
+        $data = Excel::toArray([], $request->file('file'));
+        $rows = $data[0];
+        array_shift($rows); // remove header
+
+        // Collect existing phones (digits-only) + emails for duplicate check
+        $existingPhones = $campaign->contacts()->pluck('phone')
+            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))
+            ->filter()->flip();
+        $existingEmails = $campaign->contacts()->whereNotNull('email')->pluck('email')
+            ->map(fn($e) => strtolower(trim((string) $e)))
+            ->filter()->flip();
+
+        $preview    = [];
+        $seenPhones = [];
+        $seenEmails = [];
+
+        foreach ($rows as $row) {
+            if (empty($row[0]) && empty($row[1])) {
+                continue;
+            }
+
+            $rawPhone = (string) ($row[1] ?? '');
+            $digits   = preg_replace('/\D+/', '', $rawPhone);
+
+            // Format to +91XXXXXXXXXX
+            if (strlen($digits) === 10) {
+                $formattedPhone = '+91' . $digits;
+            } elseif (strlen($digits) === 12 && str_starts_with($digits, '91')) {
+                $formattedPhone = '+' . $digits;
+            } elseif (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+                $formattedPhone = '+91' . substr($digits, 1);
+            } else {
+                $formattedPhone = $rawPhone;
+            }
+
+            $email = strtolower(trim((string) ($row[2] ?? '')));
+
+            // Skip records with invalid email format
+            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $preview[] = [
+                    'name'           => $row[0] ?? '',
+                    'phone'          => $formattedPhone,
+                    'email'          => $row[2] ?? '',
+                    'course'         => $row[3] ?? '',
+                    'city'           => $row[4] ?? '',
+                    'is_duplicate'   => false,
+                    'is_invalid'     => true,
+                    'invalid_reason' => 'invalid_email',
+                    'dup_reason'     => '',
+                ];
+                continue;
+            }
+
+            $dupPhone    = ($digits !== '' && (isset($existingPhones[$digits]) || in_array($digits, $seenPhones)));
+            $dupEmail    = ($email !== '' && (isset($existingEmails[$email]) || in_array($email, $seenEmails)));
+            $isDuplicate = $dupPhone || $dupEmail;
+
+            $preview[] = [
+                'name'           => $row[0] ?? '',
+                'phone'          => $formattedPhone,
+                'email'          => $row[2] ?? '',
+                'course'         => $row[3] ?? '',
+                'city'           => $row[4] ?? '',
+                'is_duplicate'   => $isDuplicate,
+                'is_invalid'     => false,
+                'invalid_reason' => '',
+                'dup_reason'     => $dupPhone ? 'phone' : ($dupEmail ? 'email' : ''),
+            ];
+
+            if ($digits !== '') {
+                $seenPhones[] = $digits;
+            }
+            if ($email !== '') {
+                $seenEmails[] = $email;
+            }
+        }
+
+        $total      = count($preview);
+        $duplicates = count(array_filter($preview, fn($r) => $r['is_duplicate']));
+        $invalid    = count(array_filter($preview, fn($r) => $r['is_invalid']));
+        $insertable = $total - $duplicates - $invalid;
+
+        return view('manager.campaigns.import', compact(
+            'campaign', 'preview', 'total', 'duplicates', 'invalid', 'insertable'
+        ));
+    }
+
+    // ─── Store Imported Contacts ──────────────────────────────────────────────
+
+    public function importStore(Request $request, string $id)
+    {
+        $id       = decrypt($id);
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($id);
+
+        $rows = json_decode($request->input('contacts_data'), true);
+        if (!is_array($rows) || empty($rows)) {
+            return back()->with('error', 'No valid records to import.');
+        }
+
+        $existingPhones = $campaign->contacts()->pluck('phone')
+            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))
+            ->filter()->flip();
+        $existingEmails = $campaign->contacts()->whereNotNull('email')->pluck('email')
+            ->map(fn($e) => strtolower(trim((string) $e)))
+            ->filter()->flip();
+
+        $inserted   = 0;
+        $skipped    = 0;
+        $seenPhones = [];
+        $seenEmails = [];
+        $inserts    = [];
+
+        foreach ($rows as $row) {
+            $rawPhone = (string) ($row['phone'] ?? '');
+            $digits   = preg_replace('/\D+/', '', $rawPhone);
+            $email    = strtolower(trim((string) ($row['email'] ?? '')));
+
+            // Skip invalid email
+            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $skipped++;
+                continue;
+            }
+
+            // Format phone with +91 prefix
+            if (strlen($digits) === 10) {
+                $formattedPhone = '+91' . $digits;
+            } elseif (strlen($digits) === 12 && str_starts_with($digits, '91')) {
+                $formattedPhone = '+' . $digits;
+            } elseif (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+                $formattedPhone = '+91' . substr($digits, 1);
+            } else {
+                $formattedPhone = $rawPhone;
+            }
+
+            $dupPhone = $digits !== '' && (isset($existingPhones[$digits]) || in_array($digits, $seenPhones));
+            $dupEmail = $email !== '' && (isset($existingEmails[$email]) || in_array($email, $seenEmails));
+
+            if ($dupPhone || $dupEmail) {
+                $skipped++;
+                continue;
+            }
+
+            $inserts[] = [
+                'campaign_id' => $campaign->id,
+                'name'        => $row['name'] ?? '',
+                'phone'       => $formattedPhone,
+                'email'       => $email ?: null,
+                'course'      => $row['course'] ?? null,
+                'city'        => $row['city'] ?? null,
+                'status'      => 'pending',
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ];
+
+            if ($digits !== '') {
+                $seenPhones[] = $digits;
+            }
+            if ($email !== '') {
+                $seenEmails[] = $email;
+            }
+            $inserted++;
+        }
+
+        foreach (array_chunk($inserts, 200) as $chunk) {
+            CampaignContact::insert($chunk);
+        }
+
+        return redirect()->route('manager.campaigns.show', encrypt($campaign->id))
+            ->with('success', "{$inserted} record(s) imported. {$skipped} duplicate(s)/invalid(s) skipped.");
+    }
+
+    // ─── Auto-Distribute Contacts Among Telecallers ───────────────────────────
+
+    public function distribute(Request $request, string $id)
+    {
+        $id       = decrypt($id);
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($id);
+
+        $request->validate([
+            'telecaller_ids'   => 'required|array|min:1',
+            'telecaller_ids.*' => 'exists:users,id',
+        ]);
+
+        $telecallerIds = $request->telecaller_ids;
+
+        $contacts = $campaign->contacts()
+            ->whereNull('assigned_to')
+            ->pluck('id')
+            ->toArray();
+
+        if (empty($contacts)) {
+            return back()->with('error', 'No unassigned contacts to distribute.');
+        }
+
+        $total     = count($contacts);
+        $tcCount   = count($telecallerIds);
+        $perPerson = (int) floor($total / $tcCount);
+        $remainder = $total % $tcCount;
+
+        $offset = 0;
+        foreach ($telecallerIds as $i => $tcId) {
+            $count = $perPerson + ($i < $remainder ? 1 : 0);
+            $chunk = array_slice($contacts, $offset, $count);
+            CampaignContact::whereIn('id', $chunk)->update(['assigned_to' => $tcId]);
+            $offset += $count;
+        }
+
+        return back()->with('success', "{$total} contacts distributed among {$tcCount} telecaller(s). ~{$perPerson} each.");
+    }
+
+    // ─── Update Campaign Status ───────────────────────────────────────────────
+
+    public function updateStatus(Request $request, string $id)
+    {
+        $id       = decrypt($id);
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($id);
+
+        $request->validate(['status' => 'required|in:draft,active,paused,completed']);
+        $campaign->update(['status' => $request->status]);
+
+        return back()->with('success', 'Campaign status updated.');
+    }
+
+    // ─── Contact Detail Page ──────────────────────────────────────────────────
+
+    public function contact(string $campaignId, string $contactId)
+    {
+        $campaignId = decrypt($campaignId);
+        $contactId  = decrypt($contactId);
+
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($campaignId);
+        $contact  = CampaignContact::where('campaign_id', $campaignId)->findOrFail($contactId);
+
+        $activities      = $contact->activities()->with('createdBy')->latest()->get();
+        $contactMessages = WhatsAppMessage::where('campaign_contact_id', $contact->id)
+            ->latest()->limit(50)->get()->reverse()->values();
+
+        $provider    = Setting::get('call_provider', 'twilio');
+        $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
+
+        return view('manager.campaigns.contact', compact('campaign', 'contact', 'activities', 'contactMessages', 'provider', 'telecallers'));
+    }
+
+    // ─── Update Contact Status (Manager) ─────────────────────────────────────
+
+    public function updateContactStatus(Request $request, string $campaignId, string $contactId)
+    {
+        $campaignId = decrypt($campaignId);
+        $contactId  = decrypt($contactId);
+
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($campaignId);
+        $contact  = CampaignContact::where('campaign_id', $campaignId)->findOrFail($contactId);
+
+        $request->validate(['status' => 'required|in:pending,called,interested,not_interested,no_answer,callback,converted']);
+
+        $old = $contact->status;
+        $contact->update(['status' => $request->status]);
+
+        if ($old !== $request->status) {
+            CampaignActivity::create([
+                'campaign_contact_id' => $contact->id,
+                'type'                => 'status_change',
+                'description'         => "Status changed from {$old} to {$request->status}",
+                'meta'                => ['old_status' => $old, 'new_status' => $request->status],
+                'created_by'          => Auth::id(),
+            ]);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['ok' => true]);
+        }
+
+        return back()->with('success', 'Status updated.');
+    }
+
+    // ─── Set Follow-Up (Manager) ─────────────────────────────────────────────
+
+    public function setContactFollowup(Request $request, string $campaignId, string $contactId)
+    {
+        $campaignId = decrypt($campaignId);
+        $contactId  = decrypt($contactId);
+
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($campaignId);
+        $contact  = CampaignContact::where('campaign_id', $campaignId)->findOrFail($contactId);
+
+        $request->validate([
+            'followup_date' => 'required|date|after_or_equal:today',
+            'followup_time' => 'nullable|date_format:H:i',
+            'notes'         => 'nullable|string|max:500',
+            'status'        => 'nullable|in:pending,called,interested,not_interested,no_answer,callback,converted',
+        ]);
+
+        $updates = ['next_followup' => $request->followup_date, 'followup_time' => $request->followup_time];
+        if ($request->filled('status')) {
+            $updates['status'] = $request->status;
+        }
+        $contact->update($updates);
+
+        $timeStr = $request->followup_time ? ' at ' . date('h:i A', strtotime($request->followup_time)) : '';
+        $desc = 'Follow-up scheduled for ' . $request->followup_date . $timeStr;
+        if ($request->filled('notes')) {
+            $desc .= ' — ' . $request->notes;
+        }
+
+        CampaignActivity::create([
+            'campaign_contact_id' => $contact->id,
+            'type'                => 'followup_set',
+            'description'         => $desc,
+            'meta'                => ['date' => $request->followup_date, 'time' => $request->followup_time, 'notes' => $request->notes],
+            'created_by'          => Auth::id(),
+        ]);
+
+        return back()->with('success', 'Follow-up scheduled.');
+    }
+
+    // ─── Add Note (Manager) ──────────────────────────────────────────────────
+
+    public function addContactNote(Request $request, string $campaignId, string $contactId)
+    {
+        $campaignId = decrypt($campaignId);
+        $contactId  = decrypt($contactId);
+
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($campaignId);
+        $contact  = CampaignContact::where('campaign_id', $campaignId)->findOrFail($contactId);
+
+        $request->validate(['note' => 'required|string|max:1000']);
+
+        CampaignActivity::create([
+            'campaign_contact_id' => $contact->id,
+            'type'                => 'note',
+            'description'         => $request->note,
+            'created_by'          => Auth::id(),
+        ]);
+
+        return back()->with('success', 'Note added.');
+    }
+
+    // ─── Log Call (Manager) ──────────────────────────────────────────────────
+
+    public function logContactCall(Request $request, string $campaignId, string $contactId)
+    {
+        $campaignId = decrypt($campaignId);
+        $contactId  = decrypt($contactId);
+
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($campaignId);
+        $contact  = CampaignContact::where('campaign_id', $campaignId)->findOrFail($contactId);
+
+        $contact->increment('call_count');
+
+        CampaignActivity::create([
+            'campaign_contact_id' => $contact->id,
+            'type'                => 'call',
+            'description'         => 'Outbound call made',
+            'meta'                => [
+                'outcome'  => $request->input('outcome', 'called'),
+                'duration' => $request->input('duration'),
+                'notes'    => $request->input('notes'),
+            ],
+            'created_by' => Auth::id(),
+        ]);
+
+        if ($contact->status === 'pending') {
+            $contact->update(['status' => 'called']);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    // ─── Reassign Contact (Manager) ───────────────────────────────────────────
+
+    public function reassignContact(Request $request, string $campaignId, string $contactId)
+    {
+        $campaignId = decrypt($campaignId);
+        $contactId  = decrypt($contactId);
+
+        $campaign = Campaign::where('created_by', Auth::id())->findOrFail($campaignId);
+        $contact  = CampaignContact::where('campaign_id', $campaignId)->findOrFail($contactId);
+
+        $request->validate(['assigned_to' => 'required|exists:users,id']);
+
+        $newUser = User::find($request->assigned_to);
+        $contact->update(['assigned_to' => $request->assigned_to]);
+
+        CampaignActivity::create([
+            'campaign_contact_id' => $contact->id,
+            'type'                => 'note',
+            'description'         => 'Assigned to ' . ($newUser?->name ?? 'telecaller'),
+            'created_by'          => Auth::id(),
+        ]);
+
+        return back()->with('success', 'Contact assigned to ' . ($newUser?->name ?? 'telecaller') . '.');
+    }
+
+    // ─── Campaign Performance Dashboard ──────────────────────────────────────
+
+    public function performance(Request $request)
+    {
+        $campaigns   = Campaign::where('created_by', Auth::id())->orderBy('name')->get();
+        $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
+
+        $query = Campaign::where('created_by', Auth::id());
+
+        if ($request->filled('campaign')) {
+            $query->where('id', $request->campaign);
+        }
+
+        $selectedCampaigns = $query->with('contacts')->get();
+
+        // Aggregate stats across selected campaigns
+        $stats = [
+            'total_contacts'   => 0,
+            'assigned'         => 0,
+            'calls_completed'  => 0,
+            'whatsapp_sent'    => 0,
+            'interested'       => 0,
+            'not_interested'   => 0,
+            'followups_pending'=> 0,
+            'converted'        => 0,
+        ];
+
+        $perCampaign = [];
+
+        foreach ($selectedCampaigns as $camp) {
+            $contactQuery = $camp->contacts();
+
+            if ($request->filled('telecaller')) {
+                $contactQuery = $camp->contacts()->where('assigned_to', $request->telecaller);
+            }
+
+            if ($request->filled('date_from')) {
+                $contactQuery->whereDate('created_at', '>=', $request->date_from);
+            }
+            if ($request->filled('date_to')) {
+                $contactQuery->whereDate('created_at', '<=', $request->date_to);
+            }
+
+            $allContacts = $contactQuery->get();
+
+            $campStats = [
+                'name'             => $camp->name,
+                'status'           => $camp->status,
+                'total_contacts'   => $allContacts->count(),
+                'assigned'         => $allContacts->whereNotNull('assigned_to')->count(),
+                'calls_completed'  => $allContacts->where('call_count', '>', 0)->count(),
+                'whatsapp_sent'    => $camp->contacts()
+                    ->whereHas('activities', fn($q) => $q->where('type', 'whatsapp'))
+                    ->count(),
+                'interested'       => $allContacts->where('status', 'interested')->count(),
+                'not_interested'   => $allContacts->where('status', 'not_interested')->count(),
+                'followups_pending'=> $allContacts->whereIn('status', ['callback'])->whereNotNull('next_followup')->count(),
+                'converted'        => $allContacts->where('status', 'converted')->count(),
+            ];
+
+            $perCampaign[] = $campStats;
+
+            $stats['total_contacts']    += $campStats['total_contacts'];
+            $stats['assigned']          += $campStats['assigned'];
+            $stats['calls_completed']   += $campStats['calls_completed'];
+            $stats['whatsapp_sent']     += $campStats['whatsapp_sent'];
+            $stats['interested']        += $campStats['interested'];
+            $stats['not_interested']    += $campStats['not_interested'];
+            $stats['followups_pending'] += $campStats['followups_pending'];
+            $stats['converted']         += $campStats['converted'];
+        }
+
+        return view('manager.campaigns.performance', compact(
+            'campaigns', 'telecallers', 'stats', 'perCampaign'
+        ));
+    }
+}

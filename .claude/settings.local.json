@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan config:clear)",
+      "Bash(php artisan cache:clear)"
+    ]
+  }
+}

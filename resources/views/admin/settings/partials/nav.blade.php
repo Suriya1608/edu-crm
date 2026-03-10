@@ -1,0 +1,30 @@
+<div class="chart-card mb-3">
+    <div class="d-flex flex-wrap gap-2">
+        <a href="{{ route('admin.settings.general') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.general') ? 'btn-primary' : 'btn-outline-primary' }}">General</a>
+        <a href="{{ route('admin.settings.smtp') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.smtp') ? 'btn-primary' : 'btn-outline-primary' }}">SMTP</a>
+        <a href="{{ route('admin.settings.sms') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.sms') ? 'btn-primary' : 'btn-outline-primary' }}">SMS</a>
+        <a href="{{ route('admin.settings.whatsapp') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.whatsapp') ? 'btn-primary' : 'btn-outline-primary' }}">Meta WhatsApp</a>
+        <a href="{{ route('admin.settings.twilio') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.twilio') ? 'btn-primary' : 'btn-outline-primary' }}">Twilio Voice</a>
+        <a href="{{ route('admin.settings.business-hours') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.business-hours') ? 'btn-primary' : 'btn-outline-primary' }}">Business Hours</a>
+        <a href="{{ route('admin.settings.working-days') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.working-days') ? 'btn-primary' : 'btn-outline-primary' }}">Working Days</a>
+        <a href="{{ route('admin.settings.timezone') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.timezone') ? 'btn-primary' : 'btn-outline-primary' }}">Timezone</a>
+        <a href="{{ route('admin.settings.default-lead-status') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.default-lead-status') ? 'btn-primary' : 'btn-outline-primary' }}">Default Lead Status</a>
+        <a href="{{ route('admin.settings.notifications') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.notifications') ? 'btn-primary' : 'btn-outline-primary' }}">Notifications</a>
+        <a href="{{ route('admin.settings.pages') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.pages') ? 'btn-primary' : 'btn-outline-primary' }}">Pages</a>
+        <a href="{{ route('admin.settings.facebook-leads') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.facebook-leads') ? 'btn-primary' : 'btn-outline-primary' }}">Facebook Leads</a>
+        <a href="{{ route('admin.settings.lead-portals') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.lead-portals') ? 'btn-primary' : 'btn-outline-primary' }}">Lead Portals</a>
+    </div>
+</div>

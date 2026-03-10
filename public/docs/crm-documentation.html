@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Edu-CRM — Complete System Documentation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; color: #1e293b; background: #f8fafc; }
+  .wrapper { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+  /* Cover */
+  .cover { background: linear-gradient(135deg, #137fec, #0958b3); color: #fff; border-radius: 12px; padding: 48px 40px; margin-bottom: 40px; }
+  .cover h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; }
+  .cover .subtitle { font-size: 16px; opacity: 0.85; margin-bottom: 20px; }
+  .cover .meta { display: flex; gap: 32px; flex-wrap: wrap; }
+  .cover .meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .cover .meta-label { font-size: 11px; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.5px; }
+  .cover .meta-value { font-size: 14px; font-weight: 600; }
+
+  /* TOC */
+  .toc { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 24px 28px; margin-bottom: 40px; }
+  .toc h2 { font-size: 16px; font-weight: 700; margin-bottom: 16px; color: #0f172a; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin-bottom: 8px; }
+  .toc a { color: #137fec; text-decoration: none; font-size: 13px; }
+  .toc a:hover { text-decoration: underline; }
+
+  /* Sections */
+  .section { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 32px; margin-bottom: 32px; }
+  .section-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 2px solid #f1f5f9; }
+  .section-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .icon-admin { background: #eff6ff; color: #1d4ed8; }
+  .icon-manager { background: #f0fdf4; color: #16a34a; }
+  .icon-telecaller { background: #fff7ed; color: #c2410c; }
+  .icon-escalation { background: #fef2f2; color: #dc2626; }
+  .icon-followup { background: #faf5ff; color: #7c3aed; }
+  .icon-flow { background: #ecfeff; color: #0e7490; }
+  .section-title { font-size: 20px; font-weight: 700; color: #0f172a; }
+  .section-desc { font-size: 13px; color: #64748b; margin-top: 2px; }
+
+  /* Subsections */
+  h3 { font-size: 15px; font-weight: 700; color: #0f172a; margin: 24px 0 12px; }
+  h4 { font-size: 13px; font-weight: 700; color: #475569; margin: 16px 0 8px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+  /* Feature Grid */
+  .feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .feature-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
+  .feature-card-title { font-weight: 700; font-size: 13px; color: #0f172a; margin-bottom: 8px; }
+  .feature-card ul { padding-left: 16px; }
+  .feature-card li { font-size: 12.5px; color: #475569; margin-bottom: 3px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 20px; }
+  th { background: #f1f5f9; font-weight: 700; color: #374151; text-align: left; padding: 10px 14px; border: 1px solid #e2e8f0; }
+  td { padding: 9px 14px; border: 1px solid #e2e8f0; color: #374151; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8fafc; }
+
+  /* Badges */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; }
+  .badge-green { background: #dcfce7; color: #16a34a; }
+  .badge-red { background: #fee2e2; color: #dc2626; }
+  .badge-orange { background: #ffedd5; color: #c2410c; }
+  .badge-purple { background: #f3e8ff; color: #7c3aed; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+
+  /* Flow diagram */
+  .flow { display: flex; align-items: flex-start; gap: 0; flex-wrap: wrap; margin: 16px 0; }
+  .flow-step { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 10px 14px; font-size: 12.5px; color: #1e40af; font-weight: 600; min-width: 130px; text-align: center; }
+  .flow-arrow { color: #93c5fd; font-size: 20px; padding: 8px 6px; align-self: center; }
+
+  /* Code block */
+  .code { background: #1e293b; color: #e2e8f0; border-radius: 8px; padding: 16px; font-family: 'Courier New', monospace; font-size: 12px; overflow-x: auto; margin: 12px 0; line-height: 1.6; }
+  .code .key { color: #93c5fd; }
+  .code .val { color: #86efac; }
+  .code .comment { color: #64748b; }
+
+  /* Note box */
+  .note { background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0; padding: 12px 16px; font-size: 13px; color: #92400e; margin: 16px 0; }
+  .info { background: #eff6ff; border-left: 4px solid #3b82f6; border-radius: 0 8px 8px 0; padding: 12px 16px; font-size: 13px; color: #1e40af; margin: 16px 0; }
+
+  /* Role badge */
+  .role { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+  .role-admin { background: #dbeafe; color: #1d4ed8; }
+  .role-manager { background: #dcfce7; color: #166534; }
+  .role-telecaller { background: #ffedd5; color: #9a3412; }
+
+  /* Status pills */
+  .status { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+
+  /* Print */
+  @media print {
+    body { background: #fff; }
+    .wrapper { padding: 0; max-width: 100%; }
+    .section { break-inside: avoid; border: 1px solid #ddd; }
+    .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    a { text-decoration: none; color: inherit; }
+  }
+
+  /* Separator */
+  .sep { height: 1px; background: #f1f5f9; margin: 20px 0; }
+
+  ul.plain { padding-left: 18px; }
+  ul.plain li { margin-bottom: 4px; font-size: 13px; color: #374151; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  .footer { text-align: center; color: #94a3b8; font-size: 12px; padding: 24px 0 8px; }
+</style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- COVER -->
+  <div class="cover">
+    <h1>Edu-CRM System Documentation</h1>
+    <p class="subtitle">Complete feature reference for Admin, Manager &amp; Telecaller panels — including Queue Automation, Audit Logs, Policies, Call Outcomes, and Lead Aging</p>
+    <div class="meta">
+      <div class="meta-item"><span class="meta-label">Product</span><span class="meta-value">Admission CRM</span></div>
+      <div class="meta-item"><span class="meta-label">Stack</span><span class="meta-value">Laravel 12 · Bootstrap 5.3 · MySQL</span></div>
+      <div class="meta-item"><span class="meta-label">Roles</span><span class="meta-value">Admin · Manager · Telecaller</span></div>
+      <div class="meta-item"><span class="meta-label">Updated</span><span class="meta-value">March 2026</span></div>
+    </div>
+  </div>
+
+  <!-- TOC -->
+  <div class="toc">
+    <h2>Table of Contents</h2>
+    <ol>
+      <li><a href="#admin">Admin Panel — Features &amp; Capabilities</a></li>
+      <li><a href="#manager">Manager Panel — Features &amp; Capabilities</a></li>
+      <li><a href="#telecaller">Telecaller Panel — Features &amp; Capabilities</a></li>
+      <li><a href="#escalation">Escalation Matrix — How It Works</a></li>
+      <li><a href="#followup">Follow-up Notification System — How It Works</a></li>
+      <li><a href="#integrations">Integrations &amp; Technical Overview</a></li>
+      <li><a href="#enterprise">Enterprise Enhancements (March 2026)</a></li>
+      <li><a href="#campaigns">Outbound Bulk Campaign Module</a></li>
+    </ol>
+  </div>
+
+  <!-- ─── ADMIN PANEL ─── -->
+  <div class="section" id="admin">
+    <div class="section-header">
+      <div class="section-icon icon-admin">🛡️</div>
+      <div>
+        <div class="section-title">1. Admin Panel</div>
+        <div class="section-desc">Full system control — users, leads, automation, settings, and reporting</div>
+      </div>
+    </div>
+
+    <h3>Dashboard Overview</h3>
+    <p style="color:#475569; font-size:13px; margin-bottom:12px;">The admin dashboard provides a real-time snapshot of the entire CRM operation with key metrics and charts.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📊 Key Metrics</div>
+        <ul>
+          <li>Total leads in system</li>
+          <li>Total managers &amp; telecallers</li>
+          <li>Active calls (live)</li>
+          <li>Missed calls today</li>
+          <li>Pending follow-ups</li>
+          <li>Monthly conversions</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">📈 Charts</div>
+        <ul>
+          <li>Lead sources breakdown (top 8)</li>
+          <li>14-day call volume trend</li>
+          <li>14-day WhatsApp volume (inbound/outbound)</li>
+          <li>Conversion rate trends</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">👥 User Presence</div>
+        <ul>
+          <li>Real-time online/offline status for all users</li>
+          <li>Auto-marks offline after 60s inactivity</li>
+          <li>Last seen timestamp</li>
+          <li>AJAX refresh every 20s</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>User Management</h3>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>List Users</strong></td><td>View all users filtered by role (admin / manager / telecaller) with search</td></tr>
+      <tr><td><strong>Create User</strong></td><td>Add a new manager or telecaller account with name, email, phone, password</td></tr>
+      <tr><td><strong>Edit User</strong></td><td>Update user details and optionally reset their password</td></tr>
+      <tr><td><strong>Toggle Status</strong></td><td>Activate / deactivate a user account instantly (AJAX, no page reload)</td></tr>
+      <tr><td><strong>Force Logout</strong></td><td>Terminate an active user session remotely and log the session end time</td></tr>
+      <tr><td><strong>Reset Password</strong></td><td>Admin can reset any user's password without knowing the current password</td></tr>
+      <tr><td><strong>Presence Snapshot</strong></td><td>JSON endpoint returning online/offline state of all managers &amp; telecallers (used by dashboard polling)</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Lead Management</h3>
+    <div class="two-col">
+      <div>
+        <h4>Lead Views</h4>
+        <ul class="plain">
+          <li><strong>All Leads</strong> — Complete lead database</li>
+          <li><strong>Unassigned</strong> — Leads without a manager</li>
+          <li><strong>Assigned</strong> — Leads given to managers</li>
+          <li><strong>Converted</strong> — Successfully converted leads</li>
+          <li><strong>Lost</strong> — Not-interested leads</li>
+          <li><strong>Duplicates</strong> — Duplicate detection view</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Lead Operations</h4>
+        <ul class="plain">
+          <li>Assign lead to a manager</li>
+          <li>Reassign lead to different telecaller</li>
+          <li>Bulk assign multiple leads</li>
+          <li>Import leads via CSV/Excel</li>
+          <li>Export leads as CSV/Excel</li>
+          <li>View complete lead activity timeline</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Reports</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📊 Performance Reports</div>
+        <ul>
+          <li>Telecaller performance (calls, conversions)</li>
+          <li>Manager performance metrics</li>
+          <li>Conversion rate analysis</li>
+          <li>Lead source performance</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">📞 Call Reports</div>
+        <ul>
+          <li>Call efficiency report</li>
+          <li>Response time analysis</li>
+          <li>Period-based reporting (daily, weekly, monthly)</li>
+          <li>Export all reports (CSV/Excel)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>System Settings</h3>
+    <table>
+      <tr><th>Setting Area</th><th>What You Can Configure</th></tr>
+      <tr><td><strong>General / Branding</strong></td><td>Site name, logo, favicon, default language</td></tr>
+      <tr><td><strong>SMTP Email</strong></td><td>Mailer type, host, port, encryption, username, password (encrypted storage)</td></tr>
+      <tr><td><strong>SMS</strong></td><td>Provider (Twilio / Msg91 / TextLocal / Custom), API key &amp; secret</td></tr>
+      <tr><td><strong>Meta WhatsApp</strong></td><td>API token (encrypted), Phone Number ID, Business Account ID, Webhook verify token</td></tr>
+      <tr><td><strong>Twilio Calling</strong></td><td>Account SID, Auth Token, App SID, phone number — validated against Twilio API before saving</td></tr>
+      <tr><td><strong>Business Hours</strong></td><td>Enable/disable enforcement, set start/end times</td></tr>
+      <tr><td><strong>Working Days</strong></td><td>Select which days are operational (Mon–Sun)</td></tr>
+      <tr><td><strong>Timezone</strong></td><td>Select system timezone from full PHP timezone list</td></tr>
+      <tr><td><strong>Default Lead Status</strong></td><td>Status assigned to new leads (new / assigned / contacted / etc.)</td></tr>
+      <tr><td><strong>Notifications</strong></td><td>Toggle: lead assignment, follow-up reminder, escalation — per channel (in-app, email)</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Automation Control</h3>
+    <table>
+      <tr><th>Automation Area</th><th>Configurable Options</th></tr>
+      <tr><td><strong>Lead Assignment</strong></td><td>Enable auto-assignment; round-robin to managers; option to assign to active managers only</td></tr>
+      <tr><td><strong>Follow-up Reminders</strong></td><td>Enable reminders; set days before due date (0–30); toggle overdue highlight</td></tr>
+      <tr><td><strong>Escalation</strong></td><td>Enable escalations; missed follow-up escalation to managers; SLA breach escalation (5–10,080 mins configurable)</td></tr>
+    </table>
+  </div>
+
+  <!-- ─── MANAGER PANEL ─── -->
+  <div class="section" id="manager">
+    <div class="section-header">
+      <div class="section-icon icon-manager">👔</div>
+      <div>
+        <div class="section-title">2. Manager Panel</div>
+        <div class="section-desc">Lead oversight, telecaller management, and performance monitoring — scoped to own leads</div>
+      </div>
+    </div>
+
+    <div class="info">All data in the Manager Panel is <strong>automatically scoped</strong> to leads where the manager is the assigning manager (<code>assigned_by = manager_id</code>). Managers cannot see other managers' leads or telecallers.</div>
+
+    <h3>Dashboard</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📊 Period Metrics</div>
+        <ul>
+          <li>Leads created (today / week / month)</li>
+          <li>Total calls made in period</li>
+          <li>Total call duration</li>
+          <li>WhatsApp conversations</li>
+          <li>Conversion rate</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">👥 Telecaller Overview</div>
+        <ul>
+          <li>Assigned leads count per telecaller</li>
+          <li>Conversion count &amp; rate per telecaller</li>
+          <li>Total calls per telecaller</li>
+          <li>Pending follow-ups per telecaller</li>
+          <li>Online/offline status (live)</li>
+          <li>Best performing telecaller highlight</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">⚠️ Attention Items</div>
+        <ul>
+          <li>Missed follow-ups list (top 6)</li>
+          <li>Lead sources breakdown (pie/bar)</li>
+          <li>Missed inbound callbacks (top 8)</li>
+          <li>Escalation auto-runs on dashboard load</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Lead Management</h3>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>Lead List</strong></td><td>Paginated list with search (code, name, phone, email, course, source), filter by telecaller, status, date range</td></tr>
+      <tr><td><strong>Create Lead</strong></td><td>Manually add lead with +91 phone prefix auto-stored; creates initial lead_activity record</td></tr>
+      <tr><td><strong>Lead Detail</strong></td><td>Full lead profile: contact info, status, activity timeline, follow-up history, WhatsApp messages, call logs</td></tr>
+      <tr><td><strong>Assign to Telecaller</strong></td><td>Assign or reassign lead to a telecaller under this manager</td></tr>
+      <tr><td><strong>Change Status</strong></td><td>Update lead status with activity log entry</td></tr>
+      <tr><td><strong>Add Note</strong></td><td>Add internal note to lead's activity timeline</td></tr>
+      <tr><td><strong>Log Manual Call</strong></td><td>Record an outbound call without using the dialer</td></tr>
+      <tr><td><strong>WhatsApp Chat</strong></td><td>Full chat UI — send/receive messages, delivery ticks (✓ / ✓✓ / blue ✓✓), auto-poll every 5s for inbound</td></tr>
+      <tr><td><strong>Import Leads</strong></td><td>Upload CSV/Excel — preview before import, duplicate detection</td></tr>
+      <tr><td><strong>Export Leads</strong></td><td>Download filtered leads as CSV/Excel</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Follow-up Management</h3>
+    <table>
+      <tr><th>View</th><th>Description</th></tr>
+      <tr><td><strong>Today's Follow-ups</strong></td><td>All follow-ups scheduled for today across the manager's telecallers</td></tr>
+      <tr><td><strong>Overdue</strong></td><td>Follow-ups past their due date that are not yet completed</td></tr>
+      <tr><td><strong>Upcoming</strong></td><td>Future scheduled follow-ups</td></tr>
+      <tr><td><strong>Missed by Telecaller</strong></td><td>Follow-ups that passed without any activity — cross-telecaller view</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Telecaller Monitoring</h3>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>Telecaller Snapshot</strong></td><td>Live status of all telecallers: online/offline, current call status, missed callbacks</td></tr>
+      <tr><td><strong>Presence Heartbeat</strong></td><td>Manager presence tracked every 30s; shown as online in admin panel</td></tr>
+      <tr><td><strong>Call Logs</strong></td><td>Full call history filtered to manager's leads — direction, status, duration, recording</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Reports</h3>
+    <table>
+      <tr><th>Report</th><th>Description</th></tr>
+      <tr><td>Telecaller Performance</td><td>Calls made, talk time, conversions per telecaller (manager's team only)</td></tr>
+      <tr><td>Conversion Analysis</td><td>Lead-to-conversion funnel with status breakdown</td></tr>
+      <tr><td>Source Performance</td><td>Which lead sources yield best conversions</td></tr>
+      <tr><td>Period Report</td><td>Daily/weekly/monthly performance trends</td></tr>
+      <tr><td>Response Time</td><td>Average time from lead creation to first contact</td></tr>
+      <tr><td>Call Efficiency</td><td>Call connect rate, average duration, outcome distribution</td></tr>
+      <tr><td>Export</td><td>Download any report as CSV/Excel</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Calling (Twilio Integration)</h3>
+    <ul class="plain">
+      <li>Click-to-call from any lead detail page</li>
+      <li>Persistent call bar at bottom of screen during active call</li>
+      <li>Live call duration timer</li>
+      <li>End Call button available from any page during call</li>
+      <li>Navigation blocked during active call (shows warning modal)</li>
+      <li>Call log automatically saved on call end</li>
+    </ul>
+  </div>
+
+  <!-- ─── TELECALLER PANEL ─── -->
+  <div class="section" id="telecaller">
+    <div class="section-header">
+      <div class="section-icon icon-telecaller">📞</div>
+      <div>
+        <div class="section-title">3. Telecaller Panel</div>
+        <div class="section-desc">Lead handling, calling, follow-ups, and personal performance tracking</div>
+      </div>
+    </div>
+
+    <h3>Dashboard</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📋 Lead Counts</div>
+        <ul>
+          <li>Total assigned leads</li>
+          <li>New leads received</li>
+          <li>Follow-ups due today</li>
+          <li>Overdue follow-ups</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">📞 Call Stats (Today)</div>
+        <ul>
+          <li>Total calls made today</li>
+          <li>Talk time today (minutes)</li>
+          <li>Active calls (live count)</li>
+          <li>Missed callbacks (top 5)</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🔔 Notifications</div>
+        <ul>
+          <li>Missed call alerts with callback link</li>
+          <li>Follow-up reminders (overdue / today / upcoming)</li>
+          <li>System notifications badge</li>
+          <li>Sound alert toggle</li>
+          <li>Mark all read button</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🟢 Availability</div>
+        <ul>
+          <li>Online / Available toggle</li>
+          <li>Status visible to managers in real-time</li>
+          <li>Heartbeat sent every 30s</li>
+          <li>Auto-marked offline after 60s inactivity</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Lead Management</h3>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>Lead List</strong></td><td>Only assigned leads shown. Filters: status, date range (today/7/14/30 days). Search by code, name, phone.</td></tr>
+      <tr><td><strong>Lead Detail</strong></td><td>Full profile: contact info, assigned manager, activity timeline, follow-ups, WhatsApp conversation, call history</td></tr>
+      <tr><td><strong>Change Status</strong></td><td>Update lead status (new → contacted → interested → follow_up → converted / not_interested)</td></tr>
+      <tr><td><strong>Add Note</strong></td><td>Log internal notes to the lead's activity timeline</td></tr>
+      <tr><td><strong>Schedule Follow-up</strong></td><td>Set next follow-up date and remarks; updates lead status automatically</td></tr>
+      <tr><td><strong>Call Lead</strong></td><td>One-click Twilio call from lead page; call bar shows during call</td></tr>
+      <tr><td><strong>WhatsApp Chat</strong></td><td>Send messages from lead page; error shown inline if send fails</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Follow-up Management</h3>
+    <table>
+      <tr><th>View / Action</th><th>Description</th></tr>
+      <tr><td><strong>Today</strong></td><td>All follow-ups scheduled for today (excludes completed)</td></tr>
+      <tr><td><strong>Overdue</strong></td><td>Follow-ups past their due date (next_followup &lt; today)</td></tr>
+      <tr><td><strong>Upcoming</strong></td><td>Future follow-ups (next_followup &gt; today)</td></tr>
+      <tr><td><strong>Completed</strong></td><td>Follow-ups marked as done</td></tr>
+      <tr><td><strong>Mark Completed</strong></td><td>Sets completed_at timestamp; removes from active views</td></tr>
+      <tr><td><strong>Reschedule</strong></td><td>Change next_followup date; clears reminder_notified_at so reminder re-triggers</td></tr>
+      <tr><td><strong>Quick Call</strong></td><td>Click-to-call button directly from follow-up list row</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Calling System</h3>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>Call Now Button</strong></td><td>Appears on lead detail page; initiates Twilio call using lead's stored phone number</td></tr>
+      <tr><td><strong>Active Call Bar</strong></td><td>Persistent red bar at bottom of screen showing: customer number, live timer, End Call button</td></tr>
+      <tr><td><strong>Navigation Guard</strong></td><td>If call is active and user clicks a link, a warning modal appears (Stay on Call / End &amp; Navigate)</td></tr>
+      <tr><td><strong>Browser Warning</strong></td><td>Refresh/back/close tab during a call shows native browser "Leave site?" dialog</td></tr>
+      <tr><td><strong>Call Log</strong></td><td>Automatically saved on call end: duration, status (completed/canceled/no-answer), ended_by</td></tr>
+      <tr><td><strong>Call History</strong></td><td>View all calls with direction, status, duration, lead link</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Performance Tracking</h3>
+    <ul class="plain">
+      <li>Daily performance view (calls made, talk time, follow-ups completed, conversions)</li>
+      <li>Weekly performance summary</li>
+      <li>Monthly performance summary</li>
+      <li>Personal call history (outbound, inbound, missed)</li>
+    </ul>
+  </div>
+
+  <!-- ─── ESCALATION MATRIX ─── -->
+  <div class="section" id="escalation">
+    <div class="section-header">
+      <div class="section-icon icon-escalation">⚠️</div>
+      <div>
+        <div class="section-title">4. Escalation Matrix</div>
+        <div class="section-desc">Automated escalation system that notifies managers when SLAs are breached or follow-ups are missed</div>
+      </div>
+    </div>
+
+    <div class="info">Escalations are triggered automatically by the <strong>AutomationEngine</strong> service. They run when the Manager dashboard loads, and can also be scheduled via a command.</div>
+
+    <h3>Escalation Type 1 — Missed Follow-up Escalation</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:12px;"><strong>Purpose:</strong> Alert the manager when a telecaller had a scheduled follow-up but didn't act on it.</p>
+
+    <h4>Trigger Conditions</h4>
+    <ul class="plain">
+      <li>A follow-up's <code>next_followup</code> date is in the past (today or earlier)</li>
+      <li>The follow-up has <strong>not been escalated yet</strong> (<code>escalated_at IS NULL</code>)</li>
+      <li>The assigned telecaller had <strong>no recorded activity</strong> on or after the scheduled date (no call, WhatsApp, note, status change, or follow-up log)</li>
+      <li>Automation setting: <strong>Escalate Missed Follow-ups = ON</strong></li>
+      <li>Current time is within business hours (if business hours enforcement is enabled)</li>
+    </ul>
+
+    <h4>What Happens</h4>
+    <div class="flow">
+      <div class="flow-step">Follow-up date passes</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">No telecaller activity found</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Notify manager (in-app)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Set escalated_at = now()</div>
+    </div>
+
+    <h4>Notification Sent to Manager</h4>
+    <div class="code">
+<span class="key">Title:</span>  <span class="val">"Missed Follow-up Escalation"</span>
+<span class="key">Message:</span> <span class="val">"Telecaller {name} missed follow-up for lead {code} on {date}."</span>
+<span class="key">Link:</span>   <span class="val">Lead detail page (manager panel)</span>
+<span class="key">Type:</span>   <span class="val">MissedFollowupEscalationNotification</span>
+<span class="comment">Max 100 escalations per run to prevent overload</span>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Escalation Type 2 — Response SLA Breach</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:12px;"><strong>Purpose:</strong> Alert the manager when a new lead hasn't been contacted within the configured SLA window.</p>
+
+    <h4>Trigger Conditions</h4>
+    <ul class="plain">
+      <li>Lead status is <strong>new</strong> or <strong>open</strong></li>
+      <li>Lead was created more than <strong>X minutes ago</strong> (X = SLA setting, default 60 mins)</li>
+      <li>Lead has <strong>not been escalated yet</strong> (<code>sla_escalated_at IS NULL</code>)</li>
+      <li>Lead has <strong>no recorded activity</strong> of any type (no call, WhatsApp, note, follow-up, or status change)</li>
+      <li>Lead has an assigning manager (<code>assigned_by IS NOT NULL</code>)</li>
+      <li>Automation setting: <strong>Escalate Response SLA = ON</strong></li>
+    </ul>
+
+    <h4>What Happens</h4>
+    <div class="flow">
+      <div class="flow-step">Lead created</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">SLA time passes (e.g. 60 min)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">No activity found</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Notify manager (in-app)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Set sla_escalated_at = now()</div>
+    </div>
+
+    <h4>Notification Sent to Manager</h4>
+    <div class="code">
+<span class="key">Title:</span>  <span class="val">"SLA Breach — Lead Not Contacted"</span>
+<span class="key">Message:</span> <span class="val">"Lead {code} ({name}) has not been contacted in {X} minutes."</span>
+<span class="key">Link:</span>   <span class="val">Lead detail page (manager panel)</span>
+<span class="key">Type:</span>   <span class="val">SlaViolationEscalationNotification</span>
+<span class="comment">Max 100 escalations per run</span>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Escalation Configuration</h3>
+    <table>
+      <tr><th>Setting</th><th>Options</th><th>Default</th></tr>
+      <tr><td>Enable Escalations</td><td>On / Off</td><td>On</td></tr>
+      <tr><td>Missed Follow-up Escalation</td><td>On / Off</td><td>On</td></tr>
+      <tr><td>Response SLA Escalation</td><td>On / Off</td><td>On</td></tr>
+      <tr><td>SLA Threshold (minutes)</td><td>5 – 10,080 mins</td><td>60 mins</td></tr>
+      <tr><td>Business Hours Enforcement</td><td>On / Off</td><td>Off</td></tr>
+      <tr><td>Business Hours</td><td>Start time → End time (supports overnight)</td><td>09:00 → 18:00</td></tr>
+      <tr><td>Working Days</td><td>Mon–Sun (any combination)</td><td>Mon–Sat</td></tr>
+    </table>
+
+    <div class="note"><strong>Note:</strong> When Business Hours Enforcement is enabled, escalations only run during configured working hours and days. Weekends/off-hours are ignored automatically.</div>
+
+    <div class="sep"></div>
+    <h3>Escalation Flow Diagram</h3>
+    <table>
+      <tr><th>Who Gets Notified</th><th>When</th><th>Escalation Type</th><th>What They See</th></tr>
+      <tr><td><span class="role role-manager">Manager</span></td><td>Follow-up missed by telecaller</td><td>Missed Follow-up</td><td>In-app notification with lead link</td></tr>
+      <tr><td><span class="role role-manager">Manager</span></td><td>New lead not contacted within SLA</td><td>SLA Breach</td><td>In-app notification with lead link</td></tr>
+    </table>
+  </div>
+
+  <!-- ─── FOLLOW-UP NOTIFICATION SYSTEM ─── -->
+  <div class="section" id="followup">
+    <div class="section-header">
+      <div class="section-icon icon-followup">🔔</div>
+      <div>
+        <div class="section-title">5. Follow-up Notification System</div>
+        <div class="section-desc">How reminders reach telecallers — in-app bell, badge count, and sound alerts</div>
+      </div>
+    </div>
+
+    <h3>How Reminders Are Triggered</h3>
+    <div class="info">The notification system works through a <strong>polling architecture</strong>. The telecaller's browser polls the server every <strong>20 seconds</strong> to check for new notifications. Each poll also <strong>triggers the automation engine</strong> to dispatch any pending reminders — so reminders go out the moment they're due, even without a background job.</div>
+
+    <h4>Polling Flow</h4>
+    <div class="flow">
+      <div class="flow-step">Browser polls every 20s</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">AutomationEngine runs</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Pending reminders sent</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Response returned to UI</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Bell badge + sound</div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Notification Categories</h3>
+
+    <table>
+      <tr><th>Category</th><th>Condition</th><th>Limit</th><th>Data Shown</th></tr>
+      <tr>
+        <td><strong>📞 Missed Calls</strong></td>
+        <td>Inbound calls with status = missed or no-answer, assigned to this telecaller</td>
+        <td>Top 5</td>
+        <td>Lead name, code, phone, time, link to lead</td>
+      </tr>
+      <tr>
+        <td><strong>📅 Follow-up Reminders</strong></td>
+        <td>Follow-ups with next_followup ≤ (today + N days), assigned_to = telecaller, not completed</td>
+        <td>Top 5</td>
+        <td>Lead name, code, date, type (overdue/today/upcoming), remarks</td>
+      </tr>
+      <tr>
+        <td><strong>🔔 System Notifications</strong></td>
+        <td>Unread entries in the Laravel notifications table for this user</td>
+        <td>Top 5</td>
+        <td>Message text, relative time (e.g. "5 minutes ago")</td>
+      </tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Follow-up Reminder Dispatch Process</h3>
+
+    <p style="font-size:13px; color:#475569; margin-bottom:12px;">Each time the notification snapshot endpoint is called, <code>AutomationEngine::dispatchTelecallerFollowupReminders()</code> runs:</p>
+    <table>
+      <tr><th>Step</th><th>Action</th><th>Detail</th></tr>
+      <tr><td>1</td><td>Check if enabled</td><td>Reads <code>follow_up_reminder_enabled</code> setting; exits if off</td></tr>
+      <tr><td>2</td><td>Check business hours</td><td>Only runs if within operational window (if enforcement is on)</td></tr>
+      <tr><td>3</td><td>Query follow-ups</td><td>next_followup between today and (today + days_before), reminder_notified_at IS NULL, completed_at IS NULL</td></tr>
+      <tr><td>4</td><td>For each follow-up</td><td>Get telecaller (via lead.assigned_to)</td></tr>
+      <tr><td>5</td><td>Send notification</td><td>Creates a database notification of type <code>SlaViolationEscalationNotification</code></td></tr>
+      <tr><td>6</td><td>Mark as notified</td><td>Sets <code>reminder_notified_at = now()</code> so reminder is not sent again</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Notification UI — Telecaller Bell Icon</h3>
+    <div class="two-col">
+      <div>
+        <h4>Badge Count</h4>
+        <ul class="plain">
+          <li>Red badge on bell icon in header</li>
+          <li>Count = sum of missed calls + follow-up reminders + system notifications</li>
+          <li>Hides automatically when count = 0</li>
+          <li>Updates every 20 seconds</li>
+        </ul>
+        <h4>Sound Alert</h4>
+        <ul class="plain">
+          <li>Plays a beep when badge count increases</li>
+          <li>Telecaller can toggle sound on/off</li>
+          <li>Preference saved in localStorage (persists across sessions)</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Notification Types Display</h4>
+        <ul class="plain">
+          <li><strong>Overdue</strong> — <span class="badge badge-red">overdue</span> red badge</li>
+          <li><strong>Due today</strong> — <span class="badge badge-orange">today</span> orange badge</li>
+          <li><strong>Upcoming</strong> — <span class="badge badge-blue">upcoming</span> blue badge</li>
+        </ul>
+        <h4>Mark All Read</h4>
+        <ul class="plain">
+          <li>Button in notification dropdown</li>
+          <li>Marks missed calls and follow-ups as "seen" in localStorage</li>
+          <li>Marks database notifications as read</li>
+          <li>Badge resets to 0</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Follow-up Reminder Configuration</h3>
+    <table>
+      <tr><th>Setting</th><th>Description</th><th>Options</th><th>Default</th></tr>
+      <tr><td>Enable Follow-up Reminders</td><td>Master toggle for the reminder system</td><td>On / Off</td><td>On</td></tr>
+      <tr><td>Remind N Days Before</td><td>How many days in advance to remind telecaller</td><td>0 – 30 days</td><td>0 (same day)</td></tr>
+      <tr><td>Highlight Overdue</td><td>Show overdue follow-ups with a red "overdue" badge instead of "today"</td><td>On / Off</td><td>On</td></tr>
+      <tr><td>In-App Notification</td><td>Show reminder in the bell notification panel</td><td>On / Off</td><td>On</td></tr>
+    </table>
+
+    <div class="note"><strong>Example:</strong> If "Remind 2 Days Before" is set, a follow-up due on March 5 will appear in the telecaller's notification panel starting March 3.</div>
+  </div>
+
+  <!-- ─── INTEGRATIONS ─── -->
+  <div class="section" id="integrations">
+    <div class="section-header">
+      <div class="section-icon icon-flow">🔌</div>
+      <div>
+        <div class="section-title">6. Integrations &amp; Technical Overview</div>
+        <div class="section-desc">External services, data models, and key workflows</div>
+      </div>
+    </div>
+
+    <h3>Integrations</h3>
+    <table>
+      <tr><th>Integration</th><th>Purpose</th><th>Configuration</th></tr>
+      <tr><td><strong>Twilio Voice</strong></td><td>Browser-based outbound calling, call recording, status callbacks</td><td>Admin → Settings → Twilio</td></tr>
+      <tr><td><strong>Exotel</strong></td><td>VoIP calling (manager panel)</td><td>Admin → Settings → Exotel</td></tr>
+      <tr><td><strong>Meta WhatsApp Cloud API v19</strong></td><td>Outbound messaging, inbound webhook, delivery/read receipts</td><td>Admin → Settings → WhatsApp</td></tr>
+      <tr><td><strong>SMTP Email</strong></td><td>System email notifications</td><td>Admin → Settings → SMTP</td></tr>
+      <tr><td><strong>SMS (Twilio/Msg91)</strong></td><td>SMS notifications</td><td>Admin → Settings → SMS</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Lead Status Lifecycle</h3>
+    <div class="flow" style="flex-wrap: wrap; gap: 6px;">
+      <div class="flow-step" style="background:#f0fdf4; border-color:#bbf7d0; color:#166534;">new</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8;">assigned</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="background:#fff7ed; border-color:#fed7aa; color:#c2410c;">contacted</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="background:#faf5ff; border-color:#e9d5ff; color:#7c3aed;">interested</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="background:#fffbeb; border-color:#fde68a; color:#92400e;">follow_up</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step" style="background:#f0fdf4; border-color:#86efac; color:#166534;">converted ✓</div>
+    </div>
+    <p style="font-size:12px; color:#64748b; margin-top:8px;">Leads can also move to <strong>not_interested</strong> at any stage. Each status change is logged to the activity timeline.</p>
+
+    <div class="sep"></div>
+    <h3>Key Database Tables</h3>
+    <table>
+      <tr><th>Table</th><th>Purpose</th><th>Key Fields</th></tr>
+      <tr><td>users</td><td>All system users</td><td>role, status, is_online, last_seen_at</td></tr>
+      <tr><td>leads</td><td>Lead records</td><td>lead_code, phone, status, assigned_by, assigned_to, sla_escalated_at</td></tr>
+      <tr><td>followups</td><td>Follow-up schedule per lead</td><td>next_followup, completed_at, escalated_at, reminder_notified_at</td></tr>
+      <tr><td>call_logs</td><td>All call records</td><td>direction, status, duration, call_sid, ended_by</td></tr>
+      <tr><td>lead_activities</td><td>Activity timeline</td><td>type (call/whatsapp/note/followup/status_change), description</td></tr>
+      <tr><td>whatsapp_messages</td><td>WhatsApp chat messages</td><td>direction, message_body, meta_data (status), provider_message_id</td></tr>
+      <tr><td>notifications</td><td>Laravel database notifications</td><td>type, data (JSON), read_at</td></tr>
+      <tr><td>settings</td><td>All configuration key-values</td><td>key, value (some encrypted)</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>WhatsApp Message Flow</h3>
+    <div class="flow" style="flex-wrap: wrap; gap: 6px;">
+      <div class="flow-step">Type message in chat</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">POST to /whatsapp route</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">MetaWhatsAppController</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Meta Cloud API v19</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Saved to DB</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Bubble appears ✓</div>
+    </div>
+    <div class="flow" style="flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+      <div class="flow-step">Customer replies</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Meta webhook POST</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Matched to lead by phone</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Saved to DB</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">Appears on next poll (5s)</div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Presence Tracking</h3>
+    <table>
+      <tr><th>Mechanism</th><th>Applies To</th><th>Frequency</th></tr>
+      <tr><td>UpdateLastSeen Middleware</td><td>All roles (any web request)</td><td>On every page load</td></tr>
+      <tr><td>Telecaller Heartbeat</td><td>Telecallers only</td><td>Every 30s JS interval — DB write throttled to 1×/25s via file cache</td></tr>
+      <tr><td>Manager Heartbeat</td><td>Managers only</td><td>Every 30s JS interval — DB write throttled to 1×/25s via file cache</td></tr>
+      <tr><td>Auto-offline</td><td>All roles</td><td>If last_seen_at &gt; 90s ago → is_online = false</td></tr>
+      <tr><td>Admin Presence Snapshot API</td><td>Admin dashboard</td><td>Polled by admin every 20s</td></tr>
+      <tr><td>Manager Telecaller Snapshot API</td><td>Manager dashboard</td><td>On dashboard load</td></tr>
+    </table>
+  </div>
+
+  <!-- ─── ENTERPRISE ENHANCEMENTS ─── -->
+  <div class="section" id="enterprise">
+    <div class="section-header">
+      <div class="section-icon" style="background:#f0fdf4; color:#16a34a;">🚀</div>
+      <div>
+        <div class="section-title">7. Enterprise Enhancements (March 2026)</div>
+        <div class="section-desc">Queue-backed automation, audit logs, policy security, call outcomes, lead aging, and more</div>
+      </div>
+    </div>
+
+    <h3>Queue-Backed Automation</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:12px;">Automation no longer runs synchronously on HTTP requests. All automation is dispatched via Laravel queue jobs, scheduled through <code>routes/console.php</code>.</p>
+    <table>
+      <tr><th>Component</th><th>Class</th><th>Schedule</th></tr>
+      <tr><td>Escalation Engine</td><td><code>Jobs\DispatchEscalations</code></td><td>Every minute (via <code>crm:run-automation</code>)</td></tr>
+      <tr><td>Follow-up Reminders</td><td><code>Jobs\DispatchFollowupReminders</code></td><td>Every minute (via <code>crm:run-automation</code>)</td></tr>
+      <tr><td>Daily Summary Email</td><td><code>Jobs\SendDailySummary</code></td><td>Daily at 19:00 (via <code>crm:daily-summary</code>)</td></tr>
+    </table>
+    <div class="note">Each job uses <code>Cache::lock()</code> with a 5-minute TTL to prevent overlapping runs. Run <code>php artisan schedule:run</code> every minute via Task Scheduler to activate scheduling.</div>
+
+    <h3>Audit Log System</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:12px;"><code>AuditLogService::log()</code> records all sensitive operations to the <code>audit_logs</code> table. It never throws exceptions — silent failure protects user-facing requests.</p>
+    <table>
+      <tr><th>Action</th><th>Trigger</th></tr>
+      <tr><td><code>lead.assigned</code></td><td>Manager assigns telecaller to a lead</td></tr>
+      <tr><td><code>lead.status_changed</code></td><td>Any role changes lead status</td></tr>
+      <tr><td><code>lead.duplicate_detected</code></td><td>Duplicate phone on create or import</td></tr>
+      <tr><td><code>lead.merged</code></td><td>Admin merges two duplicate leads</td></tr>
+      <tr><td><code>user.updated</code></td><td>Admin edits a user profile</td></tr>
+      <tr><td><code>user.status_changed</code></td><td>Admin toggles user active/inactive</td></tr>
+      <tr><td><code>user.force_logout</code></td><td>Admin force-logs out a user</td></tr>
+    </table>
+
+    <h3>Laravel Policies (Role Security)</h3>
+    <table>
+      <tr><th>Policy</th><th>Governs</th><th>Rules</th></tr>
+      <tr><td><code>LeadPolicy</code></td><td>Lead resource</td><td>Admin = all; Manager = own team; Telecaller = assigned leads only</td></tr>
+      <tr><td><code>UserPolicy</code></td><td>User management</td><td>Admin only</td></tr>
+      <tr><td><code>SettingPolicy</code></td><td>System settings</td><td>Admin only</td></tr>
+    </table>
+    <div class="note"><code>Gate::before()</code> grants admin users all abilities automatically — no per-ability check needed for admins.</div>
+
+    <h3>Duplicate Lead Handling</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">On Create</div>
+        <ul>
+          <li>Phone normalized (digits only) before check</li>
+          <li>If phone exists: <code>is_duplicate = true</code></li>
+          <li>Lead still created (not blocked)</li>
+          <li>Warning shown in success message</li>
+          <li>Audit log entry created</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">On Import</div>
+        <ul>
+          <li>Batch duplicate detection (O(1) via array flip)</li>
+          <li>Within-batch duplicates also flagged</li>
+          <li>Count shown: "47 imported, 3 flagged"</li>
+          <li>Per-duplicate audit log entry</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">Merge (Admin)</div>
+        <ul>
+          <li>Route: <code>POST /admin/leads/{id}/merge/{targetId}</code></li>
+          <li>Moves activities, followups, call logs, WhatsApp messages</li>
+          <li>Source marked <code>status = merged</code></li>
+          <li>Merge button on Duplicate Leads view</li>
+          <li>Audit log: <code>lead.merged</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Lead Aging Indicator</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">Age badges appear on all lead list pages based on <code>leads.created_at</code>.</p>
+    <table>
+      <tr><th>Age</th><th>Badge</th></tr>
+      <tr><td>&lt; 3 days</td><td>No badge (fresh lead)</td></tr>
+      <tr><td>3 – 5 days</td><td><span class="badge badge-orange">3d old</span> — warning</td></tr>
+      <tr><td>≥ 6 days</td><td><span class="badge badge-red">6d old</span> — danger</td></tr>
+    </table>
+    <p style="font-size:12px; color:#64748b;">Implemented as <code>x-aging-badge</code> Blade component. <code>getDaysAgedAttribute()</code> accessor on Lead model provides the value.</p>
+
+    <h3>Call Outcome Categorization</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">After every call ends, a modal prompts the agent to record the outcome. The outcome is stored in <code>call_logs.outcome</code> and logged to the lead activity timeline.</p>
+    <table>
+      <tr><th>Outcome</th><th>Effect</th></tr>
+      <tr><td>Interested</td><td>Logged to timeline</td></tr>
+      <tr><td>Not Interested</td><td>Logged to timeline</td></tr>
+      <tr><td>Call Back Later</td><td>Logged + auto-creates Followup for tomorrow</td></tr>
+      <tr><td>Switched Off</td><td>Logged to timeline</td></tr>
+      <tr><td>Wrong Number</td><td>Logged to timeline</td></tr>
+    </table>
+
+    <h3>Course-Wise Analytics</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">"Course Performance" widget on Admin and Manager dashboards shows lead volume, conversion count, conversion rate, and a visual volume bar per course.</p>
+    <div class="note">Admins see all leads. Managers see only leads scoped to their team (<code>assigned_by = manager_id</code>).</div>
+
+    <h3>Presence System — Throttle &amp; 90s Threshold</h3>
+    <table>
+      <tr><th>Change</th><th>Detail</th></tr>
+      <tr><td>Heartbeat DB throttle</td><td>File-cache key with 25s TTL — at most 1 DB write per ~30s poll cycle</td></tr>
+      <tr><td>Auto-offline threshold</td><td>Changed from 60s → 90s to handle network delays and background tab throttling</td></tr>
+    </table>
+
+    <h3>Daily Summary Email</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">Managers receive an email at 7 PM with a summary table of all telecaller performance for the day. Enable/disable in <strong>Admin → Automation → Follow-up Reminders</strong>.</p>
+    <table>
+      <tr><th>Column</th><th>Data</th></tr>
+      <tr><td>Telecaller</td><td>Name</td></tr>
+      <tr><td>Calls Made</td><td>Count of outbound call logs for today</td></tr>
+      <tr><td>Talk Time</td><td>Sum of <code>call_logs.duration</code> in mm:ss</td></tr>
+      <tr><td>Conversions</td><td>Leads updated to <code>converted</code> today</td></tr>
+      <tr><td>Follow-ups Done</td><td>Follow-ups completed today</td></tr>
+      <tr><td>Follow-ups Missed</td><td>Overdue follow-ups with no completion</td></tr>
+    </table>
+
+    <h3>UX Enhancements</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">Toast Notifications</div>
+        <ul>
+          <li>Bootstrap 5 Toast replaces static alert banners</li>
+          <li>Auto-dismisses after 4 seconds</li>
+          <li>Green for success, red for error</li>
+          <li>Bottom-right corner, z-index 1090</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">Import Loading Spinner</div>
+        <ul>
+          <li>Preview and Confirm buttons show spinner on submit</li>
+          <li>Buttons disabled during processing</li>
+          <li>Prevents accidental double-submit</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">Status Change Confirmation</div>
+        <ul>
+          <li>Telecaller status modal has 2-step confirm</li>
+          <li>First click shows "Changing: X → Y"</li>
+          <li>Second click "Yes, Confirm" submits</li>
+          <li>Resets on modal close or status change</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Updated Database Schema</h3>
+    <table>
+      <tr><th>Table</th><th>New Columns</th></tr>
+      <tr><td>leads</td><td><code>is_duplicate</code> (boolean), <code>merged_into_lead_id</code> (FK)</td></tr>
+      <tr><td>call_logs</td><td><code>outcome</code> (enum: interested | not_interested | wrong_number | call_back_later | switched_off)</td></tr>
+      <tr><td>audit_logs</td><td>New table: user_id, action, model, model_id, old_values (JSON), new_values (JSON), ip_address, created_at</td></tr>
+    </table>
+    <div class="note">Performance indexes added on <code>leads.course</code>, <code>leads.created_at</code>, <code>leads.phone</code>, <code>leads(assigned_by, status)</code>, <code>leads(assigned_to, status)</code>, and <code>call_logs.outcome</code>.</div>
+
+    <h3>Artisan Commands</h3>
+    <table>
+      <tr><th>Command</th><th>Purpose</th><th>Usage</th></tr>
+      <tr><td><code>crm:run-automation</code></td><td>Dispatches escalation + reminder jobs to queue</td><td>Scheduled every minute</td></tr>
+      <tr><td><code>crm:daily-summary</code></td><td>Dispatches daily summary email job</td><td>Scheduled daily at 19:00</td></tr>
+    </table>
+    <div class="code"><span class="comment"># Start queue worker (keep running)</span>
+php artisan queue:work
+
+<span class="comment"># Run scheduler (add to Windows Task Scheduler — every 1 min)</span>
+php artisan schedule:run</div>
+  </div>
+
+  <!-- ─── OUTBOUND BULK CAMPAIGN MODULE ─── -->
+  <div class="section" id="campaigns">
+    <div class="section-header">
+      <div class="section-icon" style="background:#f0f9ff; color:#0369a1;">📣</div>
+      <div>
+        <div class="section-title">8. Outbound Bulk Campaign Module</div>
+        <div class="section-desc">Upload bulk student databases, auto-distribute to telecallers, and track outbound calling campaigns — completely separate from the Lead Capture system</div>
+      </div>
+    </div>
+
+    <div class="note">This module is <strong>fully independent</strong> from the Lead Capture Management system. It uses its own database tables (<code>campaigns</code>, <code>campaign_contacts</code>, <code>campaign_activities</code>) and does not modify any existing lead, followup, or call log records.</div>
+
+    <h3>Overview</h3>
+    <p style="color:#475569; font-size:13px; margin-bottom:12px;">The Campaign Module enables managers to run outbound calling campaigns — for example, uploading a database of 12th-pass students and distributing them among telecallers who will then call and promote admissions.</p>
+
+    <h3>Manager Features</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📋 Campaign Management</div>
+        <ul>
+          <li>Create named campaigns with description</li>
+          <li>Campaign statuses: Active, Paused, Completed, Draft</li>
+          <li>Change campaign status from the detail page</li>
+          <li>View all campaigns with contact counts</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">📂 Bulk Upload (Excel/CSV)</div>
+        <ul>
+          <li>Upload .xlsx, .xls, or .csv files</li>
+          <li>Expected columns: Name | Mobile | Email | Course | City</li>
+          <li>Preview records before confirming import</li>
+          <li>Duplicate detection: skips records with same phone <em>or</em> email within the same campaign</li>
+          <li>Import summary: Total / Inserted / Duplicates skipped</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🔀 Auto-Distribution</div>
+        <ul>
+          <li>Select one or more telecallers to distribute to</li>
+          <li>Round-robin equal distribution (e.g. 1000 contacts ÷ 5 telecallers = 200 each)</li>
+          <li>Distributes only unassigned contacts</li>
+          <li>Shows online/offline telecaller status</li>
+          <li>Assignment summary panel per campaign</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">📊 Campaign Analytics</div>
+        <ul>
+          <li>Total contacts, Pending, Contacted, Interested, Converted counts</li>
+          <li>Filter contacts by status, telecaller, or search (name/phone/email)</li>
+          <li>View all contacts with status badges and next follow-up dates</li>
+          <li>Upload more contacts to an existing campaign at any time</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Telecaller Features</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📱 My Campaigns</div>
+        <ul>
+          <li>See all campaigns with contacts assigned to them</li>
+          <li>View contact count per campaign</li>
+          <li>Filter contacts by status or search by name/phone</li>
+          <li>Paginated contact list (20 per page)</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">📞 Contact Actions</div>
+        <ul>
+          <li>Click-to-call button — triggers global call bar</li>
+          <li>WhatsApp button — opens WhatsApp Web with pre-filled message</li>
+          <li>Update call status (Pending / Called / Interested / Not Interested / No Answer / Callback / Converted)</li>
+          <li>Set follow-up date (date picker, future dates only)</li>
+          <li>Add text notes</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">📅 Activity Timeline</div>
+        <ul>
+          <li>Full activity history per contact — calls, WhatsApp, notes, status changes, follow-ups</li>
+          <li>Filter timeline by type: All / Calls / WhatsApp / Notes</li>
+          <li>Call count tracked on each contact</li>
+          <li>Auto-marks status as "Called" on first call if still Pending</li>
+          <li>Same visual timeline design as Lead Show page</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Contact Statuses</h3>
+    <table>
+      <tr><th>Status</th><th>Meaning</th><th>Badge Color</th></tr>
+      <tr><td>Pending</td><td>Not yet contacted</td><td>Gray</td></tr>
+      <tr><td>Called</td><td>Call was made but no specific outcome</td><td>Blue (info)</td></tr>
+      <tr><td>Interested</td><td>Student showed interest in admission</td><td>Green</td></tr>
+      <tr><td>Not Interested</td><td>Student declined</td><td>Red</td></tr>
+      <tr><td>No Answer</td><td>Call not picked up</td><td>Yellow (warning)</td></tr>
+      <tr><td>Callback</td><td>Student asked to be called back later</td><td>Blue (primary)</td></tr>
+      <tr><td>Converted</td><td>Student took admission</td><td>Green</td></tr>
+    </table>
+
+    <h3>Database Schema</h3>
+    <table>
+      <tr><th>Table</th><th>Key Columns</th><th>Purpose</th></tr>
+      <tr>
+        <td><code>campaigns</code></td>
+        <td>id, name, description, status, created_by</td>
+        <td>Campaign metadata created by managers</td>
+      </tr>
+      <tr>
+        <td><code>campaign_contacts</code></td>
+        <td>id, campaign_id, name, phone, email, course, city, status, assigned_to, next_followup, call_count</td>
+        <td>Uploaded student records for each campaign</td>
+      </tr>
+      <tr>
+        <td><code>campaign_activities</code></td>
+        <td>id, campaign_contact_id, type (call/whatsapp/note/status_change/followup_set), description, meta (JSON), created_by</td>
+        <td>Full activity timeline per contact</td>
+      </tr>
+    </table>
+
+    <h3>Routes</h3>
+    <table>
+      <tr><th>Role</th><th>Route</th><th>Name</th><th>Action</th></tr>
+      <tr><td>Manager</td><td>GET /manager/campaigns</td><td>manager.campaigns.index</td><td>Campaign list</td></tr>
+      <tr><td>Manager</td><td>GET /manager/campaigns/create</td><td>manager.campaigns.create</td><td>Create campaign form</td></tr>
+      <tr><td>Manager</td><td>POST /manager/campaigns</td><td>manager.campaigns.store</td><td>Save new campaign</td></tr>
+      <tr><td>Manager</td><td>GET /manager/campaigns/{id}</td><td>manager.campaigns.show</td><td>Campaign detail + contacts</td></tr>
+      <tr><td>Manager</td><td>PATCH /manager/campaigns/{id}/status</td><td>manager.campaigns.status</td><td>Change campaign status</td></tr>
+      <tr><td>Manager</td><td>GET /manager/campaigns/{id}/import</td><td>manager.campaigns.import</td><td>Upload form</td></tr>
+      <tr><td>Manager</td><td>POST /manager/campaigns/{id}/import/preview</td><td>manager.campaigns.import.preview</td><td>Preview + validate file</td></tr>
+      <tr><td>Manager</td><td>POST /manager/campaigns/{id}/import/store</td><td>manager.campaigns.import.store</td><td>Confirm import</td></tr>
+      <tr><td>Manager</td><td>POST /manager/campaigns/{id}/distribute</td><td>manager.campaigns.distribute</td><td>Auto-distribute contacts</td></tr>
+      <tr><td>Telecaller</td><td>GET /telecaller/campaigns</td><td>telecaller.campaigns.index</td><td>My campaigns list</td></tr>
+      <tr><td>Telecaller</td><td>GET /telecaller/campaigns/{id}</td><td>telecaller.campaigns.show</td><td>Campaign contact list</td></tr>
+      <tr><td>Telecaller</td><td>GET /telecaller/campaigns/{id}/contacts/{contactId}</td><td>telecaller.campaigns.contact</td><td>Contact detail + timeline</td></tr>
+      <tr><td>Telecaller</td><td>POST …/note</td><td>telecaller.campaigns.contact.note</td><td>Add note</td></tr>
+      <tr><td>Telecaller</td><td>PATCH …/status</td><td>telecaller.campaigns.contact.status</td><td>Update status</td></tr>
+      <tr><td>Telecaller</td><td>POST …/followup</td><td>telecaller.campaigns.contact.followup</td><td>Set follow-up date</td></tr>
+      <tr><td>Telecaller</td><td>POST …/call</td><td>telecaller.campaigns.contact.call</td><td>Log call activity</td></tr>
+    </table>
+
+    <h3>Files Created</h3>
+    <table>
+      <tr><th>Type</th><th>Path</th></tr>
+      <tr><td>Migration</td><td>database/migrations/2026_03_09_200000_create_campaigns_table.php</td></tr>
+      <tr><td>Migration</td><td>database/migrations/2026_03_09_200100_create_campaign_contacts_table.php</td></tr>
+      <tr><td>Migration</td><td>database/migrations/2026_03_09_200200_create_campaign_activities_table.php</td></tr>
+      <tr><td>Model</td><td>app/Models/Campaign.php</td></tr>
+      <tr><td>Model</td><td>app/Models/CampaignContact.php</td></tr>
+      <tr><td>Model</td><td>app/Models/CampaignActivity.php</td></tr>
+      <tr><td>Controller</td><td>app/Http/Controllers/Manager/CampaignController.php</td></tr>
+      <tr><td>Controller</td><td>app/Http/Controllers/Telecaller/CampaignController.php</td></tr>
+      <tr><td>View</td><td>resources/views/manager/campaigns/index.blade.php</td></tr>
+      <tr><td>View</td><td>resources/views/manager/campaigns/create.blade.php</td></tr>
+      <tr><td>View</td><td>resources/views/manager/campaigns/show.blade.php</td></tr>
+      <tr><td>View</td><td>resources/views/manager/campaigns/import.blade.php</td></tr>
+      <tr><td>View</td><td>resources/views/telecaller/campaigns/index.blade.php</td></tr>
+      <tr><td>View</td><td>resources/views/telecaller/campaigns/show.blade.php</td></tr>
+      <tr><td>View</td><td>resources/views/telecaller/campaigns/contact.blade.php</td></tr>
+    </table>
+
+    <h3>Setup Instructions</h3>
+    <div class="code"><span class="comment"># Run database migrations</span>
+php artisan migrate
+
+<span class="comment"># Migrations will create 3 new tables:</span>
+<span class="comment">#   campaigns, campaign_contacts, campaign_activities</span></div>
+  </div>
+
+  <div class="footer">
+    Edu-CRM System Documentation — Updated March 2026 — For internal use only
+    <br>Built with Laravel 12 · Bootstrap 5.3 · Twilio · Meta WhatsApp Cloud API
+  </div>
+</div>
+</body>
+</html>

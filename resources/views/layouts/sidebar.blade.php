@@ -1,0 +1,416 @@
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-logo">
+            <span class="material-icons">school</span>
+        </div>
+        <div class="sidebar-title">
+            <h1>Admission CRM</h1>
+            <p>{{ ucfirst(auth()->user()->role) }} Panel</p>
+        </div>
+    </div>
+
+    <nav class="sidebar-nav">
+
+        {{-- ADMIN MENU --}}
+        @if (auth()->user()->role == 'admin')
+            <a href="{{ route('admin.dashboard') }}"
+                class="nav-item {{ request()->routeIs('admin.dashboard') ? 'active' : '' }}">
+                <span class="material-icons">dashboard</span>
+                <span>Dashboard</span>
+            </a>
+
+            @php
+                $adminUsersActive = request()->routeIs('admin.users*');
+            @endphp
+            <button class="nav-item w-100 border-0 {{ $adminUsersActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#adminUsersMenu"
+                aria-expanded="{{ $adminUsersActive ? 'true' : 'false' }}" aria-controls="adminUsersMenu">
+                <span class="material-icons">group</span>
+                <span class="flex-grow-1 text-start">User Management</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="adminUsersMenu" class="collapse {{ $adminUsersActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('admin.users.admins') }}"
+                    class="nav-item {{ request()->routeIs('admin.users.admins') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Admin Users
+                </a>
+                <a href="{{ route('admin.users.managers') }}"
+                    class="nav-item {{ request()->routeIs('admin.users.managers') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Managers
+                </a>
+                <a href="{{ route('admin.users.telecallers') }}"
+                    class="nav-item {{ request()->routeIs('admin.users.telecallers') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Telecallers
+                </a>
+            </div>
+            @php
+                $adminLeadsActive = request()->routeIs('admin.leads.*');
+            @endphp
+            <button class="nav-item w-100 border-0 {{ $adminLeadsActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#adminLeadsMenu"
+                aria-expanded="{{ $adminLeadsActive ? 'true' : 'false' }}" aria-controls="adminLeadsMenu">
+                <span class="material-icons">person_add</span>
+                <span class="flex-grow-1 text-start">Lead Management</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="adminLeadsMenu" class="collapse {{ $adminLeadsActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('admin.leads.all') }}"
+                    class="nav-item {{ request()->routeIs('admin.leads.all') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    All Leads
+                </a>
+                <a href="{{ route('admin.leads.unassigned') }}"
+                    class="nav-item {{ request()->routeIs('admin.leads.unassigned') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Unassigned Leads
+                </a>
+                <a href="{{ route('admin.leads.assigned') }}"
+                    class="nav-item {{ request()->routeIs('admin.leads.assigned') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Assigned Leads
+                </a>
+                <a href="{{ route('admin.leads.converted') }}"
+                    class="nav-item {{ request()->routeIs('admin.leads.converted') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Converted Leads
+                </a>
+                <a href="{{ route('admin.leads.lost') }}"
+                    class="nav-item {{ request()->routeIs('admin.leads.lost') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Lost Leads
+                </a>
+                <a href="{{ route('admin.leads.duplicates') }}"
+                    class="nav-item {{ request()->routeIs('admin.leads.duplicates') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Duplicate Leads
+                </a>
+            </div>
+
+            @php
+                $adminReportsActive = request()->routeIs('admin.reports.*');
+            @endphp
+            <button class="nav-item w-100 border-0 {{ $adminReportsActive ? 'active' : 'bg-transparent' }}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#adminReportsMenu"
+                aria-expanded="{{ $adminReportsActive ? 'true' : 'false' }}" aria-controls="adminReportsMenu">
+                <span class="material-icons">bar_chart</span>
+                <span class="flex-grow-1 text-start">Reports & Analytics</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="adminReportsMenu" class="collapse {{ $adminReportsActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('admin.reports.telecaller-performance') }}"
+                    class="nav-item {{ request()->routeIs('admin.reports.telecaller-performance') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Telecaller Performance
+                </a>
+                <a href="{{ route('admin.reports.manager-performance') }}"
+                    class="nav-item {{ request()->routeIs('admin.reports.manager-performance') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Manager Performance
+                </a>
+                <a href="{{ route('admin.reports.conversion') }}"
+                    class="nav-item {{ request()->routeIs('admin.reports.conversion') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Conversion Report
+                </a>
+                <a href="{{ route('admin.reports.lead-source') }}"
+                    class="nav-item {{ request()->routeIs('admin.reports.lead-source') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Lead Source Report
+                </a>
+                <a href="{{ route('admin.reports.period') }}"
+                    class="nav-item {{ request()->routeIs('admin.reports.period') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Daily / Weekly / Monthly
+                </a>
+                <a href="{{ route('admin.reports.call-efficiency') }}"
+                    class="nav-item {{ request()->routeIs('admin.reports.call-efficiency') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Call Efficiency
+                </a>
+                <a href="{{ route('admin.reports.response-time') }}"
+                    class="nav-item {{ request()->routeIs('admin.reports.response-time') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Lead Response Time
+                </a>
+            </div>
+
+            @php
+                $adminAutomationActive = request()->routeIs('admin.automation.*');
+            @endphp
+            <button class="nav-item w-100 border-0 {{ $adminAutomationActive ? 'active' : 'bg-transparent' }}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#adminAutomationMenu"
+                aria-expanded="{{ $adminAutomationActive ? 'true' : 'false' }}" aria-controls="adminAutomationMenu">
+                <span class="material-icons">auto_fix_high</span>
+                <span class="flex-grow-1 text-start">Automation</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="adminAutomationMenu" class="collapse {{ $adminAutomationActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('admin.automation.lead-assignment') }}"
+                    class="nav-item {{ request()->routeIs('admin.automation.lead-assignment') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Lead Assignment Rules
+                </a>
+                <a href="{{ route('admin.automation.followup-reminders') }}"
+                    class="nav-item {{ request()->routeIs('admin.automation.followup-reminders') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Follow-up Reminder Rules
+                </a>
+                <a href="{{ route('admin.automation.escalation') }}"
+                    class="nav-item {{ request()->routeIs('admin.automation.escalation') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Escalation Rules
+                </a>
+            </div>
+            <a href="{{ route('admin.marketing.social.media') }}"
+                class="nav-item {{ request()->routeIs('admin.marketing.*') ? 'active' : '' }}">
+                <span class="material-icons">campaign</span>
+                <span>Social Media</span>
+            </a>
+            @php
+                $adminCampaignsActive = request()->routeIs('admin.campaigns.*');
+            @endphp
+            <button class="nav-item w-100 border-0 {{ $adminCampaignsActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#adminCampaignsMenu"
+                aria-expanded="{{ $adminCampaignsActive ? 'true' : 'false' }}" aria-controls="adminCampaignsMenu">
+                <span class="material-icons">insights</span>
+                <span class="flex-grow-1 text-start">Campaigns</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="adminCampaignsMenu" class="collapse {{ $adminCampaignsActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('admin.campaigns.performance') }}"
+                    class="nav-item {{ request()->routeIs('admin.campaigns.performance') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Performance</a>
+                <a href="{{ route('admin.campaigns.contacts') }}"
+                    class="nav-item {{ request()->routeIs('admin.campaigns.contacts') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">All Contacts</a>
+            </div>
+            @php
+                $adminSettingsActive = request()->routeIs('admin.settings.*') || request()->routeIs('admin.settings');
+            @endphp
+            <button class="nav-item w-100 border-0 {{ $adminSettingsActive ? 'active' : 'bg-transparent' }}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#adminSettingsMenu"
+                aria-expanded="{{ $adminSettingsActive ? 'true' : 'false' }}" aria-controls="adminSettingsMenu">
+                <span class="material-icons">settings</span>
+                <span class="flex-grow-1 text-start">Settings</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="adminSettingsMenu" class="collapse {{ $adminSettingsActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('admin.settings.general') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.general') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">General</a>
+                <a href="{{ route('admin.settings.smtp') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.smtp') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">SMTP Settings</a>
+                <a href="{{ route('admin.settings.sms') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.sms') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">SMS Settings</a>
+                <a href="{{ route('admin.settings.whatsapp') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.whatsapp') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Meta WhatsApp</a>
+                <a href="{{ route('admin.settings.twilio') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.twilio') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Twilio Voice</a>
+                <a href="{{ route('admin.settings.business-hours') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.business-hours') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Business Hours</a>
+                <a href="{{ route('admin.settings.working-days') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.working-days') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Working Days</a>
+                <a href="{{ route('admin.settings.timezone') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.timezone') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Timezone</a>
+                <a href="{{ route('admin.settings.default-lead-status') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.default-lead-status') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Default Lead Status</a>
+                <a href="{{ route('admin.settings.notifications') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.notifications') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Notifications</a>
+                <a href="{{ route('admin.settings.pages') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.pages') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">Pages</a>
+            </div>
+        @endif
+
+
+        {{-- MANAGER MENU --}}
+        @if (auth()->user()->role == 'manager')
+            {{-- <a href="{{ route('manager.dashboard') }}" class="nav-item">
+                <span class="material-icons">dashboard</span>
+                <span>Dashboard</span>
+            </a> --}}
+
+            <a href="{{ route('manager.leads') }}" class="nav-item">
+                <span class="material-icons">person_add</span>
+                <span>Leads</span>
+            </a>
+            <a href="{{ route('manager.telecallers') }}"
+                class="nav-item {{ request()->routeIs('manager.telecallers*') ? 'active' : '' }}">
+                <span class="material-icons">call</span>
+                <span>Telecallers</span>
+            </a>
+        @endif
+
+
+        {{-- TELECALLER MENU --}}
+        @if (auth()->user()->role == 'telecaller')
+            @php
+                $teleFollowupReminderCount = \App\Models\Followup::query()
+                    ->whereHas('lead', function ($q) {
+                        $q->where('assigned_to', auth()->id());
+                    })
+                    ->whereDate('next_followup', '<=', now()->toDateString())
+                    ->when(\Illuminate\Support\Facades\Schema::hasColumn('followups', 'completed_at'), function ($q) {
+                        $q->whereNull('completed_at');
+                    })
+                    ->count();
+                $teleFollowupMenuActive = request()->routeIs('telecaller.followups.*');
+                $telePerformanceMenuActive = request()->routeIs('telecaller.performance.*');
+                $teleCallsMenuActive = request()->routeIs('telecaller.calls.*');
+            @endphp
+
+            <a href="{{ route('telecaller.dashboard') }}"
+                class="nav-item {{ request()->routeIs('telecaller.dashboard') ? 'active' : '' }}">
+                <span class="material-icons">dashboard</span>
+                <span>Dashboard</span>
+            </a>
+            {{-- <a href="{{ route('telecaller.dashboard') }}" class="nav-item">
+                <span class="material-icons">dashboard</span>
+                <span>Dashboard</span>
+            </a> --}}
+
+            <a href="{{ route('telecaller.leads') }}"
+                class="nav-item {{ request()->routeIs('telecaller.leads*') ? 'active' : '' }}">
+                <span class="material-icons">person</span>
+                <span>My Leads</span>
+            </a>
+
+            <a href="{{ route('telecaller.campaigns.index') }}"
+                class="nav-item {{ request()->routeIs('telecaller.campaigns*') ? 'active' : '' }}">
+                <span class="material-icons">campaign</span>
+                <span>My Campaigns</span>
+            </a>
+
+            <button class="nav-item w-100 border-0 {{ $teleCallsMenuActive ? 'active' : 'bg-transparent' }}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#telecallerCallsMenu"
+                aria-expanded="{{ $teleCallsMenuActive ? 'true' : 'false' }}"
+                aria-controls="telecallerCallsMenu">
+                <span class="material-icons">call</span>
+                <span class="flex-grow-1 text-start">Call Management</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="telecallerCallsMenu" class="collapse {{ $teleCallsMenuActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('telecaller.calls.outbound') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.calls.outbound') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Outbound Calls
+                </a>
+                <a href="{{ route('telecaller.calls.inbound') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.calls.inbound') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Inbound Calls
+                </a>
+                <a href="{{ route('telecaller.calls.missed') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.calls.missed') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Missed Calls
+                </a>
+                <a href="{{ route('telecaller.calls.history') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.calls.history') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Call History
+                </a>
+            </div>
+
+            <button class="nav-item w-100 border-0 {{ $teleFollowupMenuActive ? 'active' : 'bg-transparent' }}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#telecallerFollowupMenu"
+                aria-expanded="{{ $teleFollowupMenuActive ? 'true' : 'false' }}" aria-controls="telecallerFollowupMenu">
+                <span class="material-icons">event_note</span>
+                <span class="flex-grow-1 text-start">Followups</span>
+                @if ($teleFollowupReminderCount > 0)
+                    <span class="badge bg-danger ms-1">{{ $teleFollowupReminderCount }}</span>
+                @endif
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="telecallerFollowupMenu" class="collapse {{ $teleFollowupMenuActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('telecaller.followups.today') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.followups.today') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Today Followups
+                </a>
+                <a href="{{ route('telecaller.followups.overdue') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.followups.overdue') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Overdue Followups
+                </a>
+                <a href="{{ route('telecaller.followups.upcoming') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.followups.upcoming') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Upcoming Followups
+                </a>
+                <a href="{{ route('telecaller.followups.completed') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.followups.completed') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Completed Followups
+                </a>
+            </div>
+
+            <button class="nav-item w-100 border-0 {{ $telePerformanceMenuActive ? 'active' : 'bg-transparent' }}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#telecallerPerformanceMenu"
+                aria-expanded="{{ $telePerformanceMenuActive ? 'true' : 'false' }}"
+                aria-controls="telecallerPerformanceMenu">
+                <span class="material-icons">trending_up</span>
+                <span class="flex-grow-1 text-start">Performance</span>
+                <span class="material-icons" style="font-size: 18px;">expand_more</span>
+            </button>
+            <div id="telecallerPerformanceMenu" class="collapse {{ $telePerformanceMenuActive ? 'show' : '' }}"
+                style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+                <a href="{{ route('telecaller.performance.daily') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.performance.daily') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Daily Performance
+                </a>
+                <a href="{{ route('telecaller.performance.weekly') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.performance.weekly') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Weekly Performance
+                </a>
+                <a href="{{ route('telecaller.performance.monthly') }}"
+                    class="nav-item {{ request()->routeIs('telecaller.performance.monthly') ? 'active' : '' }}"
+                    style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                    Monthly Summary
+                </a>
+            </div>
+        @endif
+
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="user-profile">
+            <div class="user-avatar">
+                <img src="https://i.pravatar.cc/150?img=12" alt="User Avatar">
+            </div>
+            <div class="user-info">
+                <p>{{ auth()->user()->name }}</p>
+                <span>{{ ucfirst(auth()->user()->role) }}</span>
+            </div>
+
+            <form method="POST" action="{{ route('logout') }}">
+                @csrf
+                <button type="submit" class="btn btn-link p-0">
+                    <span class="material-icons" style="font-size: 20px;">logout</span>
+                </button>
+            </form>
+        </div>
+    </div>
+</aside>

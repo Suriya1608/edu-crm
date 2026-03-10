@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan migrate)",
+      "Bash(php artisan route:clear)",
+      "Bash(php artisan route:list)"
+    ]
+  }
+}
