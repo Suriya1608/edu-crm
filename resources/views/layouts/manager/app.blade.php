@@ -54,6 +54,73 @@
 
     </div>
 
+
+    {{-- Documents Quick Access Modal --}}
+    <div class="modal fade" id="docsModal" tabindex="-1" aria-labelledby="docsModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header" style="border-bottom:1px solid #e2e8f0;">
+                    <h5 class="modal-title d-flex align-items-center gap-2" id="docsModalLabel">
+                        <span class="material-icons" style="color:#137fec;">folder_open</span>
+                        Documents
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="docsModalBody" style="min-height:160px;">
+                    <div class="text-center text-muted py-4" id="docsLoadingState">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        Loading documents...
+                    </div>
+                    <div id="docsListContainer" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        const modal = document.getElementById('docsModal');
+        if (!modal) return;
+        const listUrl = @json(route('documents.list'));
+        let loaded = false;
+
+        modal.addEventListener('show.bs.modal', async function () {
+            if (loaded) return;
+            try {
+                const res = await fetch(listUrl, { headers: { 'Accept': 'application/json' } });
+                const data = await res.json();
+                const container = document.getElementById('docsListContainer');
+                const loading   = document.getElementById('docsLoadingState');
+                if (!data.ok || !data.documents.length) {
+                    loading.innerHTML = '<span class="material-icons d-block mb-1" style="font-size:32px;color:#cbd5e1;">folder_open</span>No documents available.';
+                    return;
+                }
+                const rows = data.documents.map(function(d) {
+                    return '<div class="d-flex align-items-center justify-content-between py-2 border-bottom gap-3">' +
+                        '<div class="d-flex align-items-center gap-2">' +
+                        '<span class="material-icons" style="color:#64748b;font-size:20px;flex-shrink:0;">' + d.icon + '</span>' +
+                        '<div>' +
+                        '<div class="fw-semibold" style="font-size:14px;">' + d.title + '</div>' +
+                        '<div class="text-muted" style="font-size:12px;">' + d.file_name + ' &middot; ' + d.file_size_formatted + ' &middot; ' + d.created_at + '</div>' +
+                        '</div></div>' +
+                        '<div class="d-flex gap-2" style="flex-shrink:0;">' +
+                        '<a href="' + d.view_url + '" target="_blank" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">' +
+                        '<span class="material-icons" style="font-size:15px;">visibility</span>View</a>' +
+                        '<a href="' + d.download_url + '" class="btn btn-sm btn-primary d-flex align-items-center gap-1">' +
+                        '<span class="material-icons" style="font-size:15px;">download</span>Download</a>' +
+                        '</div>' +
+                        '</div>';
+                });
+                container.innerHTML = rows.join('');
+                loading.style.display = 'none';
+                container.style.display = 'block';
+                loaded = true;
+            } catch (e) {
+                document.getElementById('docsLoadingState').textContent = 'Failed to load documents.';
+            }
+        });
+    })();
+    </script>
+
     {{-- Global Active Call Bar --}}
     <div id="gcCallBar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:1060; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; padding:10px 20px; box-shadow:0 -2px 12px rgba(0,0,0,0.25); align-items:center; gap:12px;">
         <span class="material-icons" style="font-size:24px;">call</span>

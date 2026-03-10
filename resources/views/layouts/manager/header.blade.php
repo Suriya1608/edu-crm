@@ -53,6 +53,11 @@
                 </div>
             @endif
 
+            {{-- Documents Quick Access --}}
+            <button class="btn btn-sm btn-light" type="button" data-bs-toggle="modal" data-bs-target="#docsModal"
+                title="Documents">
+                <span class="material-icons" style="font-size:18px;vertical-align:middle;">folder_open</span>
+            </button>
             @yield('header_actions')
         </div>
     </div>
