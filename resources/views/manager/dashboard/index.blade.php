@@ -257,7 +257,10 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted py-4">No missed inbound callbacks.</td>
+                                    <td colspan="5" class="text-center text-muted py-3">
+                                        <span class="material-icons d-block mb-1" style="font-size:28px;color:#cbd5e1;">call_missed</span>
+                                        No missed inbound callbacks.
+                                    </td>
                                 </tr>
                             @endforelse
                         </tbody>

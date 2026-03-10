@@ -26,5 +26,7 @@
             class="btn btn-sm {{ request()->routeIs('admin.settings.facebook-leads') ? 'btn-primary' : 'btn-outline-primary' }}">Facebook Leads</a>
         <a href="{{ route('admin.settings.lead-portals') }}"
             class="btn btn-sm {{ request()->routeIs('admin.settings.lead-portals') ? 'btn-primary' : 'btn-outline-primary' }}">Lead Portals</a>
+        <a href="{{ route('admin.settings.security') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.security') ? 'btn-primary' : 'btn-outline-primary' }}">Security</a>
     </div>
 </div>

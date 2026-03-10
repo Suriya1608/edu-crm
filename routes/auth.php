@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,6 +22,11 @@ Route::middleware('guest')->group(function () {
         ->name('login');
 
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
+
+    // Two-Factor Authentication
+    Route::get('two-factor', [TwoFactorController::class, 'show'])->name('two-factor.show');
+    Route::post('two-factor/verify', [TwoFactorController::class, 'verify'])->name('two-factor.verify');
+    Route::post('two-factor/resend', [TwoFactorController::class, 'resend'])->name('two-factor.resend');
 
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
         ->name('password.request');
@@ -56,4 +62,8 @@ Route::middleware('auth')->group(function () {
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
+
+    // GET-based logout for idle timeout (no CSRF required for GET)
+    Route::get('idle-logout', [AuthenticatedSessionController::class, 'idleLogout'])
+        ->name('idle.logout');
 });

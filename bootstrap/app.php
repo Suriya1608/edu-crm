@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\SanitizeInput;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,8 +17,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->trustProxies(at: '*');
         $middleware->append(HandleCors::class);
+        // Apply security headers to every response
+        $middleware->append(SecurityHeaders::class);
         $middleware->web(append: [
             \App\Http\Middleware\UpdateLastSeen::class,
+            // Sanitize POST/PUT/PATCH input — strips null bytes, trims whitespace
+            SanitizeInput::class,
         ]);
         $middleware->validateCsrfTokens(except: [
             'twilio/voice',

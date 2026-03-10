@@ -1,10 +1,15 @@
 <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
         <div class="sidebar-logo">
-            <span class="material-icons">school</span>
+            @php $siteLogo = \App\Models\Setting::get('site_logo'); @endphp
+            @if($siteLogo)
+                <img src="{{ asset('storage/' . $siteLogo) }}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">
+            @else
+                <span class="material-icons">school</span>
+            @endif
         </div>
         <div class="sidebar-title">
-            <h1>Admission CRM</h1>
+            <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
             <p>Manager Panel</p>
         </div>
     </div>
@@ -157,16 +162,20 @@
     <div class="sidebar-footer">
         <div class="user-profile">
             <div class="user-avatar">
-                <img src="https://i.pravatar.cc/150?img=12" alt="User Avatar">
+                @php $initials = strtoupper(substr(auth()->user()->name, 0, 1)); @endphp
+                <span class="user-avatar-initials">{{ $initials }}</span>
             </div>
             <div class="user-info">
                 <p>{{ auth()->user()->name }}</p>
-                <span>Manager</span>
+                <span>
+                    <span class="material-icons" style="font-size:10px;vertical-align:middle;">manage_accounts</span>
+                    Manager
+                </span>
             </div>
 
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
-                <button type="submit" class="btn btn-link p-0">
+                <button type="submit" class="btn btn-link p-0" title="Logout">
                     <span class="material-icons" style="font-size: 20px;">logout</span>
                 </button>
             </form>
