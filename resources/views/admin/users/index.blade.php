@@ -109,10 +109,18 @@
                                 <span class="badge bg-light text-dark">{{ ucfirst($user->role) }}</span>
                             </td>
                             <td>
-                                <button class="btn btn-sm toggle-status-btn {{ $user->status ? 'btn-success' : 'btn-danger' }}"
-                                    data-id="{{ $user->id }}">
-                                    {{ $user->status ? 'Active' : 'Inactive' }}
-                                </button>
+                                <div class="d-flex flex-column gap-1">
+                                    <button class="btn btn-sm toggle-status-btn {{ $user->status ? 'btn-success' : 'btn-danger' }}"
+                                        data-id="{{ $user->id }}">
+                                        {{ $user->status ? 'Active' : 'Inactive' }}
+                                    </button>
+                                    @if ($user->locked_until && \Carbon\Carbon::parse($user->locked_until)->isFuture())
+                                        <span class="badge bg-danger" style="font-size:10px;">
+                                            <span class="material-icons" style="font-size:11px;vertical-align:middle;">lock</span>
+                                            Locked
+                                        </span>
+                                    @endif
+                                </div>
                             </td>
                             <td>
                                 <span class="badge {{ $user->presence_state === 'online' ? 'bg-success' : 'bg-secondary' }}"
@@ -138,6 +146,13 @@
                                         <span class="material-icons" style="font-size:16px;">lock_reset</span>
                                         <span>Reset Password</span>
                                     </button>
+                                    @if ($user->locked_until && \Carbon\Carbon::parse($user->locked_until)->isFuture())
+                                        <button class="btn btn-sm btn-outline-success unlock-account-btn d-flex align-items-center gap-1"
+                                            data-id="{{ $user->id }}">
+                                            <span class="material-icons" style="font-size:16px;">lock_open</span>
+                                            <span>Unlock</span>
+                                        </button>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
@@ -232,6 +247,23 @@
                 button.addEventListener('click', function() {
                     document.getElementById('resetPasswordUserId').value = this.dataset.id;
                     document.getElementById('newPasswordInput').value = '';
+                });
+            });
+
+            document.querySelectorAll('.unlock-account-btn').forEach((button) => {
+                button.addEventListener('click', async function() {
+                    if (!confirm('Unlock this account and reset failed login attempts?')) return;
+                    const res = await fetch("{{ route('admin.users.unlock') }}", {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+                        body: JSON.stringify({ id: this.dataset.id })
+                    });
+                    if (res.ok) {
+                        alert('Account unlocked successfully.');
+                        window.location.reload();
+                    } else {
+                        alert('Failed to unlock account.');
+                    }
                 });
             });
 
