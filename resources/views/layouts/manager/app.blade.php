@@ -358,6 +358,80 @@
     })();
     </script>
     @endauth
+
+    @auth
+    {{-- Idle Session Timeout (15 minutes) --}}
+    <div class="modal fade" id="idleWarningModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered modal-sm">
+            <div class="modal-content" style="border-radius:12px; border:none; box-shadow:0 8px 32px rgba(0,0,0,.15);">
+                <div class="modal-body text-center p-4">
+                    <span class="material-icons mb-2" style="font-size:40px; color:#f59e0b;">timer</span>
+                    <h6 class="fw-bold mb-1">Session Expiring Soon</h6>
+                    <p class="text-muted small mb-3">Your session will expire in <strong id="idleCountdown">60</strong> seconds due to inactivity.</p>
+                    <button id="idleStayBtn" class="btn btn-primary btn-sm px-4">Stay Logged In</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+    (function () {
+        const IDLE_TIMEOUT   = 15 * 60 * 1000;
+        const WARN_BEFORE    = 60 * 1000;
+        const IDLE_LOGOUT_URL = @json(route('idle.logout'));
+
+        let idleTimer, warnTimer, countdownInterval;
+        let warningShown = false;
+        let modal, modalInstance;
+
+        function resetTimers() {
+            clearTimeout(idleTimer);
+            clearTimeout(warnTimer);
+            if (warningShown) hideWarning();
+            warnTimer = setTimeout(showWarning, IDLE_TIMEOUT - WARN_BEFORE);
+            idleTimer = setTimeout(doLogout,    IDLE_TIMEOUT);
+        }
+
+        function showWarning() {
+            warningShown = true;
+            let secs = 60;
+            document.getElementById('idleCountdown').textContent = secs;
+            clearInterval(countdownInterval);
+            countdownInterval = setInterval(function () {
+                secs--;
+                const el = document.getElementById('idleCountdown');
+                if (el) el.textContent = secs;
+            }, 1000);
+            if (!modal) {
+                modal = document.getElementById('idleWarningModal');
+                modalInstance = new bootstrap.Modal(modal);
+            }
+            modalInstance.show();
+        }
+
+        function hideWarning() {
+            warningShown = false;
+            clearInterval(countdownInterval);
+            if (modalInstance) modalInstance.hide();
+        }
+
+        function doLogout() {
+            clearInterval(countdownInterval);
+            window.location.href = IDLE_LOGOUT_URL;
+        }
+
+        ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function (evt) {
+            document.addEventListener(evt, resetTimers, { passive: true });
+        });
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const btn = document.getElementById('idleStayBtn');
+            if (btn) btn.addEventListener('click', resetTimers);
+        });
+
+        resetTimers();
+    })();
+    </script>
+    @endauth
 </body>
 
 </html>

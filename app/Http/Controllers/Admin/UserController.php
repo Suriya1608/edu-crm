@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Services\AuditLogService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -142,10 +143,16 @@ class UserController extends Controller
             ->latest('id')
             ->get()
             ->each(function ($session) {
-                $logoutTime = now();
+                $logoutTime = Carbon::now('Asia/Kolkata');
+                try {
+                    $loginAt  = Carbon::createFromFormat('Y-m-d H:i:s', $session->login_at, 'Asia/Kolkata');
+                    $duration = max(0, (int) $loginAt->diffInMinutes($logoutTime));
+                } catch (\Throwable) {
+                    $duration = 0;
+                }
                 $session->update([
-                    'logout_at' => $logoutTime,
-                    'duration_minutes' => $logoutTime->diffInMinutes($session->login_at),
+                    'logout_at'        => $logoutTime,
+                    'duration_minutes' => $duration,
                 ]);
             });
 
@@ -154,6 +161,20 @@ class UserController extends Controller
         }
 
         AuditLogService::log('user.force_logout', 'User', $user->id);
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function unlockAccount(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|integer|exists:users,id',
+        ]);
+
+        $user = User::findOrFail((int) $request->id);
+        $user->update(['failed_login_attempts' => 0, 'locked_until' => null]);
+
+        AuditLogService::log('user.account_unlocked', 'User', $user->id);
 
         return response()->json(['ok' => true]);
     }

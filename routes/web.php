@@ -93,6 +93,8 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             ->name('users.force-logout');
         Route::post('/users/reset-password', [UserController::class, 'resetPassword'])
             ->name('users.reset-password');
+        Route::post('/users/unlock', [UserController::class, 'unlockAccount'])
+            ->name('users.unlock');
         Route::get('/users/presence-snapshot', [UserController::class, 'presenceSnapshot'])
             ->name('users.presence-snapshot');
 
@@ -197,6 +199,9 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
 
             Route::get('/lead-portals', [LeadPortalsSettingController::class, 'show'])->name('lead-portals');
             Route::post('/lead-portals', [LeadPortalsSettingController::class, 'update'])->name('lead-portals.update');
+
+            Route::get('/security', [SettingsController::class, 'security'])->name('security');
+            Route::post('/security', [SettingsController::class, 'updateSecurity'])->name('security.update');
         });
 
         Route::get('/settings', fn() => redirect()->route('admin.settings.general'))->name('settings');
