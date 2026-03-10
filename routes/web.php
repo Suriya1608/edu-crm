@@ -40,6 +40,7 @@ use App\Http\Controllers\TelecallerStatusController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Manager\CampaignController as ManagerCampaignController;
 use App\Http\Controllers\Telecaller\CampaignController as TeleCampaignController;
+use App\Http\Controllers\Admin\DocumentController;
 Route::get('/', function () {
     return view('auth.login');
 });
@@ -210,6 +211,11 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             ->name('campaigns.performance');
         Route::get('/campaigns/contacts', [AdminCampaignPerformanceController::class, 'contacts'])
             ->name('campaigns.contacts');
+
+        // Documents
+        Route::get('/documents', [DocumentController::class, 'index'])->name('documents');
+        Route::post('/documents', [DocumentController::class, 'store'])->name('documents.store');
+        Route::delete('/documents/{document}', [DocumentController::class, 'destroy'])->name('documents.destroy');
     });
 
 /*
@@ -447,6 +453,11 @@ Route::middleware(['auth'])->prefix('telecaller')->name('telecaller.')->group(fu
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth'])->group(function () {
+
+    // Documents — shared access (all roles can list + download)
+    Route::get('/documents/list', [DocumentController::class, 'list'])->name('documents.list');
+    Route::get('/documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
+    Route::get('/documents/{document}/view', [DocumentController::class, 'view'])->name('documents.view');
 
     Route::post('/followups/store', [FollowupController::class, 'store'])
         ->name('followups.store');

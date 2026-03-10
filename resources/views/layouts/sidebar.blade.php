@@ -197,6 +197,12 @@
                     class="nav-item {{ request()->routeIs('admin.campaigns.contacts') ? 'active' : '' }}"
                     style="padding: 8px 12px 8px 36px; font-size: 13px;">All Contacts</a>
             </div>
+            <a href="{{ route('admin.documents') }}"
+                class="nav-item {{ request()->routeIs('admin.documents*') ? 'active' : '' }}">
+                <span class="material-icons">folder_open</span>
+                <span>Documents</span>
+            </a>
+
             @php
                 $adminSettingsActive = request()->routeIs('admin.settings.*') || request()->routeIs('admin.settings');
             @endphp
