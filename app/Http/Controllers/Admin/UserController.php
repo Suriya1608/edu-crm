@@ -3,12 +3,16 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\WelcomeCredentialsMail;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Services\AuditLogService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 
 class UserController extends Controller
@@ -43,23 +47,40 @@ class UserController extends Controller
     {
         $request->validate([
             'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
-            'phone'    => 'nullable|string|max:20',
+            'email'    => 'required|email:rfc,dns|unique:users,email',
+            'phone'    => ['required', 'digits:10'],
             'role'     => 'required|in:manager,telecaller',
-            'password' => 'required|min:6'
+            'password' => ['required', 'min:8', 'regex:/[A-Z]/', 'regex:/[a-z]/', 'regex:/[0-9]/', 'regex:/[@$!%*#?&^_\-]/'],
+        ], [
+            'phone.required'      => 'Phone number is required.',
+            'phone.digits'        => 'Phone number must be exactly 10 digits.',
+            'password.min'        => 'Password must be at least 8 characters.',
+            'password.regex'      => 'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character (@$!%*#?&^_-).',
         ]);
 
         User::create([
             'name'     => $request->name,
             'email'    => $request->email,
-            'phone'    => $request->phone,
+            'phone'    => '+91' . $request->phone,
             'role'     => $request->role,
             'status'   => 1,
             'password' => Hash::make($request->password),
         ]);
 
+        try {
+            Mail::to($request->email)->send(new WelcomeCredentialsMail(
+                userName: $request->name,
+                userEmail: $request->email,
+                plainPassword: $request->password,
+                role: $request->role,
+                loginUrl: route('login'),
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Welcome email failed for ' . $request->email . ': ' . $e->getMessage());
+        }
+
         return redirect()->route('admin.users')
-            ->with('success', 'User Created Successfully');
+            ->with('success', 'User Created Successfully. Login credentials have been sent to ' . $request->email . '.');
     }
     public function edit($id)
     {
@@ -157,7 +178,7 @@ class UserController extends Controller
             });
 
         if (Schema::hasTable('sessions') && Schema::hasColumn('sessions', 'user_id')) {
-            \DB::table('sessions')->where('user_id', $user->id)->delete();
+            DB::table('sessions')->where('user_id', $user->id)->delete();
         }
 
         AuditLogService::log('user.force_logout', 'User', $user->id);

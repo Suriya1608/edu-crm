@@ -16,7 +16,8 @@
             Import Excel
         </a>
 
-        <a href="{{ route('manager.leads.export') }}" class="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
+        <a href="{{ route('manager.leads.export', array_filter(request()->only(['search', 'telecaller', 'status', 'date_range']))) }}"
+            class="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
             <span class="material-icons" style="font-size:16px;">download</span>
             Export Excel
         </a>

@@ -79,6 +79,10 @@ class TelecallerStatusController extends Controller
             ]);
         }
 
+        // Clear heartbeat cache so the next heartbeat (if user comes back online)
+        // is written immediately rather than being throttled by the stale 25s TTL.
+        Cache::forget('heartbeat_tc_' . $user->id);
+
         return response()->json(['ok' => true]);
     }
 
@@ -93,16 +97,23 @@ class TelecallerStatusController extends Controller
             'is_online' => 'required|boolean',
         ]);
 
+        $isOnline = $request->boolean('is_online');
+
         if (Schema::hasColumn('users', 'is_online') && Schema::hasColumn('users', 'last_seen_at')) {
             User::where('id', $user->id)->update([
-                'is_online' => (bool) $request->boolean('is_online'),
+                'is_online' => (bool) $isOnline,
                 'last_seen_at' => now(),
             ]);
         }
 
+        // When going offline, clear the heartbeat cache so re-online is immediate.
+        if (!$isOnline) {
+            Cache::forget('heartbeat_tc_' . $user->id);
+        }
+
         return response()->json([
             'ok' => true,
-            'is_online' => (bool) $request->boolean('is_online'),
+            'is_online' => (bool) $isOnline,
         ]);
     }
 
@@ -144,6 +155,7 @@ class TelecallerStatusController extends Controller
         if (!$user || $user->role !== 'telecaller') {
             return response()->json(['ok' => false], 403);
         }
+        /** @var \App\Models\User $user */
 
         $missedCalls = CallLog::with('lead:id,name,lead_code,phone')
             ->where('user_id', $user->id)
@@ -247,6 +259,7 @@ class TelecallerStatusController extends Controller
         if (!$user || $user->role !== 'telecaller') {
             return response()->json(['ok' => false], 403);
         }
+        /** @var \App\Models\User $user */
 
         $user->unreadNotifications->markAsRead();
 
@@ -266,6 +279,7 @@ class TelecallerStatusController extends Controller
         if (!$user || $user->role !== 'telecaller') {
             return response()->json(['ok' => false], 403);
         }
+        /** @var \App\Models\User $user */
 
         if (!Schema::hasTable('notifications')) {
             return response()->json(['ok' => true, 'items' => [], 'ts' => now()->toISOString()]);

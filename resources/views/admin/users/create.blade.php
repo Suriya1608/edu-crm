@@ -23,9 +23,16 @@
             </div>
 
             <div class="col-md-6">
-                <label class="form-label fw-semibold">Phone</label>
-                <input type="text" name="phone" class="form-control"
-                       value="{{ old('phone') }}">
+                <label class="form-label fw-semibold">Phone *</label>
+                <div class="input-group">
+                    <span class="input-group-text">+91</span>
+                    <input type="text" name="phone" class="form-control @error('phone') is-invalid @enderror"
+                           placeholder="10-digit number" maxlength="10"
+                           value="{{ old('phone') }}" required>
+                    @error('phone')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                </div>
             </div>
 
             <div class="col-md-6">
