@@ -123,40 +123,48 @@ class CampaignController extends Controller
         $rows = $data[0];
         array_shift($rows); // remove header
 
-        // Collect existing phones (digits-only) + emails for duplicate check
+        // Use last-10-digits as the normalised key for duplicate detection.
+        // Stored phones are +91XXXXXXXXXX; stripping non-digits yields 12 chars.
+        // Taking the last 10 gives a uniform comparison key regardless of prefix.
         $existingPhones = $campaign->contacts()->pluck('phone')
-            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))
-            ->filter()->flip();
+            ->map(fn($p) => substr(preg_replace('/\D+/', '', (string) $p), -10))
+            ->filter(fn($p) => strlen($p) === 10)
+            ->flip();                                         // O(1) lookup
         $existingEmails = $campaign->contacts()->whereNotNull('email')->pluck('email')
             ->map(fn($e) => strtolower(trim((string) $e)))
-            ->filter()->flip();
+            ->filter()->flip();                              // O(1) lookup
 
         $preview    = [];
-        $seenPhones = [];
-        $seenEmails = [];
+        $seenPhones = [];   // key-based for O(1) within-file dedup
+        $seenEmails = [];   // key-based for O(1) within-file dedup
 
         foreach ($rows as $row) {
             if (empty($row[0]) && empty($row[1])) {
                 continue;
             }
 
-            $rawPhone = (string) ($row[1] ?? '');
-            $digits   = preg_replace('/\D+/', '', $rawPhone);
+            $rawPhone       = trim((string) ($row[1] ?? ''));
+            $formattedPhone = $this->normalizePhone($rawPhone);
 
-            // Format to +91XXXXXXXXXX
-            if (strlen($digits) === 10) {
-                $formattedPhone = '+91' . $digits;
-            } elseif (strlen($digits) === 12 && str_starts_with($digits, '91')) {
-                $formattedPhone = '+' . $digits;
-            } elseif (strlen($digits) === 11 && str_starts_with($digits, '0')) {
-                $formattedPhone = '+91' . substr($digits, 1);
-            } else {
-                $formattedPhone = $rawPhone;
+            // Reject rows with invalid phone numbers
+            if ($formattedPhone === null) {
+                $preview[] = [
+                    'name'           => $row[0] ?? '',
+                    'phone'          => $rawPhone,
+                    'email'          => $row[2] ?? '',
+                    'course'         => $row[3] ?? '',
+                    'city'           => $row[4] ?? '',
+                    'is_duplicate'   => false,
+                    'is_invalid'     => true,
+                    'invalid_reason' => 'invalid_phone',
+                    'dup_reason'     => '',
+                ];
+                continue;
             }
 
             $email = strtolower(trim((string) ($row[2] ?? '')));
 
-            // Skip records with invalid email format
+            // Reject rows with malformed email
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $preview[] = [
                     'name'           => $row[0] ?? '',
@@ -172,8 +180,10 @@ class CampaignController extends Controller
                 continue;
             }
 
-            $dupPhone    = ($digits !== '' && (isset($existingPhones[$digits]) || in_array($digits, $seenPhones)));
-            $dupEmail    = ($email !== '' && (isset($existingEmails[$email]) || in_array($email, $seenEmails)));
+            // Normalised 10-digit key for dedup
+            $phoneKey    = substr(preg_replace('/\D+/', '', $formattedPhone), -10);
+            $dupPhone    = isset($existingPhones[$phoneKey]) || isset($seenPhones[$phoneKey]);
+            $dupEmail    = $email !== '' && (isset($existingEmails[$email]) || isset($seenEmails[$email]));
             $isDuplicate = $dupPhone || $dupEmail;
 
             $preview[] = [
@@ -188,21 +198,24 @@ class CampaignController extends Controller
                 'dup_reason'     => $dupPhone ? 'phone' : ($dupEmail ? 'email' : ''),
             ];
 
-            if ($digits !== '') {
-                $seenPhones[] = $digits;
-            }
-            if ($email !== '') {
-                $seenEmails[] = $email;
+            if (!$isDuplicate) {
+                $seenPhones[$phoneKey] = true;
+                if ($email !== '') {
+                    $seenEmails[$email] = true;
+                }
             }
         }
 
-        $total      = count($preview);
-        $duplicates = count(array_filter($preview, fn($r) => $r['is_duplicate']));
-        $invalid    = count(array_filter($preview, fn($r) => $r['is_invalid']));
-        $insertable = $total - $duplicates - $invalid;
+        $total         = count($preview);
+        $duplicates    = count(array_filter($preview, fn($r) => $r['is_duplicate']));
+        $invalidPhone  = count(array_filter($preview, fn($r) => $r['is_invalid'] && $r['invalid_reason'] === 'invalid_phone'));
+        $invalidEmail  = count(array_filter($preview, fn($r) => $r['is_invalid'] && $r['invalid_reason'] === 'invalid_email'));
+        $invalid       = $invalidPhone + $invalidEmail;
+        $insertable    = $total - $duplicates - $invalid;
 
         return view('manager.campaigns.import', compact(
-            'campaign', 'preview', 'total', 'duplicates', 'invalid', 'insertable'
+            'campaign', 'preview', 'total', 'duplicates',
+            'invalid', 'invalidPhone', 'invalidEmail', 'insertable'
         ));
     }
 
@@ -218,43 +231,39 @@ class CampaignController extends Controller
             return back()->with('error', 'No valid records to import.');
         }
 
+        // Use last-10-digit keys for consistent duplicate detection
         $existingPhones = $campaign->contacts()->pluck('phone')
-            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))
-            ->filter()->flip();
+            ->map(fn($p) => substr(preg_replace('/\D+/', '', (string) $p), -10))
+            ->filter(fn($p) => strlen($p) === 10)
+            ->flip();
         $existingEmails = $campaign->contacts()->whereNotNull('email')->pluck('email')
             ->map(fn($e) => strtolower(trim((string) $e)))
             ->filter()->flip();
 
         $inserted   = 0;
         $skipped    = 0;
-        $seenPhones = [];
-        $seenEmails = [];
+        $seenPhones = [];   // key-based O(1)
+        $seenEmails = [];   // key-based O(1)
         $inserts    = [];
 
         foreach ($rows as $row) {
-            $rawPhone = (string) ($row['phone'] ?? '');
-            $digits   = preg_replace('/\D+/', '', $rawPhone);
-            $email    = strtolower(trim((string) ($row['email'] ?? '')));
+            $rawPhone       = trim((string) ($row['phone'] ?? ''));
+            $formattedPhone = $this->normalizePhone($rawPhone);
+            $email          = strtolower(trim((string) ($row['email'] ?? '')));
 
-            // Skip invalid email
+            // Defense-in-depth: skip if phone or email is still invalid
+            if ($formattedPhone === null) {
+                $skipped++;
+                continue;
+            }
             if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 $skipped++;
                 continue;
             }
 
-            // Format phone with +91 prefix
-            if (strlen($digits) === 10) {
-                $formattedPhone = '+91' . $digits;
-            } elseif (strlen($digits) === 12 && str_starts_with($digits, '91')) {
-                $formattedPhone = '+' . $digits;
-            } elseif (strlen($digits) === 11 && str_starts_with($digits, '0')) {
-                $formattedPhone = '+91' . substr($digits, 1);
-            } else {
-                $formattedPhone = $rawPhone;
-            }
-
-            $dupPhone = $digits !== '' && (isset($existingPhones[$digits]) || in_array($digits, $seenPhones));
-            $dupEmail = $email !== '' && (isset($existingEmails[$email]) || in_array($email, $seenEmails));
+            $phoneKey = substr(preg_replace('/\D+/', '', $formattedPhone), -10);
+            $dupPhone = isset($existingPhones[$phoneKey]) || isset($seenPhones[$phoneKey]);
+            $dupEmail = $email !== '' && (isset($existingEmails[$email]) || isset($seenEmails[$email]));
 
             if ($dupPhone || $dupEmail) {
                 $skipped++;
@@ -273,11 +282,9 @@ class CampaignController extends Controller
                 'updated_at'  => now(),
             ];
 
-            if ($digits !== '') {
-                $seenPhones[] = $digits;
-            }
+            $seenPhones[$phoneKey] = true;
             if ($email !== '') {
-                $seenEmails[] = $email;
+                $seenEmails[$email] = true;
             }
             $inserted++;
         }
@@ -510,6 +517,41 @@ class CampaignController extends Controller
         ]);
 
         return back()->with('success', 'Contact assigned to ' . ($newUser?->name ?? 'telecaller') . '.');
+    }
+
+    // ─── Phone Normalisation ──────────────────────────────────────────────────
+
+    /**
+     * Normalise a raw phone string to +91XXXXXXXXXX.
+     * Returns null when the number cannot be resolved to exactly 10 digits.
+     *
+     * Accepted inputs (all spaces/hyphens stripped before processing):
+     *   7397315203          → +917397315203
+     *   917397315203        → +917397315203
+     *   +917397315203       → +917397315203
+     *   07397315203         → +917397315203
+     *   +91 73973 15203     → +917397315203
+     * Rejected:
+     *   123, 1234567890123, abc+91xyz, empty
+     */
+    private function normalizePhone(string $raw): ?string
+    {
+        // Strip all whitespace and common separators
+        $stripped = preg_replace('/[\s\-().]+/', '', $raw);
+        // Extract only digits
+        $digits = preg_replace('/\D+/', '', $stripped);
+
+        if (strlen($digits) === 10) {
+            return '+91' . $digits;
+        }
+        if (strlen($digits) === 12 && str_starts_with($digits, '91')) {
+            return '+91' . substr($digits, 2);
+        }
+        if (strlen($digits) === 11 && str_starts_with($digits, '0')) {
+            return '+91' . substr($digits, 1);
+        }
+
+        return null; // invalid
     }
 
     // ─── Campaign Performance Dashboard ──────────────────────────────────────

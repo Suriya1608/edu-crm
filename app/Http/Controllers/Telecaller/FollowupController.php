@@ -34,13 +34,25 @@ class FollowupController extends Controller
     {
         $request->validate([
             'next_followup' => 'required|date',
-            'remarks' => 'nullable|string|max:1000',
+            'followup_time' => 'required',
+            'remarks'       => 'nullable|string|max:1000',
         ]);
+
+        $scheduledAt = \Carbon\Carbon::parse(
+            $request->input('next_followup') . ' ' . $request->input('followup_time')
+        );
+
+        if ($scheduledAt->isPast()) {
+            return back()
+                ->withErrors(['next_followup' => 'The scheduled date & time cannot be in the past.'])
+                ->withInput();
+        }
 
         $followup = $this->editableFollowup($id);
 
         $payload = [
             'next_followup' => $request->input('next_followup'),
+            'followup_time' => $request->input('followup_time'),
         ];
 
         if ($request->filled('remarks')) {
@@ -57,9 +69,9 @@ class FollowupController extends Controller
         $followup->update($payload);
 
         $followup->lead?->activities()->create([
-            'user_id' => Auth::id(),
-            'type' => 'followup',
-            'description' => 'Follow-up rescheduled to ' . $request->input('next_followup'),
+            'user_id'       => Auth::id(),
+            'type'          => 'followup',
+            'description'   => 'Follow-up rescheduled to ' . $scheduledAt->format('d M Y H:i'),
             'activity_time' => now(),
         ]);
 
@@ -110,12 +122,30 @@ class FollowupController extends Controller
             $query->whereNull('completed_at');
         }
 
+        $nowTime = now()->format('H:i:s');
+
         if ($scope === 'today') {
             $query->whereDate('next_followup', today());
         } elseif ($scope === 'overdue') {
-            $query->whereDate('next_followup', '<', today());
+            $query->where(function ($q) use ($nowTime) {
+                $q->whereDate('next_followup', '<', today())
+                  ->orWhere(function ($q2) use ($nowTime) {
+                      $q2->whereDate('next_followup', today())
+                         ->whereNotNull('followup_time')
+                         ->whereRaw('followup_time < ?', [$nowTime]);
+                  });
+            });
         } elseif ($scope === 'upcoming') {
-            $query->whereDate('next_followup', '>', today());
+            $query->where(function ($q) use ($nowTime) {
+                $q->whereDate('next_followup', '>', today())
+                  ->orWhere(function ($q2) use ($nowTime) {
+                      $q2->whereDate('next_followup', today())
+                         ->where(function ($q3) use ($nowTime) {
+                             $q3->whereNull('followup_time')
+                                ->orWhereRaw('followup_time >= ?', [$nowTime]);
+                         });
+                  });
+            });
         } elseif ($scope === 'completed') {
             if ($hasCompleted) {
                 $query->whereNotNull('completed_at');

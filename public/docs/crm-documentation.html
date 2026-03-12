@@ -116,12 +116,12 @@
   <!-- COVER -->
   <div class="cover">
     <h1>Edu-CRM System Documentation</h1>
-    <p class="subtitle">Complete feature reference for Admin, Manager &amp; Telecaller panels — including Queue Automation, Audit Logs, Policies, Call Outcomes, and Lead Aging</p>
+    <p class="subtitle">Complete feature reference for Admin, Manager &amp; Telecaller panels — including Queue Automation, Audit Logs, Policies, Call Outcomes, Lead Aging, Document Management, Campaign WhatsApp, Followup DateTime Scheduling, and Phone Validation</p>
     <div class="meta">
       <div class="meta-item"><span class="meta-label">Product</span><span class="meta-value">Admission CRM</span></div>
       <div class="meta-item"><span class="meta-label">Stack</span><span class="meta-value">Laravel 12 · Bootstrap 5.3 · MySQL</span></div>
       <div class="meta-item"><span class="meta-label">Roles</span><span class="meta-value">Admin · Manager · Telecaller</span></div>
-      <div class="meta-item"><span class="meta-label">Updated</span><span class="meta-value">March 2026</span></div>
+      <div class="meta-item"><span class="meta-label">Updated</span><span class="meta-value">12 March 2026</span></div>
     </div>
   </div>
 
@@ -137,6 +137,8 @@
       <li><a href="#integrations">Integrations &amp; Technical Overview</a></li>
       <li><a href="#enterprise">Enterprise Enhancements (March 2026)</a></li>
       <li><a href="#campaigns">Outbound Bulk Campaign Module</a></li>
+      <li><a href="#documents">Document Management</a></li>
+      <li><a href="#updates-march12">March 12, 2026 — Followup DateTime &amp; Phone Validation</a></li>
     </ol>
   </div>
 
@@ -264,6 +266,17 @@
     </table>
 
     <div class="sep"></div>
+    <h3>Document Management</h3>
+    <table>
+      <tr><th>Feature</th><th>Description</th></tr>
+      <tr><td><strong>Upload Document</strong></td><td>Admin uploads files (PDF, Word, Excel, PPT, JPG, PNG, max 20 MB) with a title. Stored in <code>storage/app/public/documents/</code>.</td></tr>
+      <tr><td><strong>Document List</strong></td><td>Table showing title, file name, size, uploader, and upload date. Actions: Download and Delete.</td></tr>
+      <tr><td><strong>Delete Document</strong></td><td>Removes the file from disk storage and the DB record.</td></tr>
+      <tr><td><strong>Download</strong></td><td>Serves file as attachment via <code>Storage::disk('public')->download()</code>.</td></tr>
+    </table>
+    <p style="font-size:12px; color:#64748b; margin-top:6px;">Access: <strong>Admin → Sidebar → Documents</strong> (<code>GET /admin/documents</code>). Only admins can upload or delete. Managers and telecallers have read-only access via the quick-access popup in the header.</p>
+
+    <div class="sep"></div>
     <h3>Automation Control</h3>
     <table>
       <tr><th>Automation Area</th><th>Configurable Options</th></tr>
@@ -377,6 +390,29 @@
       <li>Navigation blocked during active call (shows warning modal)</li>
       <li>Call log automatically saved on call end</li>
     </ul>
+
+    <div class="sep"></div>
+    <h3>Documents Quick Access</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">A <strong>folder icon button</strong> in the top header opens a modal listing all documents uploaded by the admin. Managers can view and download without leaving the current page.</p>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📂 How It Works</div>
+        <ul>
+          <li>Click the <strong>folder_open</strong> icon in the header</li>
+          <li>Modal lazy-loads the document list (AJAX on first open)</li>
+          <li>Each document shows: icon, title, file name, size, date</li>
+          <li>Two action buttons per document: <strong>View</strong> (opens in new tab) and <strong>Download</strong></li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🔒 Access Rules</div>
+        <ul>
+          <li>View and Download available to all roles except admin</li>
+          <li>Upload and Delete restricted to admin only</li>
+          <li>Document list served via <code>GET /documents/list</code> (auth middleware)</li>
+        </ul>
+      </div>
+    </div>
   </div>
 
   <!-- ─── TELECALLER PANEL ─── -->
@@ -445,14 +481,15 @@
 
     <div class="sep"></div>
     <h3>Follow-up Management</h3>
+    <div class="info"><strong>March 12, 2026:</strong> Followup scheduling now supports <strong>exact date + time</strong>. Overdue and Upcoming tabs filter by both date and time, not just date.</div>
     <table>
       <tr><th>View / Action</th><th>Description</th></tr>
-      <tr><td><strong>Today</strong></td><td>All follow-ups scheduled for today (excludes completed)</td></tr>
-      <tr><td><strong>Overdue</strong></td><td>Follow-ups past their due date (next_followup &lt; today)</td></tr>
-      <tr><td><strong>Upcoming</strong></td><td>Future follow-ups (next_followup &gt; today)</td></tr>
+      <tr><td><strong>Today</strong></td><td>All follow-ups scheduled for today (excludes completed). Shows follow-up time alongside the date.</td></tr>
+      <tr><td><strong>Overdue</strong></td><td>Datetime-aware: past-date follow-ups <em>or</em> today's follow-ups where the scheduled time has already passed.</td></tr>
+      <tr><td><strong>Upcoming</strong></td><td>Datetime-aware: future-date follow-ups <em>or</em> today's follow-ups where the scheduled time is still in the future (or no time set).</td></tr>
       <tr><td><strong>Completed</strong></td><td>Follow-ups marked as done</td></tr>
       <tr><td><strong>Mark Completed</strong></td><td>Sets completed_at timestamp; removes from active views</td></tr>
-      <tr><td><strong>Reschedule</strong></td><td>Change next_followup date; clears reminder_notified_at so reminder re-triggers</td></tr>
+      <tr><td><strong>Reschedule</strong></td><td>Modal with Date + Time fields (both required). Client-side and server-side validation reject any past datetime. Clears reminder_notified_at so reminder re-triggers.</td></tr>
       <tr><td><strong>Quick Call</strong></td><td>Click-to-call button directly from follow-up list row</td></tr>
     </table>
 
@@ -475,6 +512,15 @@
       <li>Weekly performance summary</li>
       <li>Monthly performance summary</li>
       <li>Personal call history (outbound, inbound, missed)</li>
+    </ul>
+
+    <div class="sep"></div>
+    <h3>Documents Quick Access</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">Same folder icon button available in the telecaller header. Opens a modal with the admin-uploaded document list — including brochures, fee details, and other reference files.</p>
+    <ul class="plain">
+      <li>View button opens document inline in a new browser tab (PDF, images)</li>
+      <li>Download button saves the file locally</li>
+      <li>Modal caches the list after first load (no repeated API calls)</li>
     </ul>
   </div>
 
@@ -738,12 +784,13 @@
       <tr><th>Table</th><th>Purpose</th><th>Key Fields</th></tr>
       <tr><td>users</td><td>All system users</td><td>role, status, is_online, last_seen_at</td></tr>
       <tr><td>leads</td><td>Lead records</td><td>lead_code, phone, status, assigned_by, assigned_to, sla_escalated_at</td></tr>
-      <tr><td>followups</td><td>Follow-up schedule per lead</td><td>next_followup, completed_at, escalated_at, reminder_notified_at</td></tr>
+      <tr><td>followups</td><td>Follow-up schedule per lead</td><td>next_followup (DATE), followup_time (TIME, nullable), completed_at, escalated_at, reminder_notified_at</td></tr>
       <tr><td>call_logs</td><td>All call records</td><td>direction, status, duration, call_sid, ended_by</td></tr>
       <tr><td>lead_activities</td><td>Activity timeline</td><td>type (call/whatsapp/note/followup/status_change), description</td></tr>
-      <tr><td>whatsapp_messages</td><td>WhatsApp chat messages</td><td>direction, message_body, meta_data (status), provider_message_id</td></tr>
+      <tr><td>whatsapp_messages</td><td>WhatsApp chat messages</td><td>direction, message_body, meta_data (status), provider_message_id, lead_id, campaign_contact_id (nullable)</td></tr>
       <tr><td>notifications</td><td>Laravel database notifications</td><td>type, data (JSON), read_at</td></tr>
       <tr><td>settings</td><td>All configuration key-values</td><td>key, value (some encrypted)</td></tr>
+      <tr><td>documents</td><td>Admin-uploaded reference documents</td><td>title, file_path, file_name, file_type, file_size, uploaded_by (FK→users)</td></tr>
     </table>
 
     <div class="sep"></div>
@@ -987,10 +1034,13 @@ php artisan schedule:run</div>
         <div class="feature-card-title">📂 Bulk Upload (Excel/CSV)</div>
         <ul>
           <li>Upload .xlsx, .xls, or .csv files</li>
-          <li>Expected columns: Name | Mobile | Email | Course | City</li>
+          <li>Expected columns: Name | Mobile Number | Email ID | Course | City</li>
           <li>Preview records before confirming import</li>
-          <li>Duplicate detection: skips records with same phone <em>or</em> email within the same campaign</li>
-          <li>Import summary: Total / Inserted / Duplicates skipped</li>
+          <li><strong>Phone normalization:</strong> accepts 10-digit, +91XXXXXXXXXX, 91XXXXXXXXXX, or 0XXXXXXXXXX — all stored as <code>+91XXXXXXXXXX</code></li>
+          <li><strong>Invalid phone detection:</strong> rows with wrong digit count or non-numeric characters are flagged and skipped</li>
+          <li><strong>Invalid email detection:</strong> rows with malformed email addresses are flagged and skipped</li>
+          <li>Duplicate detection (O(1) via array keys): skips records with same phone <em>or</em> email already in the campaign or within the same file</li>
+          <li>Import summary: Total / Will Be Inserted / Duplicates / Invalid (with phone + email breakdown)</li>
         </ul>
       </div>
       <div class="feature-card">
@@ -1098,6 +1148,50 @@ php artisan schedule:run</div>
       <tr><td>Telecaller</td><td>PATCH …/status</td><td>telecaller.campaigns.contact.status</td><td>Update status</td></tr>
       <tr><td>Telecaller</td><td>POST …/followup</td><td>telecaller.campaigns.contact.followup</td><td>Set follow-up date</td></tr>
       <tr><td>Telecaller</td><td>POST …/call</td><td>telecaller.campaigns.contact.call</td><td>Log call activity</td></tr>
+      <tr><td>Manager</td><td>POST …/whatsapp</td><td>manager.campaigns.contact.whatsapp.store</td><td>Send WhatsApp text message to contact</td></tr>
+      <tr><td>Manager</td><td>POST …/whatsapp/media</td><td>manager.campaigns.contact.whatsapp.media</td><td>Send WhatsApp media file to contact</td></tr>
+      <tr><td>Manager</td><td>GET …/whatsapp/messages</td><td>manager.campaigns.contact.whatsapp.fetch</td><td>Fetch WhatsApp message history (JSON)</td></tr>
+      <tr><td>Telecaller</td><td>POST …/whatsapp</td><td>telecaller.campaigns.contact.whatsapp.store</td><td>Send WhatsApp text message to contact</td></tr>
+      <tr><td>Telecaller</td><td>POST …/whatsapp/media</td><td>telecaller.campaigns.contact.whatsapp.media</td><td>Send WhatsApp media file to contact</td></tr>
+      <tr><td>Telecaller</td><td>GET …/whatsapp/messages</td><td>telecaller.campaigns.contact.whatsapp.fetch</td><td>Fetch WhatsApp message history (JSON)</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Campaign WhatsApp Integration (March 2026)</h3>
+    <div class="info">Campaign contacts have a fully independent WhatsApp chat — stored with <code>campaign_contact_id</code> instead of <code>lead_id</code>. This is completely separate from Lead-level WhatsApp.</div>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">💬 Chat UI</div>
+        <ul>
+          <li>Full chat window on the contact detail page</li>
+          <li>Send text messages and media files</li>
+          <li>Delivery tick statuses (✓ / ✓✓ / blue ✓✓)</li>
+          <li>Auto-polling every 7 seconds for inbound messages</li>
+          <li>Template quick-reply buttons: Intro, Follow-up, Course Info</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🔧 Under the Hood</div>
+        <ul>
+          <li>Uses Meta Official WhatsApp Cloud API only (no WhatsApp Web fallback)</li>
+          <li>24h inbound window check — sends free-form text if customer messaged in last 24h</li>
+          <li>Falls back to approved template (<code>hello_world</code>) if window closed</li>
+          <li>Each message logged to <code>whatsapp_messages</code> with <code>campaign_contact_id</code></li>
+          <li>Activity logged to <code>campaign_activities</code> (type: <code>whatsapp</code>)</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🔒 Authorization</div>
+        <ul>
+          <li>Telecallers can only message contacts assigned to them</li>
+          <li>Manager sees all campaign contacts in their campaigns</li>
+          <li>Encrypted contact ID used in routes (prevents ID enumeration)</li>
+        </ul>
+      </div>
+    </div>
+    <table>
+      <tr><th>Migration</th><th>Change</th></tr>
+      <tr><td><code>2026_03_09_400000_add_campaign_contact_id_to_whatsapp_messages.php</code></td><td>Added <code>campaign_contact_id</code> (nullable, FK→campaign_contacts, indexed) to <code>whatsapp_messages</code> after <code>lead_id</code></td></tr>
     </table>
 
     <h3>Files Created</h3>
@@ -1118,6 +1212,7 @@ php artisan schedule:run</div>
       <tr><td>View</td><td>resources/views/telecaller/campaigns/index.blade.php</td></tr>
       <tr><td>View</td><td>resources/views/telecaller/campaigns/show.blade.php</td></tr>
       <tr><td>View</td><td>resources/views/telecaller/campaigns/contact.blade.php</td></tr>
+      <tr><td>Migration</td><td>database/migrations/2026_03_09_400000_add_campaign_contact_id_to_whatsapp_messages.php</td></tr>
     </table>
 
     <h3>Setup Instructions</h3>
@@ -1128,8 +1223,280 @@ php artisan migrate
 <span class="comment">#   campaigns, campaign_contacts, campaign_activities</span></div>
   </div>
 
+  <!-- ─── DOCUMENT MANAGEMENT ─── -->
+  <div class="section" id="documents">
+    <div class="section-header">
+      <div class="section-icon" style="background:#eff6ff; color:#1d4ed8;">📁</div>
+      <div>
+        <div class="section-title">9. Document Management</div>
+        <div class="section-desc">Admin uploads reference documents (brochures, fee details, etc.) — managers and telecallers can view and download from any page</div>
+      </div>
+    </div>
+
+    <div class="info">Documents are stored in <code>storage/app/public/documents/</code> (Laravel <code>public</code> disk). The <code>documents</code> table records metadata. Only admins can upload or delete; all other roles have read-only access via a header popup modal.</div>
+
+    <h3>Admin — Document Management Page</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:12px;">Accessible at <strong>Admin Sidebar → Documents</strong> (<code>/admin/documents</code>).</p>
+    <div class="two-col">
+      <div>
+        <h4>Upload Form (left column)</h4>
+        <ul class="plain">
+          <li>Document Title (required, max 255 characters)</li>
+          <li>File picker — accepted types: PDF, Word (.doc/.docx), Excel (.xls/.xlsx), PowerPoint (.ppt/.pptx), JPG, PNG</li>
+          <li>Maximum file size: 20 MB</li>
+          <li>File stored as <code>documents/{random_hash}.ext</code></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Document List (right column)</h4>
+        <ul class="plain">
+          <li>Columns: Title, File (icon + name), Size, Uploaded By, Date, Actions</li>
+          <li>File type icon auto-detected from MIME type</li>
+          <li>Download and Delete action buttons per row</li>
+          <li>Delete prompts a confirmation before removing file + DB record</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+    <h3>Manager &amp; Telecaller — Quick Access Modal</h3>
+    <p style="font-size:13px; color:#475569; margin-bottom:12px;">A <strong>folder icon button</strong> appears in the top header bar on both the Manager panel and Telecaller panel. Clicking it opens a Bootstrap modal with the document list.</p>
+    <table>
+      <tr><th>Button</th><th>Action</th><th>Behaviour</th></tr>
+      <tr><td><strong>View</strong></td><td>Opens document inline in a new browser tab</td><td>PDF and images render in browser; other types download instead</td></tr>
+      <tr><td><strong>Download</strong></td><td>Downloads file to the user's device</td><td>Uses <code>Content-Disposition: attachment</code></td></tr>
+    </table>
+    <div class="note">The modal fetches the document list via AJAX on first open only. Subsequent opens use the cached result — no repeated network requests.</div>
+
+    <div class="sep"></div>
+    <h3>File Type Icons</h3>
+    <table>
+      <tr><th>MIME / Extension</th><th>Material Icon</th></tr>
+      <tr><td>application/pdf</td><td><code>picture_as_pdf</code></td></tr>
+      <tr><td>application/msword / vnd.openxmlformats-officedocument.wordprocessingml.document</td><td><code>description</code></td></tr>
+      <tr><td>application/vnd.ms-excel / spreadsheetml.sheet</td><td><code>table_chart</code></td></tr>
+      <tr><td>application/vnd.ms-powerpoint / presentationml.presentation</td><td><code>slideshow</code></td></tr>
+      <tr><td>image/*</td><td><code>image</code></td></tr>
+      <tr><td>Other</td><td><code>insert_drive_file</code></td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Routes</h3>
+    <table>
+      <tr><th>Method</th><th>URI</th><th>Route Name</th><th>Access</th><th>Action</th></tr>
+      <tr><td>GET</td><td>/admin/documents</td><td>admin.documents</td><td>Admin only</td><td>Document management page</td></tr>
+      <tr><td>POST</td><td>/admin/documents</td><td>admin.documents.store</td><td>Admin only</td><td>Upload a new document</td></tr>
+      <tr><td>DELETE</td><td>/admin/documents/{document}</td><td>admin.documents.destroy</td><td>Admin only</td><td>Delete document (file + DB)</td></tr>
+      <tr><td>GET</td><td>/documents/list</td><td>documents.list</td><td>All authenticated roles</td><td>JSON list for modal</td></tr>
+      <tr><td>GET</td><td>/documents/{document}/download</td><td>documents.download</td><td>All authenticated roles</td><td>Download file as attachment</td></tr>
+      <tr><td>GET</td><td>/documents/{document}/view</td><td>documents.view</td><td>All authenticated roles</td><td>View file inline in browser</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Files Created</h3>
+    <table>
+      <tr><th>Type</th><th>Path</th></tr>
+      <tr><td>Migration</td><td>database/migrations/2026_03_10_200000_create_documents_table.php</td></tr>
+      <tr><td>Model</td><td>app/Models/Document.php</td></tr>
+      <tr><td>Controller</td><td>app/Http/Controllers/Admin/DocumentController.php</td></tr>
+      <tr><td>View</td><td>resources/views/admin/documents/index.blade.php</td></tr>
+    </table>
+
+    <div class="sep"></div>
+    <h3>Database Schema — <code>documents</code> Table</h3>
+    <table>
+      <tr><th>Column</th><th>Type</th><th>Notes</th></tr>
+      <tr><td>id</td><td>bigint unsigned</td><td>Auto-increment PK</td></tr>
+      <tr><td>title</td><td>varchar(255)</td><td>Display name set by admin</td></tr>
+      <tr><td>file_path</td><td>varchar(255)</td><td>Path relative to public disk (e.g. <code>documents/abc123.pdf</code>)</td></tr>
+      <tr><td>file_name</td><td>varchar(255)</td><td>Original client filename</td></tr>
+      <tr><td>file_type</td><td>varchar(255)</td><td>MIME type (nullable)</td></tr>
+      <tr><td>file_size</td><td>bigint unsigned</td><td>File size in bytes (default 0)</td></tr>
+      <tr><td>uploaded_by</td><td>bigint unsigned (FK)</td><td>References <code>users.id</code>, cascade delete</td></tr>
+      <tr><td>created_at / updated_at</td><td>timestamps</td><td>Standard Laravel timestamps</td></tr>
+    </table>
+  </div>
+
+  <!-- ─── MARCH 12 2026 UPDATES ─── -->
+  <div class="section" id="updates-march12">
+    <div class="section-header">
+      <div class="section-icon" style="background:#faf5ff; color:#7c3aed;">🆕</div>
+      <div>
+        <div class="section-title">10. March 12, 2026 — Updates</div>
+        <div class="section-desc">Followup DateTime Scheduling (Telecaller) · Campaign Import Phone Validation &amp; Normalization</div>
+      </div>
+    </div>
+
+    <!-- ── Feature 1: Followup DateTime ── -->
+    <h3>Feature 1 — Telecaller Followup DateTime Scheduling</h3>
+    <p style="color:#475569; font-size:13px; margin-bottom:12px;">Previously, the Reschedule Followup modal only accepted a date. This update adds an exact time field, enabling datetime-aware overdue/upcoming tab logic and time-level validation.</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📅 Reschedule Modal</div>
+        <ul>
+          <li><strong>Date field</strong> (required) — Next Followup Date</li>
+          <li><strong>Time field</strong> (required) — New time input alongside the date</li>
+          <li>Both fields must be filled before submission</li>
+          <li>Client-side: combines date + time into a JS Date, blocks past datetime with an alert</li>
+          <li>Server-side: Carbon parses combined datetime, rejects past datetimes with a validation error</li>
+          <li>On save: date stored in <code>followups.next_followup</code>, time stored in <code>followups.followup_time</code></li>
+          <li>Reschedule resets <code>completed_at</code> and <code>reminder_notified_at</code> so reminders re-trigger</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">⏰ Datetime-Aware Tab Filtering</div>
+        <ul>
+          <li><strong>Overdue:</strong> past-date records <em>OR</em> today's records where <code>followup_time &lt; now()</code></li>
+          <li><strong>Upcoming:</strong> future-date records <em>OR</em> today's records where <code>followup_time &gt;= now()</code> (or time is NULL)</li>
+          <li><strong>Today:</strong> all records with <code>next_followup = today</code> regardless of time</li>
+          <li>SQL uses <code>whereRaw('followup_time &lt; ?', [$nowTime])</code> for time comparison</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🖥️ Followup List Table</div>
+        <ul>
+          <li>"Date &amp; Time" column shows date + time on a second line (e.g. "12 Mar 2026" / "03:30 PM")</li>
+          <li>Status badge logic accounts for time: today + past time → <em>overdue</em>; today + future time → <em>upcoming</em></li>
+          <li>Reschedule button passes <code>data-time</code> attribute to pre-fill modal</li>
+        </ul>
+      </div>
+    </div>
+
+    <h4>Validation Rules (Server-Side)</h4>
+    <table>
+      <tr><th>Field</th><th>Rule</th></tr>
+      <tr><td><code>next_followup</code></td><td>required | date</td></tr>
+      <tr><td><code>followup_time</code></td><td>required</td></tr>
+      <tr><td>Combined datetime</td><td>Must be in the future — <code>Carbon::parse(date . ' ' . time)->isPast()</code> returns 422 if true</td></tr>
+    </table>
+
+    <h4>Database Column</h4>
+    <div class="info">The <code>followup_time</code> (TIME, nullable) column already existed on both <code>followups</code> and <code>campaign_contacts</code> tables from migration <code>2026_03_09_300000_add_followup_time_to_followups_and_campaign_contacts.php</code>. No new migration was needed.</div>
+
+    <h4>Files Modified</h4>
+    <table>
+      <tr><th>File</th><th>Change</th></tr>
+      <tr><td><code>app/Http/Controllers/Telecaller/FollowupController.php</code></td><td>Updated <code>reschedule()</code> to validate time, Carbon past-datetime check, save <code>followup_time</code>. Updated <code>indexByScope()</code> with datetime-aware overdue/upcoming SQL logic.</td></tr>
+      <tr><td><code>resources/views/telecaller/followups/index.blade.php</code></td><td>Added time column in table, time input in reschedule modal, error alert for past datetime, updated status badge logic, updated JS for time pre-fill and past-datetime client validation.</td></tr>
+    </table>
+
+    <div class="sep"></div>
+
+    <!-- ── Feature 2: Campaign Phone Validation ── -->
+    <h3>Feature 2 — Campaign Import Phone Validation &amp; Normalization</h3>
+    <p style="color:#475569; font-size:13px; margin-bottom:12px;">The Excel/CSV import for campaign contacts now validates and normalizes mobile numbers before import. Invalid phones are rejected with clear feedback — no silent bad data.</p>
+
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">📱 Phone Normalization</div>
+        <ul>
+          <li>Strips spaces, hyphens, parentheses, dots from raw input</li>
+          <li>Extracts digits only via <code>preg_replace('/\D+/', '', ...)</code></li>
+          <li><strong>10 digits</strong> → stored as <code>+91XXXXXXXXXX</code></li>
+          <li><strong>12 digits starting with 91</strong> → strips prefix, stores as <code>+91XXXXXXXXXX</code></li>
+          <li><strong>11 digits starting with 0</strong> → strips leading 0, stores as <code>+91XXXXXXXXXX</code></li>
+          <li>Anything else (wrong length, letters in number) → <span class="badge badge-orange">Invalid Phone</span></li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">✅ What's Accepted</div>
+        <ul>
+          <li><code>7397315203</code> → <code>+917397315203</code></li>
+          <li><code>917397315203</code> → <code>+917397315203</code></li>
+          <li><code>+917397315203</code> → <code>+917397315203</code></li>
+          <li><code>07397315203</code> → <code>+917397315203</code></li>
+          <li><code>+91 73973 15203</code> → <code>+917397315203</code></li>
+          <li><code>73973-15203</code> → <code>+917397315203</code></li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">❌ What's Rejected</div>
+        <ul>
+          <li>Numbers shorter than 10 digits (e.g. <code>12345</code>)</li>
+          <li>Numbers longer than 10 digits after prefix strip</li>
+          <li>Inputs containing letters mixed with digits</li>
+          <li>Empty mobile column (when name also empty, row is skipped silently)</li>
+          <li>Malformed email addresses (separate <span class="badge badge-orange">Invalid Email</span> flag)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h4>Import Preview — Validation Stats</h4>
+    <table>
+      <tr><th>Stat Card</th><th>What It Shows</th></tr>
+      <tr><td>Total in File</td><td>All non-empty rows in the uploaded file</td></tr>
+      <tr><td>Will Be Inserted</td><td>Valid, non-duplicate rows that will be imported</td></tr>
+      <tr><td>Duplicates</td><td>Rows with same phone or email already in campaign or within the same file</td></tr>
+      <tr><td>Invalid</td><td>Total invalid rows — sub-label shows breakdown: "X phone · Y email"</td></tr>
+      <tr><td>Status</td><td>Ready (green) if insertable &gt; 0; Nothing to Import (red) otherwise</td></tr>
+    </table>
+
+    <h4>Preview Table — Row Status Badges</h4>
+    <table>
+      <tr><th>Badge</th><th>Meaning</th><th>Row Color</th></tr>
+      <tr><td><span class="badge badge-green">New</span></td><td>Valid row ready for import</td><td>White</td></tr>
+      <tr><td><span class="badge badge-red">Duplicate (phone)</span></td><td>Phone already exists in campaign or current file</td><td>Light red</td></tr>
+      <tr><td><span class="badge badge-red">Duplicate (email)</span></td><td>Email already exists in campaign or current file</td><td>Light red</td></tr>
+      <tr><td><span class="badge badge-orange">Invalid Phone</span></td><td>Phone could not be normalized to 10 digits</td><td>Light yellow</td></tr>
+      <tr><td><span class="badge badge-orange">Invalid Email</span></td><td>Email present but fails RFC validation</td><td>Light yellow</td></tr>
+    </table>
+
+    <h4>Duplicate Detection Algorithm</h4>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">Both preview and store use <strong>O(1) array-key lookup</strong> — significantly faster than <code>in_array()</code> for large files:</p>
+    <div class="code"><span class="comment">// Existing phones from DB → normalize to last-10-digit key</span>
+<span class="key">$existingPhones</span> = $campaign-&gt;contacts()-&gt;pluck(<span class="val">'phone'</span>)
+    -&gt;map(fn($p) =&gt; substr(preg_replace(<span class="val">'/\D+/'</span>, <span class="val">''</span>, $p), -10))
+    -&gt;filter(fn($p) =&gt; strlen($p) === 10)
+    -&gt;flip(); <span class="comment">// O(1) lookup</span>
+
+<span class="comment">// Per-row check (within-file dedup)</span>
+<span class="key">$phoneKey</span> = substr(preg_replace(<span class="val">'/\D+/'</span>, <span class="val">''</span>, $formattedPhone), -10);
+<span class="key">$dupPhone</span> = isset($existingPhones[$phoneKey]) || isset($seenPhones[$phoneKey]);</div>
+    <div class="note"><strong>Why last-10-digit key?</strong> Phones stored in DB as <code>+91XXXXXXXXXX</code> produce 12 digits after stripping non-digits. New input as <code>7397315203</code> produces 10 digits. Taking <code>substr(..., -10)</code> normalizes both to the same comparison key regardless of prefix.</div>
+
+    <h4>Defense-in-Depth at Store Time</h4>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">Even though preview already filters invalid/duplicate rows, <code>importStore()</code> re-validates every row server-side before inserting — protecting against tampered <code>contacts_data</code> hidden field submissions.</p>
+
+    <h4>Performance — Bulk Insert</h4>
+    <p style="font-size:13px; color:#475569; margin-bottom:10px;">Valid rows are batched into <code>CampaignContact::insert()</code> calls in chunks of 200, not one-by-one. This reduces DB round-trips significantly for large files.</p>
+
+    <h4>Files Modified</h4>
+    <table>
+      <tr><th>File</th><th>Change</th></tr>
+      <tr><td><code>app/Http/Controllers/Manager/CampaignController.php</code></td><td>Added private <code>normalizePhone(string $raw): ?string</code> helper. Rewrote <code>importPreview()</code> and <code>importStore()</code> with phone normalization, O(1) duplicate detection using last-10-digit keys, separate invalid phone/email counts.</td></tr>
+      <tr><td><code>resources/views/manager/campaigns/import.blade.php</code></td><td>Updated info box with phone format guidance. Renamed "Invalid Email" stat card to "Invalid" with phone/email breakdown. Added "Invalid Phone" badge in preview legend. Status badge distinguishes Invalid Phone from Invalid Email.</td></tr>
+    </table>
+
+    <div class="sep"></div>
+
+    <h3>Security Considerations</h3>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <div class="feature-card-title">🔐 Followup Reschedule</div>
+        <ul>
+          <li>Server validates past-datetime (client JS can be bypassed)</li>
+          <li><code>editableFollowup()</code> ensures telecaller can only reschedule their own assigned leads</li>
+          <li>CSRF protection on all form submissions</li>
+          <li>Max 1000 chars on remarks field</li>
+        </ul>
+      </div>
+      <div class="feature-card">
+        <div class="feature-card-title">🔐 Campaign Import</div>
+        <ul>
+          <li>File type restricted: only .xlsx, .xls, .csv accepted</li>
+          <li>Server re-validates all rows at store time (defense-in-depth)</li>
+          <li>Email validated with PHP's <code>FILTER_VALIDATE_EMAIL</code></li>
+          <li>Phone normalized to prevent storing arbitrary strings</li>
+          <li>Campaign ownership check: manager can only import to their own campaigns</li>
+          <li>Encrypted campaign IDs in all routes (prevents ID enumeration)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
   <div class="footer">
-    Edu-CRM System Documentation — Updated March 2026 — For internal use only
+    Edu-CRM System Documentation — Updated 12 March 2026 — For internal use only
     <br>Built with Laravel 12 · Bootstrap 5.3 · Twilio · Meta WhatsApp Cloud API
   </div>
 </div>
