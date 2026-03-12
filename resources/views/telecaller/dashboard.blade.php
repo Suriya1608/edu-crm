@@ -13,10 +13,9 @@
             Active Calls: <span id="activeCallCount">{{ $activeCallCount }}</span>
         </span>
         <div class="form-check form-switch m-0 ms-2">
-            <input class="form-check-input" type="checkbox" role="switch" id="availabilityToggle"
-                {{ auth()->user()->is_online ? 'checked' : '' }}>
+            <input class="form-check-input" type="checkbox" role="switch" id="availabilityToggle">
             <label class="form-check-label small fw-semibold" for="availabilityToggle" id="availabilityLabel">
-                {{ auth()->user()->is_online ? 'Online' : 'Offline' }}
+                Online
             </label>
         </div>
     </div>
@@ -172,6 +171,15 @@
                 localStorage.setItem(availabilityStorageKey, isOnline ? 'online' : 'offline');
             }
 
+            // Initialize toggle from localStorage (source of truth for user intent).
+            // localStorage takes precedence over the DB value rendered by Blade,
+            // preventing the page-refresh race condition.
+            (function initToggle() {
+                const stored = localStorage.getItem(availabilityStorageKey);
+                // null means never set — treat as online (default); any explicit value wins.
+                setAvailabilityUI(stored !== 'offline');
+            })();
+
             function toTimeLabel(totalSeconds) {
                 const sec = Number(totalSeconds || 0);
                 const h = Math.floor(sec / 3600);
@@ -216,7 +224,10 @@
             function renderSnapshot(data) {
                 if (!data || !data.ok) return;
 
-                setAvailabilityUI(!!data.is_online);
+                // Do NOT call setAvailabilityUI() here — the toggle follows localStorage
+                // (user intent). Letting the snapshot override it causes a race condition
+                // where a stale is_online:true resets localStorage to 'online', which then
+                // causes the heartbeat on the next page load to mark the user online in DB.
 
                 const calls = Number(data.active_call_count || 0);
                 activeCallCount.textContent = calls;

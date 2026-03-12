@@ -11,6 +11,7 @@ use App\Models\Lead;
 use App\Models\Followup;
 use App\Models\CallLog;
 use App\Models\Setting;
+use App\Models\User;
 use App\Models\WhatsAppMessage;
 use Illuminate\Support\Facades\Schema;
 
@@ -350,14 +351,17 @@ class LeadController extends Controller
 
     public function panelSnapshot()
     {
-        $user = Auth::user();
-        if (!$user || $user->role !== 'telecaller') {
+        $authUser = Auth::user();
+        if (!$authUser || $authUser->role !== 'telecaller') {
             return response()->json(['ok' => false], 403);
         }
 
+        // Re-fetch from DB to bypass any in-memory model caching in the auth guard.
+        $user = User::find($authUser->id);
+
         $isOnline = (bool) ($user->is_online ?? false);
         $lastSeen = $user->last_seen_at ? Carbon::parse($user->last_seen_at) : null;
-        if ($lastSeen && $lastSeen->lt(now()->subSeconds(60))) {
+        if ($lastSeen && $lastSeen->lt(now()->subSeconds(90))) {
             $isOnline = false;
         }
 
