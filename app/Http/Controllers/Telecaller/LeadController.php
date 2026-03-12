@@ -264,9 +264,6 @@ class LeadController extends Controller
                 'followup_time' => $request->followup_time,
             ]);
 
-            $lead->next_followup = $request->next_followup;
-            $lead->save();
-
             $timeStr = $request->followup_time ? ' at ' . date('h:i A', strtotime($request->followup_time)) : '';
             $lead->activities()->create([
                 'user_id'       => Auth::id(),

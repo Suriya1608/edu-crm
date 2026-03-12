@@ -21,10 +21,29 @@
             <span>Dashboard</span>
         </a>
 
-        <a href="{{ route('manager.leads') }}" class="nav-item {{ request()->routeIs('manager.leads*') ? 'active' : '' }}">
+        @php
+            $leadsActive = request()->routeIs('manager.leads*');
+        @endphp
+        <button class="nav-item w-100 border-0 {{ $leadsActive ? 'active' : 'bg-transparent' }}" type="button"
+            data-bs-toggle="collapse" data-bs-target="#managerLeadsMenu"
+            aria-expanded="{{ $leadsActive ? 'true' : 'false' }}" aria-controls="managerLeadsMenu">
             <span class="material-icons">person_add</span>
-            <span>Leads</span>
-        </a>
+            <span class="flex-grow-1 text-start">Leads</span>
+            <span class="material-icons" style="font-size: 18px;">expand_more</span>
+        </button>
+        <div id="managerLeadsMenu" class="collapse {{ $leadsActive ? 'show' : '' }}"
+            style="padding-left: 12px; margin-top: -2px; margin-bottom: 8px;">
+            <a href="{{ route('manager.leads') }}"
+                class="nav-item {{ request()->routeIs('manager.leads') ? 'active' : '' }}"
+                style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                All Leads
+            </a>
+            <a href="{{ route('manager.leads.duplicates') }}"
+                class="nav-item {{ request()->routeIs('manager.leads.duplicates') ? 'active' : '' }}"
+                style="padding: 8px 12px 8px 36px; font-size: 13px;">
+                Duplicate Leads
+            </a>
+        </div>
 
         <a href="{{ route('manager.telecallers') }}"
             class="nav-item {{ request()->routeIs('manager.telecallers*') ? 'active' : '' }}">

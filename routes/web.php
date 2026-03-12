@@ -21,6 +21,7 @@ use App\Http\Controllers\Telecaller\PerformanceController as TelePerformanceCont
 use App\Http\Controllers\Telecaller\CallManagementController as TeleCallManagementController;
 use App\Http\Controllers\LeadImportController;
 use App\Http\Controllers\LeadExportController;
+use App\Http\Controllers\Manager\LeadExportController as ManagerLeadExportController;
 use App\Http\Controllers\FollowupController;
 use App\Http\Controllers\TwilioController;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -259,8 +260,11 @@ Route::middleware(['auth'])->prefix('manager')->group(function () {
     Route::post('/leads/import/store', [LeadImportController::class, 'store'])
         ->name('manager.leads.import.store');
 
-    Route::get('/leads/export', [LeadExportController::class, 'export'])
+    Route::get('/leads/export', [ManagerLeadExportController::class, 'export'])
         ->name('manager.leads.export');
+
+    Route::get('/leads/duplicates', [ManagerLeadController::class, 'duplicates'])
+        ->name('manager.leads.duplicates');
 
     // Lead Details (KEEP LAST)
     Route::get('/leads/{id}', [ManagerLeadController::class, 'show'])

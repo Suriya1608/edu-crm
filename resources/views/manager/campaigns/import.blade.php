@@ -16,7 +16,7 @@
                 <div class="chart-card">
                     <div class="chart-header mb-4">
                         <h3>Upload Student Database</h3>
-                        <p class="text-muted small mb-0">Upload an Excel or CSV file. Duplicates (same phone/email within this campaign) and invalid emails will be automatically skipped.</p>
+                        <p class="text-muted small mb-0">Upload an Excel or CSV file. Duplicates (same phone/email within this campaign), invalid phone numbers, and invalid emails will be automatically skipped.</p>
                     </div>
 
                     <div class="alert alert-info d-flex gap-2 align-items-start mb-4">
@@ -24,7 +24,7 @@
                         <div>
                             <strong>Expected column order:</strong><br>
                             <code>Name | Mobile Number | Email ID | Course | City</code><br>
-                            <small class="text-muted">Row 1 should be the header row. Only Name and Mobile Number are required. Mobile numbers will be stored with +91 prefix. Invalid email formats are skipped.</small>
+                            <small class="text-muted">Row 1 should be the header row. Only Name and Mobile Number are required. Numbers must have exactly 10 digits (with or without +91/0 prefix). Invalid phones and emails are skipped.</small>
                         </div>
                     </div>
 
@@ -81,9 +81,16 @@
                 </div>
                 <div class="col-6 col-md-3">
                     <div class="stat-card">
-                        <div class="stat-icon amber"><span class="material-icons">email</span></div>
-                        <div class="stat-label">Invalid Email</div>
+                        <div class="stat-icon amber"><span class="material-icons">warning</span></div>
+                        <div class="stat-label">Invalid</div>
                         <div class="stat-value">{{ $invalid }}</div>
+                        @if ($invalid > 0)
+                            <div class="text-muted" style="font-size:11px; margin-top:2px;">
+                                @if (($invalidPhone ?? 0) > 0) {{ $invalidPhone }} phone @endif
+                                @if (($invalidPhone ?? 0) > 0 && ($invalidEmail ?? 0) > 0) · @endif
+                                @if (($invalidEmail ?? 0) > 0) {{ $invalidEmail }} email @endif
+                            </div>
+                        @endif
                     </div>
                 </div>
                 <div class="col-6 col-md-2">
@@ -128,6 +135,7 @@
                 <h3>Record Preview (first 100 rows shown)</h3>
                 <small class="text-muted">
                     <span class="badge bg-danger me-1">Duplicate</span>
+                    <span class="badge bg-warning text-dark me-1">Invalid Phone</span>
                     <span class="badge bg-warning text-dark me-1">Invalid Email</span>
                     rows will be skipped.
                 </small>
@@ -157,6 +165,8 @@
                                 <td>
                                     @if ($row['is_duplicate'])
                                         <span class="badge bg-danger">Duplicate ({{ $row['dup_reason'] }})</span>
+                                    @elseif ($row['is_invalid'] && $row['invalid_reason'] === 'invalid_phone')
+                                        <span class="badge bg-warning text-dark">Invalid Phone</span>
                                     @elseif ($row['is_invalid'])
                                         <span class="badge bg-warning text-dark">Invalid Email</span>
                                     @else

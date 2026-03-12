@@ -40,7 +40,7 @@
                 <thead>
                     <tr>
                         <th>S.No</th>
-                        <th>Date</th>
+                        <th>Date & Time</th>
                         <th>Lead</th>
                         <th>Phone</th>
                         <th>Remarks</th>
@@ -52,11 +52,22 @@
                     @forelse($followups as $item)
                         @php
                             $isCompleted = !empty($item->completed_at);
-                            $isOverdue = !$isCompleted && optional($item->next_followup)->lt(today());
+                            $followupDatetime = $item->next_followup && $item->followup_time
+                                ? \Carbon\Carbon::parse($item->next_followup->format('Y-m-d') . ' ' . $item->followup_time)
+                                : optional($item->next_followup);
+                            $isOverdue = !$isCompleted && (
+                                optional($item->next_followup)->lt(today()) ||
+                                ($item->followup_time && optional($item->next_followup)->isToday() && $followupDatetime->isPast())
+                            );
                         @endphp
                         <tr>
                             <td>{{ ($followups->currentPage() - 1) * $followups->perPage() + $loop->iteration }}</td>
-                            <td>{{ optional($item->next_followup)->format('d M Y') }}</td>
+                            <td>
+                                {{ optional($item->next_followup)->format('d M Y') }}
+                                @if ($item->followup_time)
+                                    <br><small class="text-muted">{{ \Carbon\Carbon::parse($item->followup_time)->format('h:i A') }}</small>
+                                @endif
+                            </td>
                             <td>
                                 <div class="fw-semibold">{{ $item->lead->name ?? '-' }}</div>
                                 <small class="text-muted">{{ $item->lead->lead_code ?? '-' }}</small>
@@ -69,7 +80,9 @@
                                 @elseif ($isOverdue)
                                     <span class="badge bg-danger">overdue</span>
                                 @elseif (optional($item->next_followup)->isToday())
-                                    <span class="badge bg-warning text-dark">today</span>
+                                    <span class="badge bg-warning text-dark">
+                                        {{ ($item->followup_time && \Carbon\Carbon::parse($item->followup_time)->isFuture()) ? 'upcoming' : 'today' }}
+                                    </span>
                                 @else
                                     <span class="badge bg-info text-dark">upcoming</span>
                                 @endif
@@ -97,6 +110,7 @@
                                         <button class="btn btn-sm btn-outline-warning text-dark reschedule-btn"
                                             data-id="{{ $item->id }}"
                                             data-date="{{ optional($item->next_followup)->format('Y-m-d') }}"
+                                            data-time="{{ $item->followup_time ? \Carbon\Carbon::parse($item->followup_time)->format('H:i') : '' }}"
                                             data-remarks="{{ $item->remarks }}"
                                             data-bs-toggle="modal"
                                             data-bs-target="#rescheduleModal"
@@ -142,9 +156,18 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Next Followup Date</label>
-                            <input type="date" class="form-control" name="next_followup" id="rescheduleDate" required>
+                        @if ($errors->has('next_followup'))
+                            <div class="alert alert-danger py-2 mb-3">{{ $errors->first('next_followup') }}</div>
+                        @endif
+                        <div class="row g-3 mb-3">
+                            <div class="col-7">
+                                <label class="form-label">Next Followup Date <span class="text-danger">*</span></label>
+                                <input type="date" class="form-control" name="next_followup" id="rescheduleDate" required>
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label">Time <span class="text-danger">*</span></label>
+                                <input type="time" class="form-control" name="followup_time" id="rescheduleTime" required>
+                            </div>
                         </div>
                         <div class="mb-0">
                             <label class="form-label">Remarks</label>
@@ -164,18 +187,34 @@
         (function() {
             const form = document.getElementById('rescheduleForm');
             const dateInput = document.getElementById('rescheduleDate');
+            const timeInput = document.getElementById('rescheduleTime');
             const remarksInput = document.getElementById('rescheduleRemarks');
 
             document.querySelectorAll('.reschedule-btn').forEach(function(btn) {
                 btn.addEventListener('click', function() {
                     const id = this.dataset.id;
                     const date = this.dataset.date || '';
+                    const time = this.dataset.time || '';
                     const remarks = this.dataset.remarks || '';
 
                     form.action = "{{ url('telecaller/followups') }}/" + id + "/reschedule";
                     dateInput.value = date;
+                    timeInput.value = time;
                     remarksInput.value = remarks;
                 });
+            });
+
+            form.addEventListener('submit', function(e) {
+                const dateVal = dateInput.value;
+                const timeVal = timeInput.value;
+                if (!dateVal || !timeVal) return; // let server validate
+
+                const chosen = new Date(dateVal + 'T' + timeVal);
+                if (chosen <= new Date()) {
+                    e.preventDefault();
+                    alert('The scheduled date & time cannot be in the past.');
+                    timeInput.focus();
+                }
             });
         })();
     </script>

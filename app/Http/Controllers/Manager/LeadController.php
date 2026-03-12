@@ -211,6 +211,50 @@ class LeadController extends Controller
 
         return $prefix . '-' . $formattedNumber;
     }
+    public function duplicates(Request $request)
+    {
+        $managerId = Auth::id();
+
+        // Find phones that appear more than once within this manager's leads
+        $dupPhones = Lead::where('assigned_by', $managerId)
+            ->select('phone')
+            ->whereNotNull('phone')
+            ->groupBy('phone')
+            ->havingRaw('COUNT(*) > 1')
+            ->pluck('phone');
+
+        // Find emails that appear more than once within this manager's leads
+        $dupEmails = Lead::where('assigned_by', $managerId)
+            ->select('email')
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->groupBy('email')
+            ->havingRaw('COUNT(*) > 1')
+            ->pluck('email');
+
+        $query = Lead::with(['assignedUser', 'followups'])
+            ->where('assigned_by', $managerId)
+            ->where(function ($q) use ($dupPhones, $dupEmails) {
+                $q->whereIn('phone', $dupPhones);
+                if ($dupEmails->isNotEmpty()) {
+                    $q->orWhereIn('email', $dupEmails);
+                }
+            });
+
+        if ($request->search) {
+            $query->where(function ($q) use ($request) {
+                $q->where('lead_code', 'like', '%' . $request->search . '%')
+                    ->orWhere('name', 'like', '%' . $request->search . '%')
+                    ->orWhere('phone', 'like', '%' . $request->search . '%')
+                    ->orWhere('email', 'like', '%' . $request->search . '%');
+            });
+        }
+
+        $leads = $query->orderBy('id', 'desc')->paginate(15)->withQueryString();
+
+        return view('manager.leads.duplicates', compact('leads'));
+    }
+
     public function show($id)
     {
         try {
