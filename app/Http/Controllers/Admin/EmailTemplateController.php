@@ -85,13 +85,17 @@ class EmailTemplateController extends Controller
     public function uploadImage(Request $request)
     {
         $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,gif,webp|max:2048',
+            'image' => 'required|image|mimes:jpeg,png,gif,webp|max:5120',
         ]);
 
         $path = $request->file('image')->store('email-images', 'public');
+        $url  = Storage::disk('public')->url($path);
 
+        // 'url'  → consumed by our custom eb-email-img fetch handler
+        // 'data' → consumed by GrapesJS built-in asset manager ([{src}] format)
         return response()->json([
-            'url' => Storage::disk('public')->url($path),
+            'url'  => $url,
+            'data' => [['src' => $url]],
         ]);
     }
 

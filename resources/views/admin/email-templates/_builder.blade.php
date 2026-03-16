@@ -627,15 +627,21 @@ ebFileInput.addEventListener('change', function () {
         headers: { 'X-CSRF-TOKEN': CSRF },
         body: fd,
     })
-    .then(r => r.json())
-    .then(data => {
+    .then(function (r) {
+        if (!r.ok) throw new Error('Upload failed (' + r.status + ')');
+        return r.json();
+    })
+    .then(function (data) {
         const url = data.url;
         if (url && ebUploadTarget) {
-            ebUploadTarget.addAttributes({ src: url });
+            // Use set('attributes') for a guaranteed model update + re-render
+            const attrs = Object.assign({}, ebUploadTarget.get('attributes') || {});
+            attrs.src = url;
+            ebUploadTarget.set('attributes', attrs);
         }
         ebUploadTarget = null;
     })
-    .catch(() => {
+    .catch(function () {
         alert('Image upload failed. Please try again.');
         ebUploadTarget = null;
     });
@@ -644,8 +650,14 @@ ebFileInput.addEventListener('change', function () {
 // ── Upload image command ──────────────────────────────────────────────────────
 editor.Commands.add('eb-upload-img', {
     run(ed) {
-        const sel = ed.getSelected();
+        let sel = ed.getSelected();
         if (!sel) return;
+        // If a wrapper element is selected, find the img inside it
+        if (sel.get('type') !== 'eb-email-img') {
+            const found = sel.find('.eb-email-img')[0];
+            if (!found) return;
+            sel = found;
+        }
         ebUploadTarget = sel;
         ebFileInput.click();
     },
@@ -677,6 +689,8 @@ editor.DomComponents.addType('eb-email-img', {
     view: {
         events: { dblclick: 'onDblClick' },
         onDblClick() {
+            // Explicitly select this component before running the upload command
+            editor.select(this.model);
             editor.Commands.run('eb-upload-img');
         },
     },
