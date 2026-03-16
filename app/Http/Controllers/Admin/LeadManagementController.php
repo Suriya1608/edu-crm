@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Exports\LeadsExport;
 use App\Http\Controllers\Controller;
+use App\Models\Course;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\User;
@@ -275,12 +276,16 @@ class LeadManagementController extends Controller
                 continue;
             }
 
+            $courseId = isset($row[3]) && $row[3] !== ''
+                ? Course::where('name', trim($row[3]))->value('id')
+                : null;
+
             $lead = Lead::create([
                 'lead_code' => $this->generateLeadCode(),
                 'name' => $row[0],
                 'phone' => $row[1],
                 'email' => $row[2] ?? null,
-                'course' => $row[3] ?? null,
+                'course_id' => $courseId,
                 'source' => $row[4] ?? 'manual',
                 'status' => LeadDefaults::defaultStatus(),
                 'assigned_by' => Auth::id(),
@@ -306,7 +311,7 @@ class LeadManagementController extends Controller
 
     private function renderIndex(Request $request, string $scope, string $title)
     {
-        $query = Lead::with(['assignedBy:id,name', 'assignedUser:id,name', 'lastActivity']);
+        $query = Lead::with(['assignedBy:id,name', 'assignedUser:id,name', 'lastActivity', 'enrolledCourse']);
 
         if ($request->filled('search')) {
             $search = $request->input('search');

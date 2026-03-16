@@ -40,12 +40,12 @@ class SecurityHeaders
         // frame-ancestors and form-action constraints still provide meaningful protection.
         $csp = implode('; ', [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net",
-            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com",
-            "font-src 'self' fonts.gstatic.com fonts.googleapis.com data:",
-            "img-src 'self' data: blob:",
-            "connect-src 'self'",
-            "frame-src 'none'",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdnjs.cloudflare.com",
+            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com",
+            "font-src 'self' fonts.gstatic.com fonts.googleapis.com cdnjs.cloudflare.com data:",
+            "img-src 'self' data: blob: https://placehold.co https://cdn-icons-png.flaticon.com",
+            "connect-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com fonts.gstatic.com",
+            "frame-src 'self' blob:",
             "frame-ancestors 'self'",
             "base-uri 'self'",
             "form-action 'self'",

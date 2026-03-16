@@ -29,3 +29,9 @@ Schedule::command('crm:run-automation')
 Schedule::command('crm:daily-summary')
     ->dailyAt('19:00')
     ->withoutOverlapping();
+
+// Dispatch jobs for email campaigns whose scheduled time has arrived
+Schedule::command('email:process-scheduled')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

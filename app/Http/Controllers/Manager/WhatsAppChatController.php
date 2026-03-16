@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Manager;
 
 use App\Http\Controllers\Controller;
 use App\Models\Lead;
+use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Notifications\WhatsAppInboundNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class WhatsAppChatController extends Controller
 {
@@ -53,9 +55,11 @@ class WhatsAppChatController extends Controller
                     ->update(['is_read' => true]);
 
                 // Clear WhatsApp DB notifications for this lead so toasts stop repeating
-                auth()->user()->unreadNotifications()
+                /** @var User $user */
+                $user = Auth::user();
+                $user->unreadNotifications()
                     ->where('type', WhatsAppInboundNotification::class)
-                    ->whereJsonContains('data->lead_id', $leadId)
+                    ->where('data->lead_id', $leadId)
                     ->update(['read_at' => now()]);
 
                 // If this lead doesn't already appear in conversations (no messages), add it
@@ -108,9 +112,11 @@ class WhatsAppChatController extends Controller
             ->update(['is_read' => true]);
 
         // Clear WhatsApp DB notifications for this lead so toasts stop repeating
-        auth()->user()->unreadNotifications()
+        /** @var User $user */
+        $user = Auth::user();
+        $user->unreadNotifications()
             ->where('type', WhatsAppInboundNotification::class)
-            ->whereJsonContains('data->lead_id', $leadId)
+            ->where('data->lead_id', $leadId)
             ->update(['read_at' => now()]);
 
         $unread = WhatsAppMessage::where('direction', 'inbound')

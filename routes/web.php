@@ -28,6 +28,7 @@ use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use App\Http\Controllers\Manager\ManagerTelecallerController;
 use App\Http\Controllers\MetaWhatsAppController;
 use App\Http\Controllers\Manager\WhatsAppChatController;
+use App\Http\Controllers\Telecaller\WhatsAppChatController as TeleWhatsAppChatController;
 use App\Http\Controllers\Api\LeadCaptureController;
 use Illuminate\Http\Request;
 use App\Http\Controllers\ExotelController;
@@ -42,6 +43,12 @@ use App\Http\Controllers\PageController;
 use App\Http\Controllers\Manager\CampaignController as ManagerCampaignController;
 use App\Http\Controllers\Telecaller\CampaignController as TeleCampaignController;
 use App\Http\Controllers\Admin\DocumentController;
+use App\Http\Controllers\Admin\EmailTemplateController;
+use App\Http\Controllers\Admin\EmailCampaignController as AdminEmailCampaignController;
+use App\Http\Controllers\Admin\CourseController as AdminCourseController;
+use App\Http\Controllers\Manager\EmailCampaignController as ManagerEmailCampaignController;
+use App\Http\Controllers\EmailTrackingController;
+use App\Http\Controllers\InstagramController;
 Route::get('/', function () {
     return view('auth.login');
 });
@@ -204,6 +211,9 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
 
             Route::get('/security', [SettingsController::class, 'security'])->name('security');
             Route::post('/security', [SettingsController::class, 'updateSecurity'])->name('security.update');
+
+            Route::get('/instagram', [SystemSettingsController::class, 'instagram'])->name('instagram');
+            Route::post('/instagram', [SystemSettingsController::class, 'updateInstagram'])->name('instagram.update');
         });
 
         Route::get('/settings', fn() => redirect()->route('admin.settings.general'))->name('settings');
@@ -212,6 +222,39 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             ->name('campaigns.performance');
         Route::get('/campaigns/contacts', [AdminCampaignPerformanceController::class, 'contacts'])
             ->name('campaigns.contacts');
+
+        // ── Email Templates ───────────────────────────────────────────────────
+        Route::prefix('email-templates')->name('email-templates.')->group(function () {
+            Route::get('/', [EmailTemplateController::class, 'index'])->name('index');
+            Route::get('/create', [EmailTemplateController::class, 'create'])->name('create');
+            Route::post('/', [EmailTemplateController::class, 'store'])->name('store');
+            Route::post('/upload-image', [EmailTemplateController::class, 'uploadImage'])->name('upload-image');
+            Route::get('/{emailTemplate}/edit', [EmailTemplateController::class, 'edit'])->name('edit');
+            Route::put('/{emailTemplate}', [EmailTemplateController::class, 'update'])->name('update');
+            Route::patch('/{emailTemplate}/toggle-status', [EmailTemplateController::class, 'toggleStatus'])->name('toggle-status');
+            Route::delete('/{emailTemplate}', [EmailTemplateController::class, 'destroy'])->name('destroy');
+        });
+
+        // ── Email Campaigns ────────────────────────────────────────────────────
+        Route::prefix('email-campaigns')->name('email-campaigns.')->group(function () {
+            Route::get('/', [AdminEmailCampaignController::class, 'index'])->name('index');
+            Route::get('/create', [AdminEmailCampaignController::class, 'create'])->name('create');
+            Route::post('/', [AdminEmailCampaignController::class, 'store'])->name('store');
+            Route::get('/contacts', [AdminEmailCampaignController::class, 'emailList'])->name('email-list');
+            Route::get('/{emailCampaign}', [AdminEmailCampaignController::class, 'show'])->name('show');
+            Route::delete('/{emailCampaign}', [AdminEmailCampaignController::class, 'destroy'])->name('destroy');
+        });
+
+        // Courses
+        Route::prefix('courses')->name('courses.')->group(function () {
+            Route::get('/', [AdminCourseController::class, 'index'])->name('index');
+            Route::get('/create', [AdminCourseController::class, 'create'])->name('create');
+            Route::post('/', [AdminCourseController::class, 'store'])->name('store');
+            Route::get('/{course}/edit', [AdminCourseController::class, 'edit'])->name('edit');
+            Route::put('/{course}', [AdminCourseController::class, 'update'])->name('update');
+            Route::delete('/{course}', [AdminCourseController::class, 'destroy'])->name('destroy');
+            Route::patch('/{course}/toggle-status', [AdminCourseController::class, 'toggleStatus'])->name('toggle-status');
+        });
 
         // Documents
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents');
@@ -362,6 +405,25 @@ Route::middleware(['auth'])->prefix('manager')->group(function () {
     // ── Campaign Performance Dashboard ───────────────────────────────────────
     Route::get('/campaigns-performance', [ManagerCampaignController::class, 'performance'])
         ->name('manager.campaigns.performance');
+
+    // ── Email Campaigns ───────────────────────────────────────────────────────
+    Route::prefix('email-campaigns')->name('manager.email-campaigns.')->group(function () {
+        Route::get('/', [ManagerEmailCampaignController::class, 'index'])->name('index');
+        Route::get('/create', [ManagerEmailCampaignController::class, 'create'])->name('create');
+        Route::post('/', [ManagerEmailCampaignController::class, 'store'])->name('store');
+        Route::get('/contacts', [ManagerEmailCampaignController::class, 'emailList'])->name('email-list');
+        Route::get('/{emailCampaign}', [ManagerEmailCampaignController::class, 'show'])->name('show');
+        Route::delete('/{emailCampaign}', [ManagerEmailCampaignController::class, 'destroy'])->name('destroy');
+    });
+
+    // ── Instagram Chat ────────────────────────────────────────────────────────
+    Route::prefix('instagram')->name('manager.instagram.')->group(function () {
+        Route::get('/', [InstagramController::class, 'index'])->name('index');
+        Route::get('/conversations', [InstagramController::class, 'conversations'])->name('conversations');
+        Route::get('/conversations/{id}/messages', [InstagramController::class, 'messages'])->name('messages');
+        Route::post('/conversations/{id}/reply', [InstagramController::class, 'reply'])->name('reply');
+        Route::post('/conversations/{id}/read', [InstagramController::class, 'markRead'])->name('read');
+    });
 });
 
 /*
@@ -448,6 +510,21 @@ Route::middleware(['auth'])->prefix('telecaller')->name('telecaller.')->group(fu
         Route::get('/{campaignId}/contacts/{contactId}/whatsapp/messages', [MetaWhatsAppController::class, 'fetchCampaignContactMessages'])->name('contact.whatsapp.fetch');
     });
 
+    // ── WhatsApp Chat Hub ─────────────────────────────────────────────────────
+    Route::get('/whatsapp', [TeleWhatsAppChatController::class, 'index'])
+        ->name('whatsapp.hub');
+    Route::get('/whatsapp/messages/{id}', [TeleWhatsAppChatController::class, 'messages'])
+        ->name('whatsapp.messages');
+
+    // ── Instagram Chat ────────────────────────────────────────────────────────
+    Route::prefix('instagram')->name('instagram.')->group(function () {
+        Route::get('/', [InstagramController::class, 'index'])->name('index');
+        Route::get('/conversations', [InstagramController::class, 'conversations'])->name('conversations');
+        Route::get('/conversations/{id}/messages', [InstagramController::class, 'messages'])->name('messages');
+        Route::post('/conversations/{id}/reply', [InstagramController::class, 'reply'])->name('reply');
+        Route::post('/conversations/{id}/read', [InstagramController::class, 'markRead'])->name('read');
+    });
+
 });
 
 
@@ -476,6 +553,15 @@ Route::middleware(['auth'])->group(function () {
         ->name('profile.destroy');
 });
 
+// ── Email open tracking (public, no auth) ─────────────────────────────────
+Route::get('/email/open/{campaignId}/{recipientId}', [EmailTrackingController::class, 'open'])
+    ->whereNumber(['campaignId', 'recipientId'])
+    ->name('email.open');
+
+// Legacy token route — kept for emails sent before the route change
+Route::get('/email/track/{token}', [EmailTrackingController::class, 'track'])
+    ->name('email.track');
+
 Route::post('/lead-capture', [LeadCaptureController::class, 'store']);
 
 /*
@@ -485,13 +571,30 @@ Route::post('/lead-capture', [LeadCaptureController::class, 'store']);
 */
 
 
+// WordPress / external landing page lead capture
+// Server-side POST (from wp_remote_post) — no CORS needed
 Route::post('/crm-store-lead', [LeadCaptureController::class, 'store'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
+
+// Browser-side AJAX from external domains — handle CORS preflight
+Route::options('/crm-store-lead', function () {
+    return response('', 204, [
+        'Access-Control-Allow-Origin'  => '*',
+        'Access-Control-Allow-Methods' => 'POST, OPTIONS',
+        'Access-Control-Allow-Headers' => 'Content-Type, X-Requested-With',
+        'Access-Control-Max-Age'       => '86400',
+    ]);
+})->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 
 // Meta WhatsApp Cloud API webhooks (GET = verification, POST = events)
 Route::match(['get', 'post'], '/webhooks/meta/whatsapp', [MetaWhatsAppController::class, 'webhook'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
     ->name('meta.whatsapp.webhook');
+
+// Meta Instagram DM webhooks (GET = hub verification, POST = message events)
+Route::match(['get', 'post'], '/webhooks/meta/instagram', [InstagramController::class, 'webhook'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+    ->name('meta.instagram.webhook');
 
 // Meta Facebook Lead Ads webhook (GET = verification, POST = lead events)
 Route::match(['get', 'post'], '/webhooks/meta/facebook', [SocialMediaController::class, 'webhook'])

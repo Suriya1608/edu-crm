@@ -143,18 +143,8 @@
                             <td><span class="fw-semibold">{{ $lead->phone }}</span></td>
                             <td>{{ $lead->course ?: '-' }}</td>
                             <td>
-                                @php
-                                    $statusColors = [
-                                        'new' => 'bg-primary',
-                                        'contacted' => 'bg-secondary',
-                                        'interested' => 'bg-success',
-                                        'not_interested' => 'bg-danger',
-                                        'follow_up' => 'bg-warning text-dark',
-                                    ];
-                                @endphp
-                                <span class="badge {{ $statusColors[$lead->status] ?? 'bg-secondary' }}">
-                                    {{ ucfirst(str_replace('_', ' ', $lead->status)) }}
-                                </span>
+                                @php $stCls = str_replace('_', '-', $lead->status); @endphp
+                                <span class="lead-status status-{{ $stCls }}">{{ ucfirst(str_replace('_', ' ', $lead->status)) }}</span>
                             </td>
                             <td>
                                 @php

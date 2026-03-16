@@ -46,9 +46,12 @@
 
     <div class="col-md-6">
         <label>Course</label>
-        <input type="text"
-            name="course"
-            class="form-control">
+        <select name="course_id" class="form-select">
+            <option value="">— Select Course —</option>
+            @foreach ($courses as $c)
+                <option value="{{ $c->id }}" {{ old('course_id') == $c->id ? 'selected' : '' }}>{{ $c->name }}</option>
+            @endforeach
+        </select>
     </div>
 
     <div class="col-md-6">

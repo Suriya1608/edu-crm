@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Course;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Notifications\LeadAssignmentNotification;
@@ -28,12 +29,14 @@ class LeadCaptureController extends Controller
 
         $managerId = $this->managerLeadAllocator->resolveManagerIdForIncomingLead();
 
+        $courseId = Course::where('name', trim($request->course))->value('id');
+
         $lead = Lead::create([
             'lead_code' => $this->generateLeadCode(),
             'name' => $request->name,
             'email' => $request->email,
             'phone' => $request->phone,
-            'course' => $request->course,
+            'course_id' => $courseId,
             'source' => 'Landing Page',
             'assigned_by' => $managerId,
             'status' => LeadDefaults::defaultStatus(),
@@ -72,6 +75,8 @@ class LeadCaptureController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Lead stored successfully',
+        ])->withHeaders([
+            'Access-Control-Allow-Origin' => '*',
         ]);
     }
 

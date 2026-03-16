@@ -630,4 +630,5 @@ class CampaignController extends Controller
             'campaigns', 'telecallers', 'stats', 'perCampaign'
         ));
     }
+
 }
