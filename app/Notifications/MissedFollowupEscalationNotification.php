@@ -33,16 +33,17 @@ class MissedFollowupEscalationNotification extends Notification implements Shoul
     public function toMail(object $notifiable): MailMessage
     {
         $lead = $this->followup->lead;
-        $telecallerName = $lead?->assignedUser?->name ?? ($this->followup->user?->name ?? 'Unassigned');
+
+        // Use site_url from settings so the link works behind proxies / ngrok tunnels
+        $siteUrl   = rtrim(Setting::get('site_url', config('app.url')), '/');
+        $actionUrl = $siteUrl . '/manager/followups/missed';
 
         return (new MailMessage)
             ->subject('Missed Follow-up Escalation: ' . ($lead?->lead_code ?? 'Lead'))
-            ->line('A follow-up has been missed and escalated to manager.')
-            ->line('Lead: ' . ($lead?->name ?? 'N/A'))
-            ->line('Lead Code: ' . ($lead?->lead_code ?? 'N/A'))
-            ->line('Telecaller: ' . $telecallerName)
-            ->line('Follow-up Date: ' . optional($this->followup->next_followup)->format('d M Y'))
-            ->action('View Missed Follow-ups', route('manager.followups.missed'));
+            ->view('emails.missed-followup', [
+                'followup'  => $this->followup,
+                'actionUrl' => $actionUrl,
+            ]);
     }
 
     public function toArray(object $notifiable): array

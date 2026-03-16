@@ -30,18 +30,18 @@
 /* ── Root container ─────────────────────────────────────── */
 #gjsEbRoot {
     display: flex;
-    height: calc(100vh - 268px);
-    min-height: 620px;
+    height: calc(100vh - 230px);
+    min-height: 650px;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     overflow: hidden;
-    background: #f8fafc;
-    box-shadow: 0 1px 4px rgba(15,23,42,.05);
+    background: #f1f5f9;
+    box-shadow: 0 2px 8px rgba(15,23,42,.06);
 }
 
 /* ── Left: Block Palette ─────────────────────────────────── */
 #gjsEbBlocks {
-    width: 200px;
+    width: 210px;
     flex-shrink: 0;
     background: #ffffff;
     border-right: 1px solid #e2e8f0;
@@ -84,15 +84,15 @@
 
 /* Block grid */
 #gjs-blocks .gjs-blocks-c {
-    display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px 8px;
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 10px;
 }
 #gjs-blocks .gjs-block {
     width: calc(50% - 3px) !important;
     flex: 0 0 calc(50% - 3px) !important;
     margin: 0 !important;
-    padding: 10px 4px 8px !important;
+    padding: 11px 4px 9px !important;
     border: 1.5px solid #e9eef4 !important;
-    border-radius: 8px !important;
+    border-radius: 9px !important;
     background: #ffffff !important;
     cursor: grab !important;
     text-align: center !important;
@@ -100,13 +100,13 @@
     color: #475569 !important;
     font-size: 10.5px !important;
     font-weight: 600 !important;
-    box-shadow: 0 1px 2px rgba(15,23,42,.04) !important;
+    box-shadow: 0 1px 3px rgba(15,23,42,.05) !important;
 }
 #gjs-blocks .gjs-block:hover {
     background: #eff6ff !important;
     border-color: #137fec !important;
     color: #137fec !important;
-    box-shadow: 0 2px 6px rgba(19,127,236,.12) !important;
+    box-shadow: 0 3px 8px rgba(19,127,236,.14) !important;
     transform: translateY(-1px) !important;
 }
 #gjs-blocks .gjs-block__media {
@@ -130,8 +130,8 @@
 #gjsEbToolbar {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 8px 14px;
+    gap: 4px;
+    padding: 7px 12px;
     background: #ffffff;
     border-bottom: 1px solid #e2e8f0;
     flex-shrink: 0;
@@ -142,7 +142,7 @@
     padding: 5px 11px; border: 1.5px solid #e2e8f0; border-radius: 7px;
     background: #ffffff; color: #475569; font-size: 12px; font-weight: 600;
     cursor: pointer; font-family: inherit; transition: all .15s; line-height: 1;
-    box-shadow: 0 1px 2px rgba(15,23,42,.04);
+    box-shadow: 0 1px 2px rgba(15,23,42,.04); white-space: nowrap;
 }
 .eb-tbtn .material-icons { font-size: 15px; }
 .eb-tbtn:hover { background: #f8fafc; border-color: #94a3b8; color: #1e293b; box-shadow: 0 2px 4px rgba(15,23,42,.07); }
@@ -160,9 +160,9 @@
 #gjs .gjs-editor    { height: 100% !important; }
 #gjs .gjs-cv-canvas {
     top: 0 !important; height: 100% !important;
-    width: 100% !important; background: #e8edf3 !important;
+    width: 100% !important; background: #dde3ea !important;
 }
-#gjs .gjs-frame-wrapper { padding: 20px !important; }
+#gjs .gjs-frame-wrapper { padding: 24px 20px !important; }
 #gjs .gjs-selected  { outline: 2px solid #137fec !important; outline-offset: -1px !important; }
 #gjs .gjs-hovered   { outline: 1px dashed #93c5fd !important; outline-offset: -1px !important; }
 #gjs .gjs-toolbar   { background: #137fec !important; border-radius: 6px !important; box-shadow: 0 2px 8px rgba(19,127,236,.3) !important; }
@@ -172,7 +172,7 @@
 
 /* ── Right: Properties Panel ─────────────────────────────── */
 #gjsEbProps {
-    width: 284px;
+    width: 290px;
     flex-shrink: 0;
     background: #ffffff;
     border-left: 1px solid #e2e8f0;
