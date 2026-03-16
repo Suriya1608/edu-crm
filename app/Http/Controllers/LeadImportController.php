@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Course;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Services\AuditLogService;
@@ -65,12 +66,16 @@ class LeadImportController extends Controller
                 $duplicateCount++;
             }
 
+            $courseId = isset($row[3]) && $row[3] !== ''
+                ? Course::where('name', trim($row[3]))->value('id')
+                : null;
+
             $lead = Lead::create([
                 'lead_code'    => $this->generateLeadCode(),
                 'name'         => $row[0],
                 'phone'        => $row[1],
                 'email'        => $row[2] ?? null,
-                'course'       => $row[3] ?? null,
+                'course_id'    => $courseId,
                 'source'       => $row[4] ?? 'meta_ads',
                 'status'       => LeadDefaults::defaultStatus(),
                 'assigned_by'  => Auth::id(),

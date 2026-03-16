@@ -132,6 +132,7 @@
                                 <tr>
                                     <th>Name</th>
                                     <th>Mobile</th>
+                                    <th>Email</th>
                                     <th>Course</th>
                                     <th>Status</th>
                                     <th>Assigned To</th>
@@ -144,6 +145,7 @@
                                     <tr>
                                         <td class="fw-semibold">{{ $contact->name }}</td>
                                         <td>{{ $contact->phone }}</td>
+                                        <td class="text-muted small">{{ $contact->email ?: '—' }}</td>
                                         <td class="text-muted small">{{ $contact->course ?: '—' }}</td>
                                         <td>
                                             <span class="badge bg-{{ App\Models\CampaignContact::statusColor($contact->status) }}">

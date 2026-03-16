@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\InstagramAccount;
 use App\Models\Setting;
 use App\Services\LeadDefaults;
 use App\Services\AutomationSettings;
@@ -218,6 +219,53 @@ class SystemSettingsController extends Controller
         Setting::set(LeadDefaults::DEFAULT_STATUS_KEY, $request->input('default_lead_status'));
 
         return back()->with('success', 'Default lead status updated successfully.');
+    }
+
+    public function instagram()
+    {
+        $account = InstagramAccount::first();
+        return view('admin.settings.instagram', compact('account'));
+    }
+
+    public function updateInstagram(Request $request)
+    {
+        $data = $request->validate([
+            'name'                => 'required|string|max:255',
+            'page_id'             => 'required|string|max:100',
+            'instagram_user_id'   => 'nullable|string|max:100',
+            'access_token'        => 'nullable|string|max:1024',
+            'app_secret'          => 'nullable|string|max:255',
+            'verify_token'        => 'required|string|max:128',
+            'is_active'           => 'nullable|boolean',
+        ]);
+
+        $account = InstagramAccount::first();
+
+        $fillable = [
+            'name'              => $data['name'],
+            'page_id'           => $data['page_id'],
+            'instagram_user_id' => $data['instagram_user_id'] ?? null,
+            'verify_token'      => $data['verify_token'],
+            'is_active'         => $request->boolean('is_active'),
+        ];
+
+        if (!empty($data['access_token'])) {
+            $fillable['access_token'] = $data['access_token'];
+        }
+        if (array_key_exists('app_secret', $data) && $data['app_secret'] !== null && $data['app_secret'] !== '') {
+            $fillable['app_secret'] = $data['app_secret'];
+        }
+
+        if ($account) {
+            $account->update($fillable);
+        } else {
+            if (empty($data['access_token'])) {
+                return back()->withErrors(['access_token' => 'Access token is required when creating a new account.'])->withInput();
+            }
+            InstagramAccount::create($fillable);
+        }
+
+        return back()->with('success', 'Instagram settings saved successfully.');
     }
 
     public function notifications()

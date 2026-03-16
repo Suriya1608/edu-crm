@@ -239,4 +239,5 @@ class CampaignController extends Controller
 
         return back()->with('success', 'WhatsApp message logged.');
     }
+
 }

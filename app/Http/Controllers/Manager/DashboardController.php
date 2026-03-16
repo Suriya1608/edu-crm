@@ -146,11 +146,10 @@ class DashboardController extends Controller
             ->get();
 
         $managerId = Auth::id();
-        $courseStats = Lead::where('assigned_by', $managerId)
-            ->whereNotNull('course')
-            ->where('course', '!=', '')
-            ->selectRaw("course, COUNT(*) as total, SUM(status = 'converted') as conversions")
-            ->groupBy('course')
+        $courseStats = Lead::join('courses', 'leads.course_id', '=', 'courses.id')
+            ->where('leads.assigned_by', $managerId)
+            ->selectRaw("courses.name as course, COUNT(*) as total, SUM(leads.status = 'converted') as conversions")
+            ->groupBy('courses.id', 'courses.name')
             ->orderByDesc('total')
             ->limit(10)
             ->get()

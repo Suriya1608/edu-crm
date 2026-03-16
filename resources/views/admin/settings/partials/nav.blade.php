@@ -28,5 +28,7 @@
             class="btn btn-sm {{ request()->routeIs('admin.settings.lead-portals') ? 'btn-primary' : 'btn-outline-primary' }}">Lead Portals</a>
         <a href="{{ route('admin.settings.security') }}"
             class="btn btn-sm {{ request()->routeIs('admin.settings.security') ? 'btn-primary' : 'btn-outline-primary' }}">Security</a>
+        <a href="{{ route('admin.settings.instagram') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.instagram') ? 'btn-primary' : 'btn-outline-primary' }}">Instagram</a>
     </div>
 </div>

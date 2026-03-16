@@ -1,0 +1,118 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\EmailTemplate;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+
+class EmailTemplateController extends Controller
+{
+    // ── List Templates ────────────────────────────────────────────────────────
+
+    public function index()
+    {
+        $templates = EmailTemplate::with('creator')
+            ->latest()
+            ->paginate(20);
+
+        return view('admin.email-templates.index', compact('templates'));
+    }
+
+    // ── Create Form ───────────────────────────────────────────────────────────
+
+    public function create()
+    {
+        return view('admin.email-templates.create');
+    }
+
+    // ── Store ─────────────────────────────────────────────────────────────────
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'name'        => 'required|string|max:255',
+            'subject'     => 'required|string|max:255',
+            'body'        => 'required|string',
+            'blocks_json' => 'nullable|string',
+            'status'      => 'required|in:active,inactive',
+        ]);
+
+        $data['created_by']  = Auth::id();
+        $data['blocks_json'] = $request->input('blocks_json')
+            ? json_decode($request->input('blocks_json'), true)
+            : null;
+
+        EmailTemplate::create($data);
+
+        return redirect()->route('admin.email-templates.index')
+            ->with('success', 'Email template created successfully.');
+    }
+
+    // ── Edit Form ─────────────────────────────────────────────────────────────
+
+    public function edit(EmailTemplate $emailTemplate)
+    {
+        return view('admin.email-templates.edit', compact('emailTemplate'));
+    }
+
+    // ── Update ────────────────────────────────────────────────────────────────
+
+    public function update(Request $request, EmailTemplate $emailTemplate)
+    {
+        $data = $request->validate([
+            'name'        => 'required|string|max:255',
+            'subject'     => 'required|string|max:255',
+            'body'        => 'required|string',
+            'blocks_json' => 'nullable|string',
+            'status'      => 'required|in:active,inactive',
+        ]);
+
+        $data['blocks_json'] = $request->input('blocks_json')
+            ? json_decode($request->input('blocks_json'), true)
+            : null;
+
+        $emailTemplate->update($data);
+
+        return redirect()->route('admin.email-templates.index')
+            ->with('success', 'Email template updated successfully.');
+    }
+
+    // ── Image Upload (AJAX) ───────────────────────────────────────────────────
+
+    public function uploadImage(Request $request)
+    {
+        $request->validate([
+            'image' => 'required|image|mimes:jpeg,png,gif,webp|max:2048',
+        ]);
+
+        $path = $request->file('image')->store('email-images', 'public');
+
+        return response()->json([
+            'url' => Storage::disk('public')->url($path),
+        ]);
+    }
+
+    // ── Toggle Status ─────────────────────────────────────────────────────────
+
+    public function toggleStatus(EmailTemplate $emailTemplate)
+    {
+        $emailTemplate->update([
+            'status' => $emailTemplate->status === 'active' ? 'inactive' : 'active',
+        ]);
+
+        return back()->with('success', 'Template status updated.');
+    }
+
+    // ── Destroy ───────────────────────────────────────────────────────────────
+
+    public function destroy(EmailTemplate $emailTemplate)
+    {
+        $emailTemplate->delete();
+
+        return redirect()->route('admin.email-templates.index')
+            ->with('success', 'Email template deleted.');
+    }
+}

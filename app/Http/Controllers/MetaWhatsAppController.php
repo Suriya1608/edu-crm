@@ -93,7 +93,7 @@ class MetaWhatsAppController extends Controller
                 ->attach('messaging_product', 'whatsapp')
                 ->attach('type', $mimeType)
                 ->attach('file', $file->get(), $originalName, ['Content-Type' => $mimeType])
-                ->post("https://graph.facebook.com/v19.0/{$phoneNumberId}/media");
+                ->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/media");
 
             if (! $uploadResp->successful()) {
                 $errCode = $uploadResp->json('error.code');
@@ -124,7 +124,7 @@ class MetaWhatsAppController extends Controller
             ];
 
             $sendResp = $makeHttp()->asJson()
-                ->post("https://graph.facebook.com/v19.0/{$phoneNumberId}/messages", $msgBody);
+                ->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/messages", $msgBody);
 
             if (! $sendResp->successful()) {
                 $err = $sendResp->json('error.message', 'Send failed');
@@ -215,9 +215,11 @@ class MetaWhatsAppController extends Controller
             ->where('is_read', false)
             ->update(['is_read' => true]);
 
-        Auth::user()?->unreadNotifications()
+        /** @var \App\Models\User|null $authUser */
+        $authUser = Auth::user();
+        $authUser?->unreadNotifications()
             ->where('type', WhatsAppInboundNotification::class)
-            ->whereJsonContains('data->lead_id', $leadId)
+            ->where('data->lead_id', $leadId)
             ->update(['read_at' => now()]);
 
         // Status updates for already-shown outbound messages
@@ -305,7 +307,7 @@ class MetaWhatsAppController extends Controller
                 ->attach('messaging_product', 'whatsapp')
                 ->attach('type', $mimeType)
                 ->attach('file', $file->get(), $originalName, ['Content-Type' => $mimeType])
-                ->post("https://graph.facebook.com/v19.0/{$phoneNumberId}/media");
+                ->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/media");
 
             if (! $uploadResp->successful()) {
                 $errCode = $uploadResp->json('error.code');
@@ -321,7 +323,7 @@ class MetaWhatsAppController extends Controller
             if ($caption)               $mediaPayload['caption']  = $caption;
             if ($waType === 'document') $mediaPayload['filename'] = $originalName;
 
-            $sendResp = $makeHttp()->asJson()->post("https://graph.facebook.com/v19.0/{$phoneNumberId}/messages", [
+            $sendResp = $makeHttp()->asJson()->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/messages", [
                 'messaging_product' => 'whatsapp',
                 'recipient_type'    => 'individual',
                 'to'                => $to,
@@ -475,7 +477,7 @@ class MetaWhatsAppController extends Controller
                 $http = $http->withoutVerifying();
             }
 
-            $response = $http->post("https://graph.facebook.com/v19.0/{$phoneNumberId}/messages", $payload);
+            $response = $http->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/messages", $payload);
 
             if (! $response->successful()) {
                 $errCode = $response->json('error.code');
@@ -705,7 +707,7 @@ class MetaWhatsAppController extends Controller
                 $http = $http->withoutVerifying();
             }
 
-            $response = $http->post("https://graph.facebook.com/v19.0/{$phoneNumberId}/messages", $payload);
+            $response = $http->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/messages", $payload);
 
             if (! $response->successful()) {
                 $errCode = $response->json('error.code');
@@ -807,7 +809,7 @@ class MetaWhatsAppController extends Controller
                 $http = $http->withoutVerifying();
             }
 
-            $meta = $http->get("https://graph.facebook.com/v19.0/{$mediaId}");
+            $meta = $http->get("https://graph.facebook.com/{$this->graphApiVersion()}/{$mediaId}");
             if (! $meta->successful()) {
                 return null;
             }
@@ -905,5 +907,10 @@ class MetaWhatsAppController extends Controller
             'meta_whatsapp_webhook_verify_token',
             config('services.meta.whatsapp_verify_token', 'crm_verify_token')
         );
+    }
+
+    private function graphApiVersion(): string
+    {
+        return config('services.meta.graph_api_version', 'v22.0');
     }
 }

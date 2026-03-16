@@ -26,17 +26,18 @@ class LeadController extends Controller
     public function index(Request $request)
     {
         $managerId = Auth::id();
-        $query = Lead::with(['assignedUser', 'followups'])->where('assigned_by', $managerId);
-        
+        $query = Lead::with(['assignedUser', 'followups', 'enrolledCourse'])->where('assigned_by', $managerId);
+
         // Search
         if ($request->search) {
-            $query->where(function ($q) use ($request) {
-                $q->where('lead_code', 'like', '%' . $request->search . '%')
-                    ->orWhere('name', 'like', '%' . $request->search . '%')
-                    ->orWhere('phone', 'like', '%' . $request->search . '%')
-                    ->orWhere('email', 'like', '%' . $request->search . '%')
-                    ->orWhere('course', 'like', '%' . $request->search . '%')
-                    ->orWhere('source', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('lead_code', 'like', '%' . $search . '%')
+                    ->orWhere('name', 'like', '%' . $search . '%')
+                    ->orWhere('phone', 'like', '%' . $search . '%')
+                    ->orWhere('email', 'like', '%' . $search . '%')
+                    ->orWhere('source', 'like', '%' . $search . '%')
+                    ->orWhereHas('enrolledCourse', fn($cq) => $cq->where('name', 'like', '%' . $search . '%'));
             });
         }
 
@@ -149,17 +150,19 @@ class LeadController extends Controller
 
     public function create()
     {
-        return view('manager.leads.create');
+        $courses = \App\Models\Course::active()->orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
+
+        return view('manager.leads.create', compact('courses'));
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'name'   => 'required|string',
-            'phone'  => 'required|string',
-            'email'  => 'nullable|email',
-            'course' => 'nullable|string',
-            'source' => 'nullable|string',
+            'name'      => 'required|string',
+            'phone'     => 'required|string',
+            'email'     => 'nullable|email',
+            'course_id' => 'nullable|integer|exists:courses,id',
+            'source'    => 'nullable|string',
         ]);
 
         // Normalize phone: strip non-digits, prepend +91 if 10 digits
@@ -174,7 +177,7 @@ class LeadController extends Controller
             'name'         => $request->name,
             'phone'        => $phone,
             'email'        => $request->email,
-            'course'       => $request->course,
+            'course_id'    => $request->course_id ?: null,
             'source'       => $request->source ?? 'manual',
             'status'       => LeadDefaults::defaultStatus(),
             'assigned_by'  => Auth::id(),

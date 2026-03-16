@@ -23,7 +23,7 @@ class ManagerLeadsExport implements FromQuery, WithHeadings, WithMapping, WithCo
 
     public function query()
     {
-        $query = Lead::with(['assignedUser'])
+        $query = Lead::with(['assignedUser', 'enrolledCourse'])
             ->where('assigned_by', $this->managerId);
 
         if (!empty($this->filters['search'])) {
@@ -33,8 +33,8 @@ class ManagerLeadsExport implements FromQuery, WithHeadings, WithMapping, WithCo
                     ->orWhere('name', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('course', 'like', "%{$search}%")
-                    ->orWhere('source', 'like', "%{$search}%");
+                    ->orWhere('source', 'like', "%{$search}%")
+                    ->orWhereHas('enrolledCourse', fn($cq) => $cq->where('name', 'like', "%{$search}%"));
             });
         }
 

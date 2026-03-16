@@ -114,6 +114,16 @@ body {
     color: white;
 }
 
+.nav-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #94a3b8;
+    padding: 14px 12px 4px;
+    margin-top: 4px;
+}
+
 .sidebar-footer {
     padding: 16px;
     border-top: 1px solid var(--border-color);
@@ -175,6 +185,7 @@ body {
     margin-left: 260px;
     min-height: 100vh;
     transition: margin-left 0.3s ease;
+    overflow-x: hidden;
 }
 
 .main-content.full-width {
@@ -2569,25 +2580,208 @@ body {
 
 .site-footer-bar {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
-    padding: 12px 24px;
-    margin-top: 8px;
+    justify-content: center;
+    gap: 6px;
+    padding: 18px 28px;
+    margin-top: 16px;
     border-top: 1px solid var(--border-color);
-    font-size: 12px;
-    color: var(--text-muted);
     background: var(--background-light);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.site-footer-top {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
     flex-wrap: wrap;
+}
+
+.site-footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-dark);
+    letter-spacing: -0.2px;
+}
+
+.site-footer-brand .material-icons {
+    font-size: 15px;
+    color: var(--primary-color);
+}
+
+.site-footer-divider {
+    width: 1px;
+    height: 13px;
+    background: var(--border-color);
+}
+
+.site-footer-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     gap: 4px;
+    flex-wrap: wrap;
 }
 
 .site-footer-bar a {
     color: var(--text-muted);
     text-decoration: none;
-    transition: color 0.15s;
+    transition: color 0.15s, background 0.15s;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
 }
 
 .site-footer-bar a:hover {
     color: var(--primary-color);
-    text-decoration: underline;
+    background: rgba(19, 127, 236, 0.07);
+    text-decoration: none;
+}
+
+.site-footer-dot {
+    color: var(--border-color);
+    font-size: 11px;
+    line-height: 1;
+    margin: 0 2px;
+}
+
+/* ========================================
+   CHANNEL COLOR TOKENS
+   ======================================== */
+
+:root {
+    --wa-green:      #25d366;
+    --wa-green-dark: #128c7e;
+    --ig-gradient:   linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+    --fb-blue:       #1877f2;
+}
+
+/* ========================================
+   LEAD STATUS PILLS
+   ======================================== */
+
+.lead-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .3px;
+    white-space: nowrap;
+    text-transform: capitalize;
+}
+
+.lead-status.status-new            { background: #dbeafe; color: #1d4ed8; }
+.lead-status.status-assigned       { background: #e0f2fe; color: #0369a1; }
+.lead-status.status-contacted      { background: #f1f5f9; color: #475569; }
+.lead-status.status-interested     { background: #dcfce7; color: #15803d; }
+.lead-status.status-follow-up      { background: #fef9c3; color: #a16207; }
+.lead-status.status-not-interested { background: #fee2e2; color: #b91c1c; }
+.lead-status.status-converted      { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+.lead-status.status-lost           { background: #fce7f3; color: #9d174d; }
+.lead-status.status-merged         { background: #f3f4f6; color: #6b7280; }
+
+/* ========================================
+   IMPROVED NAV ACTIVE STATE
+   ======================================== */
+
+.nav-item.active {
+    background: #e8f3fd;
+    color: var(--primary-color) !important;
+    font-weight: 600;
+    border-left: 3px solid var(--primary-color);
+    padding-left: 9px; /* compensate for 3px border */
+}
+
+/* ========================================
+   IMPROVED FORM VALIDATION UI
+   ======================================== */
+
+.form-control:focus,
+.form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(19, 127, 236, .12);
+    background-color: #fff;
+}
+
+.form-control.is-invalid,
+.form-select.is-invalid {
+    border-color: var(--danger-color);
+    background-image: none;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, .08);
+}
+
+.form-control.is-valid,
+.form-select.is-valid {
+    border-color: var(--success-color);
+    background-image: none;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, .08);
+}
+
+.invalid-feedback {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--danger-color);
+    margin-top: 5px;
+}
+
+.invalid-feedback .material-icons {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+/* Button loading spinner */
+.btn-loading {
+    position: relative;
+    pointer-events: none;
+    color: transparent !important;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 15px;
+    height: 15px;
+    border: 2px solid rgba(255, 255, 255, .35);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .65s linear infinite;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+/* ========================================
+   IMPROVED TABLE HOVER & ZEBRA STRIPES
+   ======================================== */
+
+.table tbody tr:nth-child(even) {
+    background: #fafbfc;
+}
+
+.table tbody tr:hover {
+    background: #f0f7ff !important;
+    cursor: pointer;
+}
+
+/* ========================================
+   IMPROVED STAT CARD HOVER
+   ======================================== */
+
+.stat-card:hover {
+    box-shadow: 0 8px 28px rgba(19, 127, 236, .12) !important;
+    border-color: rgba(19, 127, 236, .2) !important;
+    transform: translateY(-3px) !important;
 }

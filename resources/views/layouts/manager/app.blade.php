@@ -45,11 +45,19 @@
 
         {{-- Site Footer --}}
         <div class="site-footer-bar">
-            <span>&copy; {{ date('Y') }} {{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</span>
-            <span class="mx-2" style="opacity:.4;">&middot;</span>
-            <a href="{{ url('/privacy-policy') }}" target="_blank">Privacy Policy</a>
-            <span class="mx-2" style="opacity:.4;">&middot;</span>
-            <a href="{{ url('/terms-of-service') }}" target="_blank">Terms of Service</a>
+            <div class="site-footer-top">
+                <span class="site-footer-brand">
+                    <span class="material-icons">school</span>
+                    {{ \App\Models\Setting::get('site_name', 'Admission CRM') }}
+                </span>
+                <div class="site-footer-divider"></div>
+                <span>&copy; {{ date('Y') }} All rights reserved.</span>
+            </div>
+            <div class="site-footer-bottom">
+                <a href="{{ url('/privacy-policy') }}" target="_blank">Privacy Policy</a>
+                <span class="site-footer-dot">&bull;</span>
+                <a href="{{ url('/terms-of-service') }}" target="_blank">Terms of Service</a>
+            </div>
         </div>
 
     </div>
@@ -165,6 +173,16 @@
 
     <script src="{{ asset('js/global-call.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('show');
+            }
+        }
+    </script>
+
     @if (auth()->check() && auth()->user()->role === 'manager')
         <script>
             (function() {
@@ -292,6 +310,27 @@
         </script>
     @endif
     @stack('scripts')
+
+    {{-- Chart.js global defaults — applied after page scripts load Chart.js --}}
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            if (typeof Chart !== 'undefined') {
+                Chart.defaults.font.family    = "'Manrope', sans-serif";
+                Chart.defaults.font.size      = 12;
+                Chart.defaults.color          = '#64748b';
+                Chart.defaults.plugins.legend.labels.usePointStyle = true;
+                Chart.defaults.plugins.legend.labels.padding        = 20;
+                Chart.defaults.plugins.tooltip.backgroundColor      = '#0f172a';
+                Chart.defaults.plugins.tooltip.titleColor           = '#f8fafc';
+                Chart.defaults.plugins.tooltip.bodyColor            = '#cbd5e1';
+                Chart.defaults.plugins.tooltip.padding              = 10;
+                Chart.defaults.plugins.tooltip.cornerRadius         = 8;
+                Chart.defaults.plugins.tooltip.displayColors        = true;
+                Chart.defaults.scale.grid.color                     = 'rgba(0,0,0,.04)';
+                Chart.defaults.scale.grid.drawBorder                = false;
+            }
+        });
+    </script>
 
     {{-- Global Toast Container --}}
     <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1090;">

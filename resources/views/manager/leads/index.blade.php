@@ -166,23 +166,8 @@
                             <td>{{ $lead->course ?: '-' }}</td>
 
                             <td>
-                                @php
-                                    $statusColors = [
-                                        'new' => 'bg-primary',
-                                        'assigned' => 'bg-info',
-                                        'contacted' => 'bg-secondary',
-                                        'interested' => 'bg-success',
-                                        'not_interested' => 'bg-danger',
-                                        'converted' => 'bg-dark',
-                                        'follow_up' => 'bg-warning text-dark',
-                                    ];
-
-                                    $badgeClass = $statusColors[$lead->status] ?? 'bg-secondary';
-                                @endphp
-
-                                <span class="badge {{ $badgeClass }}">
-                                    {{ ucfirst(str_replace('_', ' ', $lead->status)) }}
-                                </span>
+                                @php $stCls = str_replace('_', '-', $lead->status); @endphp
+                                <span class="lead-status status-{{ $stCls }}">{{ ucfirst(str_replace('_', ' ', $lead->status)) }}</span>
                             </td>
 
                             <td>{{ $lead->assignedUser->name ?? '-' }}</td>
