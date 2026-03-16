@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Marketing;
 
 use App\Http\Controllers\Controller;
+use App\Models\Course;
 use App\Models\Lead;
 use App\Models\Setting;
 use Illuminate\Http\Request;
@@ -165,13 +166,15 @@ class SocialMediaController extends Controller
             }
         }
 
+        $courseId = $course ? Course::where('name', trim($course))->value('id') : null;
+
         Lead::create([
-            'name'   => $name ?? ($email ?? 'Unknown'),
-            'phone'  => $phone ?? '',
-            'email'  => $email,
-            'course' => $course,
-            'source' => $source,
-            'status' => 'new',
+            'name'      => $name ?? ($email ?? 'Unknown'),
+            'phone'     => $phone ?? '',
+            'email'     => $email,
+            'course_id' => $courseId,
+            'source'    => $source,
+            'status'    => 'new',
         ]);
 
         Log::info('Facebook lead created', ['name' => $name, 'phone' => $phone, 'source' => $source]);

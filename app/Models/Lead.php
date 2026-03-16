@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\WhatsAppMessage;
 
@@ -13,7 +14,7 @@ class Lead extends Model
         'name',
         'phone',
         'email',
-        'course',
+        'course_id',
         'source',
         'assigned_by',
         'assigned_to',
@@ -28,9 +29,15 @@ class Lead extends Model
         'sla_escalated_at'    => 'datetime',
         'is_duplicate'        => 'boolean',
         'merged_into_lead_id' => 'integer',
+        'course_id'           => 'integer',
     ];
 
     // ─── Relationships ──────────────────────────────────────────────────────────
+
+    public function enrolledCourse(): BelongsTo
+    {
+        return $this->belongsTo(Course::class, 'course_id');
+    }
 
     public function assignedUser()
     {
@@ -67,6 +74,16 @@ class Lead extends Model
     }
 
     // ─── Computed Accessors ──────────────────────────────────────────────────────
+
+    /**
+     * Returns course name as a string.
+     * Makes $lead->course backward-compatible across all views.
+     * Requires 'enrolledCourse' to be eager-loaded in list queries to avoid N+1.
+     */
+    public function getCourseAttribute(): ?string
+    {
+        return $this->enrolledCourse?->name;
+    }
 
     /**
      * Days since lead was created.

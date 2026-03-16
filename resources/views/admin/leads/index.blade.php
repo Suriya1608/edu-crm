@@ -104,7 +104,10 @@
                                 </div>
                             </td>
                             <td>{{ $lead->phone }}</td>
-                            <td><span class="badge bg-light text-dark">{{ str_replace('_', ' ', $lead->status) }}</span></td>
+                            <td>
+                                @php $stCls = str_replace('_', '-', $lead->status); @endphp
+                                <span class="lead-status status-{{ $stCls }}">{{ ucfirst(str_replace('_', ' ', $lead->status)) }}</span>
+                            </td>
                             <td>{{ $lead->assignedBy->name ?? '-' }}</td>
                             <td>{{ $lead->assignedUser->name ?? '-' }}</td>
                             <td>
