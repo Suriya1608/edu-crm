@@ -416,15 +416,12 @@
 
         // ── Call button — use global GC call bar ────────────────────────────────
         window.addEventListener('load', function () {
-            var provider = document.querySelector('.call-btn')?.dataset.provider;
-            if (provider === 'twilio') {
-                GC.initDevice();
-            }
+            GC.initDevice();
         });
 
         document.addEventListener('click', async function (e) {
             var btn = e.target.closest('.call-btn');
-            if (!btn || btn.dataset.provider !== 'twilio') return;
+            if (!btn) return;
 
             if (GC.isActive()) {
                 GC.endCall();

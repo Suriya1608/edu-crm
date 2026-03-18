@@ -319,18 +319,15 @@
     </script>
 
     <script>
-        // Initialize Twilio via global call manager on page load
+        // Initialize call device on page load
         window.addEventListener('load', function () {
-            var provider = document.querySelector('.call-btn')?.dataset.provider;
-            if (provider === 'twilio') {
-                GC.initDevice();
-            }
+            GC.initDevice();
         });
 
         // Handle call button click — delegate to GC
         document.addEventListener('click', async function (e) {
             var btn = e.target.closest('.call-btn');
-            if (!btn || btn.dataset.provider !== 'twilio') return;
+            if (!btn) return;
 
             if (GC.isActive()) {
                 GC.endCall();

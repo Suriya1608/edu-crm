@@ -90,7 +90,7 @@
             <span>WhatsApp Chat</span>
         </a>
 
-        <a href="{{ route('manager.instagram.index') }}"
+        {{-- <a href="{{ route('manager.instagram.index') }}"
             class="nav-item {{ request()->routeIs('manager.instagram.*') ? 'active' : '' }}">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
                 style="flex-shrink:0;">
@@ -108,7 +108,7 @@
                 <circle cx="17.5" cy="6.5" r="1.2" fill="white"/>
             </svg>
             <span>Instagram Chat</span>
-        </a>
+        </a> --}}
 
         {{-- ── Activity ── --}}
         <div class="nav-section-label">Activity</div>
@@ -196,12 +196,12 @@
     </nav>
 
     <div class="sidebar-footer">
-        <div class="user-profile">
-            <div class="user-avatar">
+        <div class="user-profile" style="position:relative;">
+            <div class="user-avatar" role="button" onclick="toggleMgrUserMenu()" title="Account options" style="cursor:pointer;">
                 @php $initials = strtoupper(substr(auth()->user()->name, 0, 1)); @endphp
                 <span class="user-avatar-initials">{{ $initials }}</span>
             </div>
-            <div class="user-info">
+            <div class="user-info" style="cursor:pointer;" onclick="toggleMgrUserMenu()">
                 <p>{{ auth()->user()->name }}</p>
                 <span>
                     <span class="material-icons" style="font-size:10px;vertical-align:middle;">manage_accounts</span>
@@ -215,6 +215,28 @@
                     <span class="material-icons" style="font-size:20px;">logout</span>
                 </button>
             </form>
+
+            {{-- User popup menu --}}
+            <div id="mgrUserMenu" style="display:none;position:absolute;bottom:60px;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:9999;overflow:hidden;">
+                <a href="{{ route('password.change') }}" class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none" style="color:#0f172a;font-size:13px;font-weight:500;" onmouseover="this.style.background='#f6f7f8'" onmouseout="this.style.background='transparent'">
+                    <span class="material-icons" style="font-size:18px;color:#137fec;">lock_reset</span>
+                    Change Password
+                </a>
+            </div>
         </div>
     </div>
 </aside>
+
+<script>
+function toggleMgrUserMenu() {
+    var menu = document.getElementById('mgrUserMenu');
+    menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+document.addEventListener('click', function(e) {
+    var menu = document.getElementById('mgrUserMenu');
+    if (!menu) return;
+    if (!e.target.closest('.user-profile')) {
+        menu.style.display = 'none';
+    }
+});
+</script>

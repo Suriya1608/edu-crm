@@ -275,7 +275,7 @@ class LeadController extends Controller
         ])->findOrFail($id);
 
         $telecallers = User::where('role', 'telecaller')->get();
-        $provider = Setting::get('call_provider', 'twilio');
+        $provider = Setting::get('primary_call_provider', 'twilio');
         $whatsappMessages = Schema::hasTable('whatsapp_messages')
             ? WhatsAppMessage::where('lead_id', $lead->id)->orderBy('created_at')->get()
             : collect();

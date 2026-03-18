@@ -30,18 +30,18 @@
 /* ── Root container ─────────────────────────────────────── */
 #gjsEbRoot {
     display: flex;
-    height: calc(100vh - 268px);
-    min-height: 620px;
+    height: calc(100vh - 230px);
+    min-height: 650px;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
     overflow: hidden;
-    background: #f8fafc;
-    box-shadow: 0 1px 4px rgba(15,23,42,.05);
+    background: #f1f5f9;
+    box-shadow: 0 2px 8px rgba(15,23,42,.06);
 }
 
 /* ── Left: Block Palette ─────────────────────────────────── */
 #gjsEbBlocks {
-    width: 200px;
+    width: 210px;
     flex-shrink: 0;
     background: #ffffff;
     border-right: 1px solid #e2e8f0;
@@ -84,15 +84,15 @@
 
 /* Block grid */
 #gjs-blocks .gjs-blocks-c {
-    display: flex; flex-wrap: wrap; gap: 5px; padding: 0 2px 8px;
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 4px 10px;
 }
 #gjs-blocks .gjs-block {
     width: calc(50% - 3px) !important;
     flex: 0 0 calc(50% - 3px) !important;
     margin: 0 !important;
-    padding: 10px 4px 8px !important;
+    padding: 11px 4px 9px !important;
     border: 1.5px solid #e9eef4 !important;
-    border-radius: 8px !important;
+    border-radius: 9px !important;
     background: #ffffff !important;
     cursor: grab !important;
     text-align: center !important;
@@ -100,13 +100,13 @@
     color: #475569 !important;
     font-size: 10.5px !important;
     font-weight: 600 !important;
-    box-shadow: 0 1px 2px rgba(15,23,42,.04) !important;
+    box-shadow: 0 1px 3px rgba(15,23,42,.05) !important;
 }
 #gjs-blocks .gjs-block:hover {
     background: #eff6ff !important;
     border-color: #137fec !important;
     color: #137fec !important;
-    box-shadow: 0 2px 6px rgba(19,127,236,.12) !important;
+    box-shadow: 0 3px 8px rgba(19,127,236,.14) !important;
     transform: translateY(-1px) !important;
 }
 #gjs-blocks .gjs-block__media {
@@ -130,8 +130,8 @@
 #gjsEbToolbar {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 8px 14px;
+    gap: 4px;
+    padding: 7px 12px;
     background: #ffffff;
     border-bottom: 1px solid #e2e8f0;
     flex-shrink: 0;
@@ -142,7 +142,7 @@
     padding: 5px 11px; border: 1.5px solid #e2e8f0; border-radius: 7px;
     background: #ffffff; color: #475569; font-size: 12px; font-weight: 600;
     cursor: pointer; font-family: inherit; transition: all .15s; line-height: 1;
-    box-shadow: 0 1px 2px rgba(15,23,42,.04);
+    box-shadow: 0 1px 2px rgba(15,23,42,.04); white-space: nowrap;
 }
 .eb-tbtn .material-icons { font-size: 15px; }
 .eb-tbtn:hover { background: #f8fafc; border-color: #94a3b8; color: #1e293b; box-shadow: 0 2px 4px rgba(15,23,42,.07); }
@@ -160,9 +160,9 @@
 #gjs .gjs-editor    { height: 100% !important; }
 #gjs .gjs-cv-canvas {
     top: 0 !important; height: 100% !important;
-    width: 100% !important; background: #e8edf3 !important;
+    width: 100% !important; background: #dde3ea !important;
 }
-#gjs .gjs-frame-wrapper { padding: 20px !important; }
+#gjs .gjs-frame-wrapper { padding: 24px 20px !important; }
 #gjs .gjs-selected  { outline: 2px solid #137fec !important; outline-offset: -1px !important; }
 #gjs .gjs-hovered   { outline: 1px dashed #93c5fd !important; outline-offset: -1px !important; }
 #gjs .gjs-toolbar   { background: #137fec !important; border-radius: 6px !important; box-shadow: 0 2px 8px rgba(19,127,236,.3) !important; }
@@ -172,7 +172,7 @@
 
 /* ── Right: Properties Panel ─────────────────────────────── */
 #gjsEbProps {
-    width: 284px;
+    width: 290px;
     flex-shrink: 0;
     background: #ffffff;
     border-left: 1px solid #e2e8f0;
@@ -328,6 +328,12 @@
                 <span class="material-icons">delete_sweep</span><span>Clear</span>
             </button>
             <div class="eb-tb-spacer"></div>
+            <button type="button" class="eb-tbtn" id="btnTemplates" title="Template Library">
+                <span class="material-icons">collections</span><span>Templates</span>
+            </button>
+            <button type="button" class="eb-tbtn" id="btnSendTest" title="Send test email">
+                <span class="material-icons">send</span><span>Test</span>
+            </button>
             <button type="button" class="eb-tbtn eb-primary" id="btnPreview">
                 <span class="material-icons">visibility</span><span>Preview</span>
             </button>
@@ -361,6 +367,67 @@
     </div>
 </div>
 
+{{-- ── Template Library Modal ─────────────────────────────────────────────── --}}
+<div class="modal fade" id="templatesModal" tabindex="-1" aria-labelledby="templatesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content" style="border-radius:14px;border:1px solid #e2e8f0;overflow:hidden;">
+            <div class="modal-header" style="border-bottom:1px solid #f1f5f9;padding:18px 24px;background:#fafafa;">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="material-icons" style="color:#137fec;font-size:22px;">collections</span>
+                    <h5 class="modal-title fw-bold mb-0" id="templatesModalLabel">Template Library</h5>
+                    <span class="badge ms-1" style="background:#eff6ff;color:#137fec;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;">6 Professional Templates</span>
+                </div>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted mb-3" style="font-size:13px;">Click a template to load it into the builder. <strong>Your current design will be replaced.</strong></p>
+                <div class="row g-3" id="templateGrid"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- ── Send Test Email Modal ───────────────────────────────────────────────── --}}
+<div class="modal fade" id="sendTestModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:440px;">
+        <div class="modal-content" style="border-radius:14px;border:1px solid #e2e8f0;">
+            <div class="modal-header" style="border-bottom:1px solid #f1f5f9;padding:16px 20px;background:#fafafa;">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="material-icons" style="color:#137fec;font-size:20px;">send</span>
+                    <h5 class="modal-title fw-bold mb-0">Send Test Email</h5>
+                </div>
+                <button type="button" class="btn-close ms-auto" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted mb-3" style="font-size:13px;">Preview how the email looks in a real inbox. The current builder content will be sent.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-semibold" style="font-size:13px;">Recipient Email <span class="text-danger">*</span></label>
+                    <input type="email" class="form-control" id="testEmailAddress" placeholder="you@example.com">
+                </div>
+                <div id="testEmailMsg" class="alert d-none mb-0" style="font-size:13px;"></div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #f1f5f9;padding:14px 20px;">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary btn-sm px-4" id="btnSendTestConfirm">
+                    <span class="material-icons align-middle me-1" style="font-size:15px;">send</span>Send Test
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.tpl-card {
+    border: 1.5px solid #e2e8f0; border-radius: 12px; overflow: hidden;
+    cursor: pointer; transition: all .2s; background: #fff;
+}
+.tpl-card:hover { border-color: #137fec; box-shadow: 0 4px 16px rgba(19,127,236,.15); transform: translateY(-2px); }
+.tpl-card-header { padding: 24px 20px 18px; text-align: center; }
+.tpl-card-body { padding: 14px 16px 16px; border-top: 1px solid #f1f5f9; }
+.tpl-card-title { font-size: 14px; font-weight: 700; color: #0f172a; margin: 0 0 3px; }
+.tpl-card-desc  { font-size: 12px; color: #64748b; margin: 0; line-height: 1.5; }
+</style>
+
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/grapesjs@0.21.13/dist/grapes.min.js"></script>
 <script>
@@ -374,6 +441,53 @@ const BRAND       = '#137fec';
 const LOGO_URL    = @json($siteLogoUrl);
 const SITE_NAME   = @json($siteName);
 const INIT_DATA   = @json($initData ?? null);
+
+// ── CSS → Inline Styles (email-safe: no <style> blocks in output) ─────────────
+function inlineCssIntoHtml(html, css) {
+    if (!css || !css.trim()) return html;
+    const doc = (new DOMParser()).parseFromString('<html><body>' + html + '</body></html>', 'text/html');
+    const tempStyle = document.createElement('style');
+    tempStyle.textContent = css;
+    document.head.appendChild(tempStyle);
+    try {
+        const rules = tempStyle.sheet ? Array.from(tempStyle.sheet.cssRules) : [];
+        rules.forEach(function (rule) {
+            if (rule.type !== 1) return; // STYLE_RULE only
+            try {
+                const els = doc.querySelectorAll(rule.selectorText);
+                els.forEach(function (el) {
+                    // Build existing inline style map (inline attrs take priority)
+                    const existing = {};
+                    (el.getAttribute('style') || '').split(';').forEach(function (s) {
+                        const idx = s.indexOf(':');
+                        if (idx > 0) {
+                            const k = s.substring(0, idx).trim();
+                            const v = s.substring(idx + 1).trim();
+                            if (k) existing[k] = v;
+                        }
+                    });
+                    // Merge rule props — existing inline wins
+                    const merged = {};
+                    for (let i = 0; i < rule.style.length; i++) {
+                        const k = rule.style[i];
+                        if (!Object.prototype.hasOwnProperty.call(existing, k)) {
+                            merged[k] = rule.style.getPropertyValue(k).trim();
+                        }
+                    }
+                    Object.assign(merged, existing);
+                    const styleStr = Object.entries(merged)
+                        .filter(function (e) { return e[0] && e[1]; })
+                        .map(function (e) { return e[0] + ':' + e[1]; })
+                        .join(';');
+                    if (styleStr) el.setAttribute('style', styleStr);
+                });
+            } catch (e) { /* skip invalid selectors */ }
+        });
+    } finally {
+        document.head.removeChild(tempStyle);
+    }
+    return doc.body.innerHTML;
+}
 
 // ── Block HTML helpers ────────────────────────────────────────────────────────
 function logoHtml() {
@@ -472,6 +586,48 @@ const BLOCKS = [
         media: `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8 16H4V4h8v14zm8 0h-8V4h8v14z"/></svg>`,
         content: `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;"><tr><td width="50%" style="padding:4px 10px 4px 0;vertical-align:top;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#374151;">Left column content.</p></td><td width="50%" style="padding:4px 0 4px 10px;vertical-align:top;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:#374151;">Right column content.</p></td></tr></table>`,
     },
+    {
+        id: 'eb-col3',
+        label: '3 Cols',
+        category: 'Layout',
+        media: `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M3 5h2v14H3V5zm4 0h2v14H7V5zm4 0h2v14h-2V5zm4 0h2v14h-2V5zm4 0h2v14h-2V5z"/></svg>`,
+        content: `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;"><tr><td width="33%" style="padding:4px 10px 4px 0;vertical-align:top;text-align:center;"><div style="font-size:26px;margin-bottom:8px;">⭐</div><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#0f172a;margin-bottom:6px;">Feature 1</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.65;color:#64748b;">Short description of this feature or benefit here.</p></td><td width="33%" style="padding:4px 5px;vertical-align:top;text-align:center;"><div style="font-size:26px;margin-bottom:8px;">🎯</div><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#0f172a;margin-bottom:6px;">Feature 2</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.65;color:#64748b;">Short description of this feature or benefit here.</p></td><td width="34%" style="padding:4px 0 4px 10px;vertical-align:top;text-align:center;"><div style="font-size:26px;margin-bottom:8px;">🚀</div><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#0f172a;margin-bottom:6px;">Feature 3</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.65;color:#64748b;">Short description of this feature or benefit here.</p></td></tr></table>`,
+    },
+    {
+        id: 'eb-hero',
+        label: 'Hero',
+        category: 'Content',
+        media: `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>`,
+        content: `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 8px;"><tr><td bgcolor="${BRAND}" style="background-color:${BRAND};padding:52px 32px;text-align:center;border-radius:8px;"><h1 style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:800;color:#ffffff;line-height:1.2;letter-spacing:-.5px;">Your Headline Here</h1><p style="margin:0 0 28px;font-family:Arial,Helvetica,sans-serif;font-size:17px;color:rgba(255,255,255,0.88);line-height:1.6;">A compelling subheadline that drives action and inspires your audience.</p><table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td bgcolor="#ffffff" style="border-radius:6px;"><a href="#" style="display:inline-block;padding:14px 38px;color:${BRAND};font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;text-decoration:none;border-radius:6px;">Get Started &rarr;</a></td></tr></table></td></tr></table>`,
+    },
+    {
+        id: 'eb-highlight',
+        label: 'Highlight',
+        category: 'Content',
+        media: `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>`,
+        content: `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0;"><tr><td bgcolor="#eff6ff" style="background-color:#eff6ff;padding:20px 24px;border-radius:8px;border-left:4px solid ${BRAND};"><h3 style="margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#1e40af;">Key Highlight</h3><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#374151;line-height:1.65;">Add your key highlight, important notice, or feature benefit here.</p></td></tr></table>`,
+    },
+    {
+        id: 'eb-quote',
+        label: 'Quote',
+        category: 'Content',
+        media: `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M6 17h3l2-4V7H5v6h3zm8 0h3l2-4V7h-6v6h3z"/></svg>`,
+        content: `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:12px 0;"><tr><td bgcolor="#f8fafc" style="background-color:#f8fafc;border-left:4px solid ${BRAND};padding:16px 20px;border-radius:0 6px 6px 0;"><p style="margin:0 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:16px;font-style:italic;color:#374151;line-height:1.65;">"This course completely changed my career trajectory. The curriculum is outstanding and the faculty is world-class."</p><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#64748b;">&mdash; Student Name, Course Name</p></td></tr></table>`,
+    },
+    {
+        id: 'eb-email-header',
+        label: 'Header',
+        category: 'Layout',
+        media: `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M20 3H4v10c0 2.21 1.79 4 4 4h6c2.21 0 4-1.79 4-4v-3h2c1.11 0 2-.89 2-2V5c0-1.11-.89-2-2-2zm0 5h-2V5h2v3z"/></svg>`,
+        content: `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0;"><tr><td bgcolor="${BRAND}" style="background-color:${BRAND};padding:22px 32px;text-align:center;border-radius:8px 8px 0 0;">${logoHtml()}</td></tr></table>`,
+    },
+    {
+        id: 'eb-email-footer',
+        label: 'Footer',
+        category: 'Layout',
+        media: `<svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z"/></svg>`,
+        content: `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;"><tr><td bgcolor="#f8fafc" style="background-color:#f8fafc;padding:24px 32px;border-top:1px solid #e2e8f0;border-radius:0 0 8px 8px;text-align:center;"><p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;line-height:1.6;">You are receiving this email because you expressed interest in our programs.<br><a href="#" style="color:${BRAND};text-decoration:underline;">Unsubscribe</a> &nbsp;|&nbsp; <a href="#" style="color:${BRAND};text-decoration:underline;">Privacy Policy</a></p><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;">&copy; ${new Date().getFullYear()} ${SITE_NAME}. All rights reserved.</p></td></tr></table>`,
+    },
 ];
 
 // ── Style Manager sectors ─────────────────────────────────────────────────────
@@ -551,7 +707,7 @@ const editor = grapesjs.init({
 
     deviceManager: {
         devices: [
-            { name: 'Email', width: '640px', widthMedia: '' },
+            { name: 'Email', width: '600px', widthMedia: '' },
             { name: 'Mobile', width: '375px', widthMedia: '375px' },
         ],
     },
@@ -765,28 +921,52 @@ document.getElementById('btnPreview').addEventListener('click', function () {
     const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
     const innerHtml = bodyMatch ? bodyMatch[1] : rawHtml;
 
+    // Inline all CSS into element style attributes — no <style> blocks in preview
+    const inlined = inlineCssIntoHtml(innerHtml, css);
+
     const year = new Date().getFullYear();
+    // Render preview using the same table-based structure as emails/campaign.blade.php
+    // so WYSIWYG matches real inbox rendering (600px, inline CSS, MSO comments)
     const fullDoc = `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Email Preview</title>
-  <style>
-    body{font-family:Arial,sans-serif;background:#f6f7f8;margin:0;padding:0;}
-    .wrapper{max-width:640px;margin:24px auto;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;}
-    .hdr{background:${BRAND};padding:20px 28px;}.hdr h1{color:#fff;font-size:18px;margin:0;font-family:Arial,sans-serif;font-weight:700;}
-    .bdy{padding:28px 32px;color:#0f172a;font-size:15px;line-height:1.7;}
-    .ftr{background:#f6f7f8;padding:14px 28px;font-size:12px;color:#64748b;text-align:center;border-top:1px solid #e2e8f0;}
-    ${css}
-  </style>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="x-apple-disable-message-reformatting">
+<title>Email Preview</title>
+<!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+<style type="text/css">
+body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;}
+table,td{mso-table-lspace:0pt;mso-table-rspace:0pt;}
+img{-ms-interpolation-mode:bicubic;border:0;height:auto;line-height:100%;outline:none;text-decoration:none;}
+table{border-collapse:collapse!important;}
+body{height:100%!important;margin:0!important;padding:0!important;width:100%!important;background-color:#f6f7f8;}
+@media screen and (max-width:600px){
+  .email-container{width:100%!important;}
+  .body-pad{padding:24px 16px!important;}
+}
+</style>
 </head>
-<body>
-  <div class="wrapper">
-    <div class="hdr"><h1>${SITE_NAME}</h1></div>
-    <div class="bdy">${innerHtml}</div>
-    <div class="ftr">&copy; ${year} ${SITE_NAME}. All rights reserved.</div>
-  </div>
+<body style="margin:0;padding:0;background-color:#f6f7f8;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f6f7f8;">
+<tr><td align="center" style="padding:24px 16px;">
+<table role="presentation" class="email-container" width="600" cellpadding="0" cellspacing="0" border="0"
+       style="max-width:600px;width:100%;background-color:#ffffff;border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 2px 10px rgba(15,23,42,0.08);">
+<tr>
+  <td class="body-pad"
+      style="padding:32px 36px 28px;color:#0f172a;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;mso-line-height-rule:exactly;">
+    ${inlined}
+  </td>
+</tr>
+<tr>
+  <td style="padding:16px 32px 20px;background-color:#f8fafc;border-top:1px solid #e2e8f0;border-radius:0 0 10px 10px;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;line-height:1.6;">
+    &copy; ${year} ${SITE_NAME}. All rights reserved.
+  </td>
+</tr>
+</table>
+</td></tr>
+</table>
 </body>
 </html>`;
 
@@ -808,9 +988,8 @@ if (templateForm) {
         const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         const innerHtml = bodyMatch ? bodyMatch[1] : rawHtml;
 
-        const body = css.trim()
-            ? `<style>${css}</style>\n${innerHtml}`
-            : innerHtml;
+        // Inline all CSS into element style attributes — email clients ignore <style> blocks
+        const body = inlineCssIntoHtml(innerHtml, css);
 
         if (!innerHtml.trim()) {
             e.preventDefault();
@@ -820,6 +999,231 @@ if (templateForm) {
 
         document.getElementById('hiddenBody').value       = body;
         document.getElementById('hiddenBlocksJson').value = JSON.stringify(editor.getProjectData());
+    });
+}
+
+})();
+
+// ── Template Library ──────────────────────────────────────────────────────────
+(function () {
+'use strict';
+
+const CSRF2     = document.querySelector('meta[name="csrf-token"]').content;
+const BRAND2    = '#137fec';
+const SITENAME2 = @json($siteName);
+const YR        = new Date().getFullYear();
+
+// Helper: branded button html
+function btn(label, href) {
+    return `<table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td bgcolor="${BRAND2}" style="border-radius:6px;"><a href="${href||'#'}" style="display:inline-block;padding:13px 32px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;text-decoration:none;border-radius:6px;">${label}</a></td></tr></table>`;
+}
+function divider() {
+    return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0;"><tr><td style="padding:0 0;height:1px;background:#e2e8f0;font-size:0;line-height:0;">&nbsp;</td></tr></table>`;
+}
+function spacer(h) {
+    return `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td height="${h||20}" style="font-size:0;line-height:0;">&nbsp;</td></tr></table>`;
+}
+
+@verbatim
+const EMAIL_TEMPLATES = [
+    // ── 1: Course Promotion ───────────────────────────────────────────────────
+    {
+        id: 'course-promotion',
+        name: 'Course Promotion',
+        desc: 'Hero banner, features grid, price & enroll CTA',
+        icon: 'school', color: BRAND2,
+        html: `
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="${BRAND2}" style="background-color:${BRAND2};padding:48px 32px;text-align:center;border-radius:8px 8px 0 0;"><h1 style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:30px;font-weight:800;color:#ffffff;line-height:1.25;">Advance Your Career with<br>{{course_name}}</h1><p style="margin:0 0 24px;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:rgba(255,255,255,0.9);line-height:1.6;">Join 10,000+ students who transformed their careers with our programs.</p>${btn('Enroll Now &rarr;', '{{cta_link}}')}</td></tr></table>
+${spacer(8)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:28px 32px 16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#374151;line-height:1.75;"><p style="margin:0 0 12px;"><strong>Dear {{name}},</strong></p><p style="margin:0;">We're excited to introduce our newest program designed to help you achieve your professional goals. Our expert-led curriculum combines practical skills with industry knowledge to ensure you're job-ready from day one.</p></td></tr></table>
+${divider()}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:20px 32px 24px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="33%" style="padding:0 10px 0 0;vertical-align:top;text-align:center;"><div style="font-size:28px;margin-bottom:8px;">🎓</div><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin-bottom:5px;">Expert Faculty</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;line-height:1.6;">Industry professionals with 10+ years experience.</p></td><td width="33%" style="padding:0 5px;vertical-align:top;text-align:center;"><div style="font-size:28px;margin-bottom:8px;">📅</div><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin-bottom:5px;">Flexible Learning</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;line-height:1.6;">Study at your own pace with lifetime access.</p></td><td width="34%" style="padding:0 0 0 10px;vertical-align:top;text-align:center;"><div style="font-size:28px;margin-bottom:8px;">💼</div><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin-bottom:5px;">Job Placement</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;line-height:1.6;">Our career team connects you with top employers.</p></td></tr></table></td></tr></table>
+${divider()}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#f8fafc" style="background-color:#f8fafc;padding:28px 32px;text-align:center;"><p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.08em;">Course Fee</p><p style="margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:36px;font-weight:800;color:${BRAND2};">{{price}}</p>${btn('Secure Your Seat Today &rarr;', '{{cta_link}}')}</td></tr></table>
+${spacer(8)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:18px 32px;text-align:center;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;line-height:1.7;">&copy; ${YR} ${SITENAME2}. All rights reserved.<br><a href="#" style="color:${BRAND2};text-decoration:underline;">Unsubscribe</a>&nbsp;&middot;&nbsp;<a href="#" style="color:${BRAND2};text-decoration:underline;">Privacy Policy</a></p></td></tr></table>`,
+    },
+
+    // ── 2: Welcome Email ──────────────────────────────────────────────────────
+    {
+        id: 'welcome-email',
+        name: 'Welcome Email',
+        desc: 'Personalized welcome with onboarding steps',
+        icon: 'waving_hand', color: '#10b981',
+        html: `
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#10b981" style="background-color:#10b981;padding:48px 32px;text-align:center;border-radius:8px 8px 0 0;"><div style="font-size:48px;margin-bottom:12px;">🎉</div><h1 style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:800;color:#ffffff;line-height:1.3;">Welcome, {{name}}!</h1><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:rgba(255,255,255,0.9);line-height:1.6;">You're officially part of the ${SITENAME2} family.</p></td></tr></table>
+${spacer(8)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:28px 32px 20px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#374151;line-height:1.75;"><p style="margin:0 0 16px;">Thank you for joining us! We're thrilled to have you on board. Here's how to get started and make the most of your experience with us.</p></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:0 32px 24px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="44" style="vertical-align:top;padding-right:14px;"><div style="width:36px;height:36px;background:#10b981;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif;font-size:16px;font-weight:700;color:#fff;text-align:center;line-height:36px;">1</div></td><td style="vertical-align:top;"><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin-bottom:4px;">Complete Your Profile</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;line-height:1.5;">Update your information so we can personalise your experience.</p></td></tr></table></td></tr><tr><td height="8"></td></tr><tr><td style="padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="44" style="vertical-align:top;padding-right:14px;"><div style="width:36px;height:36px;background:#10b981;border-radius:50%;font-family:Arial,sans-serif;font-size:16px;font-weight:700;color:#fff;text-align:center;line-height:36px;">2</div></td><td style="vertical-align:top;"><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin-bottom:4px;">Browse Our Courses</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;line-height:1.5;">Explore 100+ programs across technology, business, and design.</p></td></tr></table></td></tr><tr><td height="8"></td></tr><tr><td style="padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="44" style="vertical-align:top;padding-right:14px;"><div style="width:36px;height:36px;background:#10b981;border-radius:50%;font-family:Arial,sans-serif;font-size:16px;font-weight:700;color:#fff;text-align:center;line-height:36px;">3</div></td><td style="vertical-align:top;"><strong style="display:block;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin-bottom:4px;">Talk to an Advisor</strong><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;line-height:1.5;">Our admission team is here to guide you on the right path.</p></td></tr></table></td></tr></table></td></tr></table>
+${spacer(4)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:0 32px 28px;text-align:center;"><table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td bgcolor="#10b981" style="border-radius:6px;"><a href="{{cta_link}}" style="display:inline-block;padding:13px 32px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;text-decoration:none;">Explore Courses &rarr;</a></td></tr></table></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;line-height:1.7;">&copy; ${YR} ${SITENAME2}. All rights reserved.<br><a href="#" style="color:#10b981;text-decoration:underline;">Unsubscribe</a></p></td></tr></table>`,
+    },
+
+    // ── 3: Newsletter ─────────────────────────────────────────────────────────
+    {
+        id: 'newsletter',
+        name: 'Newsletter',
+        desc: '3-article newsletter with "Read More" links',
+        icon: 'newspaper', color: '#8b5cf6',
+        html: `
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#8b5cf6" style="background-color:#8b5cf6;padding:22px 32px;text-align:center;border-radius:8px 8px 0 0;"><span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#ffffff;">${SITENAME2} Newsletter</span><p style="margin:8px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:rgba(255,255,255,0.8);">Your monthly digest of education insights</p></td></tr></table>
+${spacer(8)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:24px 32px 8px;"><h2 style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:20px;font-weight:700;color:#0f172a;">In This Issue</h2><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;">Hello {{name}}, here's what's new this month.</p></td></tr></table>
+${divider()}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:20px 32px;"><img src="https://placehold.co/540x200/eff6ff/8b5cf6?text=Article+1+Image" alt="Article" style="max-width:100%;height:auto;display:block;border-radius:6px;margin-bottom:14px;border:0;"><h3 style="margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#0f172a;line-height:1.3;">Top 5 Skills Employers Look for in 2025</h3><p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#64748b;line-height:1.65;">The job market is evolving rapidly. We asked 200+ hiring managers what skills they prioritise when reviewing candidates...</p><a href="#" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#8b5cf6;text-decoration:none;">Read More &rarr;</a></td></tr></table>
+${divider()}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:20px 32px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="50%" style="padding-right:12px;vertical-align:top;"><h3 style="margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#0f172a;line-height:1.3;">New Course: Data Science Fundamentals</h3><p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;line-height:1.6;">Master Python, statistics, and machine learning in just 12 weeks.</p><a href="#" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#8b5cf6;text-decoration:none;">Learn More &rarr;</a></td><td width="50%" style="padding-left:12px;vertical-align:top;"><h3 style="margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#0f172a;line-height:1.3;">Student Success Story: From Teacher to Tech Lead</h3><p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;line-height:1.6;">How Priya used our program to land a role at a Fortune 500 company.</p><a href="#" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#8b5cf6;text-decoration:none;">Read Story &rarr;</a></td></tr></table></td></tr></table>
+${spacer(4)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#f8fafc" style="background-color:#f8fafc;padding:20px 32px 24px;border-top:1px solid #e2e8f0;border-radius:0 0 8px 8px;text-align:center;"><p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;line-height:1.6;">You received this because you subscribed to ${SITENAME2} Newsletter.<br><a href="#" style="color:#8b5cf6;text-decoration:underline;">Unsubscribe</a>&nbsp;&middot;&nbsp;<a href="#" style="color:#8b5cf6;text-decoration:underline;">Manage Preferences</a></p><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;">&copy; ${YR} ${SITENAME2}. All rights reserved.</p></td></tr></table>`,
+    },
+
+    // ── 4: Event Invitation ───────────────────────────────────────────────────
+    {
+        id: 'event-invitation',
+        name: 'Event Invitation',
+        desc: 'Webinar or open day invitation with RSVP button',
+        icon: 'event', color: '#f59e0b',
+        html: `
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#f59e0b" style="background-color:#f59e0b;padding:48px 32px;text-align:center;border-radius:8px 8px 0 0;"><div style="font-size:48px;margin-bottom:12px;">🎟️</div><h1 style="margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:28px;font-weight:800;color:#ffffff;line-height:1.3;">You're Invited!</h1><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:rgba(255,255,255,0.92);line-height:1.6;">Join us for an exclusive event</p></td></tr></table>
+${spacer(8)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:28px 32px 20px;"><h2 style="margin:0 0 6px;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#0f172a;">{{event_name}}</h2><p style="margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#374151;line-height:1.7;">Dear {{name}},<br><br>We are delighted to invite you to an exclusive event where you will have the opportunity to connect with our faculty, explore our programs, and get your questions answered directly by industry experts.</p><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#fffbeb" style="background-color:#fffbeb;padding:20px 24px;border-radius:8px;border:1px solid #fde68a;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="50%" style="padding-right:12px;"><p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.06em;">Date &amp; Time</p><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#0f172a;">{{event_date}}<br>{{event_time}}</p></td><td width="50%" style="padding-left:12px;border-left:1px solid #fde68a;"><p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:.06em;">Venue</p><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#0f172a;">{{event_venue}}</p></td></tr></table></td></tr></table></td></tr></table>
+${spacer(4)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:0 32px 28px;text-align:center;"><table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td bgcolor="#f59e0b" style="border-radius:6px;"><a href="{{cta_link}}" style="display:inline-block;padding:13px 36px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;text-decoration:none;">RSVP Now &rarr;</a></td></tr></table><p style="margin:12px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;">Limited seats available. Register early to secure your spot.</p></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;line-height:1.7;">&copy; ${YR} ${SITENAME2}. All rights reserved.<br><a href="#" style="color:#f59e0b;text-decoration:underline;">Unsubscribe</a></p></td></tr></table>`,
+    },
+
+    // ── 5: Discount / Offer ───────────────────────────────────────────────────
+    {
+        id: 'discount-offer',
+        name: 'Discount / Offer',
+        desc: 'Limited time discount with coupon code',
+        icon: 'local_offer', color: '#ef4444',
+        html: `
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#ef4444" style="background-color:#ef4444;padding:48px 32px;text-align:center;border-radius:8px 8px 0 0;"><p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:rgba(255,255,255,0.85);text-transform:uppercase;letter-spacing:.1em;">Limited Time Offer</p><h1 style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:56px;font-weight:800;color:#ffffff;line-height:1;">{{discount}}% OFF</h1><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:16px;color:rgba(255,255,255,0.9);line-height:1.6;">On {{course_name}} — today only!</p></td></tr></table>
+${spacer(8)}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:24px 32px 16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#374151;line-height:1.75;"><p style="margin:0 0 16px;"><strong>Hi {{name}},</strong></p><p style="margin:0;">Don't miss this exclusive offer! For a limited time, we're offering a massive discount on our most popular course. Use the coupon code below at checkout to claim your savings.</p></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:0 32px 24px;text-align:center;"><table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;border:2px dashed #ef4444;border-radius:8px;overflow:hidden;"><tr><td style="padding:16px 40px;"><p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.08em;">Your Coupon Code</p><p style="margin:0;font-family:'Courier New',monospace;font-size:26px;font-weight:700;color:#ef4444;letter-spacing:.15em;">{{coupon_code}}</p></td></tr></table></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#fff5f5" style="background-color:#fff5f5;padding:24px 32px;border-top:1px solid #fecaca;text-align:center;"><p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;">Original Price: <s style="color:#94a3b8;">{{original_price}}</s></p><p style="margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:30px;font-weight:800;color:#ef4444;">{{price}}</p><table cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;"><tr><td bgcolor="#ef4444" style="border-radius:6px;"><a href="{{cta_link}}" style="display:inline-block;padding:13px 36px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;text-decoration:none;">Claim My Discount &rarr;</a></td></tr></table><p style="margin:14px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#ef4444;font-weight:600;">⚠️ Offer expires {{expiry_date}}. Don't wait!</p></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;line-height:1.7;">&copy; ${YR} ${SITENAME2}. All rights reserved.<br><a href="#" style="color:#ef4444;text-decoration:underline;">Unsubscribe</a>&nbsp;&middot;&nbsp;<a href="#" style="color:#ef4444;text-decoration:underline;">Privacy Policy</a></p></td></tr></table>`,
+    },
+
+    // ── 6: Product / Program Promotion ───────────────────────────────────────
+    {
+        id: 'product-promotion',
+        name: 'Product Promotion',
+        desc: 'Showcase a product/program with image and features',
+        icon: 'campaign', color: '#0f172a',
+        html: `
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#0f172a" style="background-color:#0f172a;padding:22px 32px;text-align:center;border-radius:8px 8px 0 0;"><span style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:700;color:#ffffff;">${SITENAME2}</span></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td><img src="https://placehold.co/600x250/f1f5f9/64748b?text=Program+Banner+Image" alt="Program" style="width:100%;max-width:600px;height:auto;display:block;border:0;"></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:28px 32px 20px;"><h1 style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:800;color:#0f172a;line-height:1.3;">{{course_name}}</h1><p style="margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#374151;line-height:1.75;">Dear {{name}},<br><br>We're proud to introduce our flagship program tailored for ambitious professionals. Gain in-demand skills, earn an industry-recognised certification, and join a community of 50,000+ alumni.</p><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#374151;">✅&nbsp; 100% online — learn from anywhere</td></tr><tr><td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#374151;">✅&nbsp; Live Q&amp;A sessions with instructors</td></tr><tr><td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#374151;">✅&nbsp; Certificate recognised by 500+ companies</td></tr><tr><td style="padding:6px 0;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#374151;">✅&nbsp; Dedicated career support &amp; placement</td></tr></table></td></tr></table>
+${divider()}
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding:24px 32px;"><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td width="50%" style="padding-right:16px;vertical-align:middle;"><p style="margin:0 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;">Starting from</p><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:30px;font-weight:800;color:${BRAND2};">{{price}}</p><p style="margin:4px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">EMI options available</p></td><td width="50%" style="text-align:right;vertical-align:middle;"><table cellpadding="0" cellspacing="0" border="0" style="margin-left:auto;"><tr><td bgcolor="${BRAND2}" style="border-radius:6px;"><a href="{{cta_link}}" style="display:inline-block;padding:13px 28px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;text-decoration:none;">Apply Now &rarr;</a></td></tr></table></td></tr></table></td></tr></table>
+<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#f8fafc" style="background-color:#f8fafc;padding:16px 32px 20px;border-top:1px solid #e2e8f0;border-radius:0 0 8px 8px;text-align:center;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#94a3b8;line-height:1.7;">&copy; ${YR} ${SITENAME2}. All rights reserved.<br><a href="#" style="color:${BRAND2};text-decoration:underline;">Unsubscribe</a>&nbsp;&middot;&nbsp;<a href="#" style="color:${BRAND2};text-decoration:underline;">Privacy Policy</a></p></td></tr></table>`,
+    },
+];
+@endverbatim
+
+// ── Render template cards ─────────────────────────────────────────────────────
+function renderTemplateCards() {
+    const grid = document.getElementById('templateGrid');
+    if (!grid) return;
+    grid.innerHTML = EMAIL_TEMPLATES.map(function (tpl) {
+        return `<div class="col-lg-4 col-md-6">
+            <div class="tpl-card" onclick="loadEmailTemplate('${tpl.id}')">
+                <div class="tpl-card-header" style="background:${tpl.color}15;">
+                    <span class="material-icons" style="font-size:36px;color:${tpl.color};">${tpl.icon}</span>
+                </div>
+                <div class="tpl-card-body">
+                    <p class="tpl-card-title">${tpl.name}</p>
+                    <p class="tpl-card-desc">${tpl.desc}</p>
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ── Load template into GrapesJS ───────────────────────────────────────────────
+window.loadEmailTemplate = function (id) {
+    var tpl = EMAIL_TEMPLATES.find(function (t) { return t.id === id; });
+    if (!tpl) return;
+
+    var currentHtml = (typeof editor !== 'undefined') ? editor.getHtml() : '';
+    var hasContent = currentHtml.replace(/<[^>]+>/g, '').trim().length > 0;
+
+    if (hasContent && !confirm('This will replace your current design. Continue?')) return;
+
+    if (typeof editor !== 'undefined') {
+        editor.setComponents(tpl.html.trim());
+        editor.setStyle('');
+    }
+};
+
+// ── Templates button ──────────────────────────────────────────────────────────
+var btnTemplates = document.getElementById('btnTemplates');
+if (btnTemplates) {
+    btnTemplates.addEventListener('click', function () {
+        renderTemplateCards();
+        var modal = new bootstrap.Modal(document.getElementById('templatesModal'));
+        modal.show();
+    });
+}
+
+// ── Send Test Email ───────────────────────────────────────────────────────────
+var btnSendTest = document.getElementById('btnSendTest');
+if (btnSendTest) {
+    btnSendTest.addEventListener('click', function () {
+        document.getElementById('testEmailAddress').value = '';
+        var msg = document.getElementById('testEmailMsg');
+        msg.className = 'alert d-none mb-0';
+        msg.textContent = '';
+        new bootstrap.Modal(document.getElementById('sendTestModal')).show();
+    });
+}
+
+var btnSendTestConfirm = document.getElementById('btnSendTestConfirm');
+if (btnSendTestConfirm) {
+    btnSendTestConfirm.addEventListener('click', async function () {
+        var email = document.getElementById('testEmailAddress').value.trim();
+        var msg   = document.getElementById('testEmailMsg');
+
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            msg.className = 'alert alert-danger mb-0';
+            msg.textContent = 'Please enter a valid email address.';
+            return;
+        }
+
+        var rawHtml = (typeof editor !== 'undefined') ? editor.getHtml() : '';
+        var css     = (typeof editor !== 'undefined') ? editor.getCss({ avoidProtected: true }) : '';
+        var bm = rawHtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        var body = bm ? bm[1] : rawHtml;
+        body = inlineCssIntoHtml(body, css);
+
+        btnSendTestConfirm.disabled = true;
+        btnSendTestConfirm.textContent = 'Sending...';
+
+        try {
+            var res = await fetch(@json(route('admin.email-templates.send-test')), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': CSRF2 },
+                body: JSON.stringify({ email: email, subject: 'Test Email — ' + (document.getElementById('name') ? document.getElementById('name').value : 'Template'), body: body }),
+            });
+            var data = await res.json();
+            if (data.ok) {
+                msg.className = 'alert alert-success mb-0';
+                msg.textContent = 'Test email sent to ' + email + ' successfully!';
+            } else {
+                msg.className = 'alert alert-danger mb-0';
+                msg.textContent = data.error || 'Failed to send test email.';
+            }
+        } catch (e) {
+            msg.className = 'alert alert-danger mb-0';
+            msg.textContent = 'Network error. Please try again.';
+        }
+
+        btnSendTestConfirm.disabled = false;
+        btnSendTestConfirm.innerHTML = '<span class="material-icons align-middle me-1" style="font-size:15px;">send</span>Send Test';
     });
 }
 
