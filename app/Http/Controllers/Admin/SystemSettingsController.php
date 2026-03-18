@@ -9,7 +9,6 @@ use App\Services\LeadDefaults;
 use App\Services\AutomationSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
-use Twilio\Rest\Client as TwilioClient;
 
 class SystemSettingsController extends Controller
 {
@@ -113,38 +112,96 @@ class SystemSettingsController extends Controller
 
     public function twilio()
     {
-        return view('admin.settings.twilio');
+        return redirect()->route('admin.settings.call');
     }
 
-    public function updateTwilio(Request $request)
+    public function updateTwilio()
+    {
+        return redirect()->route('admin.settings.call');
+    }
+
+    // ── Call Settings (unified: provider + Twilio + Exotel + VOIP) ───────────
+
+    public function callSettings()
+    {
+        return view('admin.settings.call');
+    }
+
+    public function updateCallSettings(Request $request)
     {
         $data = $request->validate([
-            'twilio_account_sid' => 'required|string|max:255',
-            'twilio_auth_token' => 'required|string|max:255',
-            'twilio_api_key' => 'nullable|string|max:255',
-            'twilio_api_secret' => 'nullable|string|max:255',
-            'twilio_app_sid' => 'nullable|string|max:255',
+            'primary_call_provider' => 'required|in:twilio,exotel',
+            // Twilio
+            'twilio_account_sid' => 'nullable|string|max:255',
+            'twilio_auth_token'  => 'nullable|string|max:255',
+            'twilio_api_key'     => 'nullable|string|max:255',
+            'twilio_api_secret'  => 'nullable|string|max:255',
+            'twilio_app_sid'     => 'nullable|string|max:255',
             'twilio_from_number' => 'nullable|string|max:50',
+            // Exotel
+            'exotel_api_key'   => 'nullable|string|max:255',
+            'exotel_api_token' => 'nullable|string|max:255',
+            'exotel_sid'       => 'nullable|string|max:255',
+            'exotel_caller_id' => 'nullable|string|max:50',
+            'exotel_subdomain' => 'nullable|string|max:100',
+            // Browser VOIP
+            'voip_domain'   => 'nullable|string|max:255',
+            'voip_proxy'    => 'nullable|string|max:255',
+            'voip_username' => 'nullable|string|max:255',
+            'voip_password' => 'nullable|string|max:255',
         ]);
 
-        try {
-            $client = new TwilioClient($data['twilio_account_sid'], $data['twilio_auth_token']);
-            $account = $client->api->v2010->accounts($data['twilio_account_sid'])->fetch();
-            if (!$account || strtolower((string) $account->sid) !== strtolower($data['twilio_account_sid'])) {
-                return back()->with('error', 'Twilio credential validation failed.');
-            }
-        } catch (\Throwable $e) {
-            return back()->with('error', 'Twilio validation failed: ' . $e->getMessage());
-        }
+        Setting::set('primary_call_provider', $data['primary_call_provider']);
 
-        Setting::setSecure('twilio_account_sid', $data['twilio_account_sid']);
-        Setting::setSecure('twilio_auth_token', $data['twilio_auth_token']);
-        Setting::setSecure('twilio_api_key', $data['twilio_api_key'] ?? null);
-        Setting::setSecure('twilio_api_secret', $data['twilio_api_secret'] ?? null);
-        Setting::set('twilio_app_sid', $data['twilio_app_sid'] ?? '');
+        // Twilio — blank means "keep existing secret"
+        if (!empty($data['twilio_account_sid'])) {
+            Setting::setSecure('twilio_account_sid', $data['twilio_account_sid']);
+        }
+        if (!empty($data['twilio_auth_token'])) {
+            Setting::setSecure('twilio_auth_token', $data['twilio_auth_token']);
+        }
+        if (!empty($data['twilio_api_key'])) {
+            Setting::setSecure('twilio_api_key', $data['twilio_api_key']);
+        }
+        if (!empty($data['twilio_api_secret'])) {
+            Setting::setSecure('twilio_api_secret', $data['twilio_api_secret']);
+        }
+        Setting::set('twilio_app_sid',     $data['twilio_app_sid']     ?? '');
         Setting::set('twilio_from_number', $data['twilio_from_number'] ?? '');
 
-        return back()->with('success', 'Twilio credentials validated and saved.');
+        // Exotel — blank means "keep existing secret"
+        if (!empty($data['exotel_api_key'])) {
+            Setting::setSecure('exotel_api_key', $data['exotel_api_key']);
+        }
+        if (!empty($data['exotel_api_token'])) {
+            Setting::setSecure('exotel_api_token', $data['exotel_api_token']);
+        }
+        Setting::set('exotel_sid',       $data['exotel_sid']       ?? '');
+        Setting::set('exotel_caller_id', $data['exotel_caller_id'] ?? '');
+        Setting::set('exotel_subdomain', $data['exotel_subdomain'] ?? 'api.in.exotel.com');
+
+        // Browser VOIP
+        Setting::set('voip_enabled',  $request->boolean('voip_enabled') ? '1' : '0');
+        Setting::set('voip_domain',   $data['voip_domain']   ?? '');
+        Setting::set('voip_proxy',    $data['voip_proxy']    ?? '');
+        Setting::set('voip_username', $data['voip_username'] ?? '');
+        if (!empty($data['voip_password'])) {
+            Setting::setSecure('voip_password', $data['voip_password']);
+        }
+
+        return back()->with('success', 'Call settings saved.');
+    }
+
+    // ── Legacy redirects (keep old URLs working) ──────────────────────────────
+
+    public function voipSettings()
+    {
+        return redirect()->route('admin.settings.call');
+    }
+
+    public function updateVoipSettings()
+    {
+        return redirect()->route('admin.settings.call');
     }
 
     public function businessHours()

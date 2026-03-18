@@ -45,16 +45,32 @@
 
                 {{-- ── Header ── --}}
                 <tr>
-                    <td class="hdr-pad" bgcolor="#137fec"
-                        style="background-color:#137fec;padding:22px 32px;text-align:center;border-radius:10px 10px 0 0;">
-                        @if ($logoUrl)
-                            <img src="{{ $logoUrl }}" alt="{{ $siteName }}"
-                                 width="160" style="max-width:160px;max-height:56px;height:auto;display:inline-block;border:0;">
-                        @else
-                            <span style="font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:700;color:#ffffff;letter-spacing:-.3px;">
-                                {{ $siteName }}
-                            </span>
-                        @endif
+                    <td class="hdr-pad" bgcolor="#2563EB"
+                        style="background-color:#2563EB;padding:0;border-radius:10px 10px 0 0;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td style="padding:24px 32px 20px;text-align:center;background-color:#2563EB;border-radius:10px 10px 0 0;">
+                                    @if ($logoUrl)
+                                        <img src="{{ $logoUrl }}" alt="{{ $siteName }}"
+                                             width="150" style="max-width:150px;max-height:52px;height:auto;display:block;margin:0 auto 10px;border:0;">
+                                        <span style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:600;color:#bfdbfe;letter-spacing:.4px;text-transform:uppercase;display:block;">
+                                            {{ $siteName }}
+                                        </span>
+                                    @else
+                                        <span style="font-family:Arial,Helvetica,sans-serif;font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-.5px;display:block;">
+                                            {{ $siteName }}
+                                        </span>
+                                        <span style="font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:400;color:#bfdbfe;letter-spacing:1px;text-transform:uppercase;display:block;margin-top:4px;">
+                                            Education CRM
+                                        </span>
+                                    @endif
+                                </td>
+                            </tr>
+                            {{-- Header accent bar --}}
+                            <tr>
+                                <td height="4" style="background-color:#1d4ed8;font-size:0;line-height:0;">&nbsp;</td>
+                            </tr>
+                        </table>
                     </td>
                 </tr>
 

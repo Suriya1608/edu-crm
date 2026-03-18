@@ -8,8 +8,8 @@
             class="btn btn-sm {{ request()->routeIs('admin.settings.sms') ? 'btn-primary' : 'btn-outline-primary' }}">SMS</a>
         <a href="{{ route('admin.settings.whatsapp') }}"
             class="btn btn-sm {{ request()->routeIs('admin.settings.whatsapp') ? 'btn-primary' : 'btn-outline-primary' }}">Meta WhatsApp</a>
-        <a href="{{ route('admin.settings.twilio') }}"
-            class="btn btn-sm {{ request()->routeIs('admin.settings.twilio') ? 'btn-primary' : 'btn-outline-primary' }}">Twilio Voice</a>
+        <a href="{{ route('admin.settings.call') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.call') ? 'btn-primary' : 'btn-outline-primary' }}">Call Settings</a>
         <a href="{{ route('admin.settings.business-hours') }}"
             class="btn btn-sm {{ request()->routeIs('admin.settings.business-hours') ? 'btn-primary' : 'btn-outline-primary' }}">Business Hours</a>
         <a href="{{ route('admin.settings.working-days') }}"
@@ -22,13 +22,13 @@
             class="btn btn-sm {{ request()->routeIs('admin.settings.notifications') ? 'btn-primary' : 'btn-outline-primary' }}">Notifications</a>
         <a href="{{ route('admin.settings.pages') }}"
             class="btn btn-sm {{ request()->routeIs('admin.settings.pages') ? 'btn-primary' : 'btn-outline-primary' }}">Pages</a>
-        <a href="{{ route('admin.settings.facebook-leads') }}"
-            class="btn btn-sm {{ request()->routeIs('admin.settings.facebook-leads') ? 'btn-primary' : 'btn-outline-primary' }}">Facebook Leads</a>
+        {{-- <a href="{{ route('admin.settings.facebook-leads') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.facebook-leads') ? 'btn-primary' : 'btn-outline-primary' }}">Facebook Leads</a> --}}
         <a href="{{ route('admin.settings.lead-portals') }}"
             class="btn btn-sm {{ request()->routeIs('admin.settings.lead-portals') ? 'btn-primary' : 'btn-outline-primary' }}">Lead Portals</a>
         <a href="{{ route('admin.settings.security') }}"
             class="btn btn-sm {{ request()->routeIs('admin.settings.security') ? 'btn-primary' : 'btn-outline-primary' }}">Security</a>
-        <a href="{{ route('admin.settings.instagram') }}"
-            class="btn btn-sm {{ request()->routeIs('admin.settings.instagram') ? 'btn-primary' : 'btn-outline-primary' }}">Instagram</a>
+        {{-- <a href="{{ route('admin.settings.instagram') }}"
+            class="btn btn-sm {{ request()->routeIs('admin.settings.instagram') ? 'btn-primary' : 'btn-outline-primary' }}">Instagram</a> --}}
     </div>
 </div>

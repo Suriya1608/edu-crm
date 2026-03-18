@@ -9,17 +9,36 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Helper: only add index if it doesn't exist (MySQL-safe)
+        $driver = DB::getDriverName();
+
+        // Helper: only add index if it doesn't exist
         $hasIndex = function (string $table, string $indexName): bool {
+            $driver = DB::getDriverName();
+
+            if ($driver === 'sqlite') {
+                $result = DB::select(
+                    "PRAGMA index_list('{$table}')"
+                );
+
+                foreach ($result as $index) {
+                    if (($index->name ?? null) === $indexName) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
             $result = DB::select(
                 "SHOW INDEX FROM `{$table}` WHERE Key_name = ?",
                 [$indexName]
             );
+
             return !empty($result);
         };
 
         Schema::table('leads', function (Blueprint $table) use ($hasIndex) {
-            if (!$hasIndex('leads', 'leads_course_index')) {
+            if (Schema::hasColumn('leads', 'course') && !$hasIndex('leads', 'leads_course_index')) {
                 $table->index('course', 'leads_course_index');
             }
             if (!$hasIndex('leads', 'leads_created_at_index')) {

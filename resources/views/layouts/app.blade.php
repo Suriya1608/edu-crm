@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'twilio') }}">
 
     {{-- Dynamic Title --}}
     <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
@@ -57,7 +58,7 @@
         </div>
 
         {{-- Site Footer --}}
-        <div class="site-footer-bar">
+        {{-- <div class="site-footer-bar">
             <div class="site-footer-top">
                 <span class="site-footer-brand">
                     <span class="material-icons">school</span>
@@ -71,7 +72,7 @@
                 <span class="site-footer-dot">&bull;</span>
                 <a href="{{ url('/terms-of-service') }}" target="_blank">Terms of Service</a>
             </div>
-        </div>
+        </div> --}}
 
 
     {{-- Documents Quick Access Modal --}}
@@ -390,6 +391,7 @@
             <div>
                 <div style="font-size:11px; opacity:0.85; line-height:1;">Active Call</div>
                 <div id="gcCallPhone" style="font-weight:700; font-size:15px; letter-spacing:0.3px; line-height:1.3;"></div>
+                <a id="gcCallLeadLink" href="#" style="display:none; color:#fee2e2; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
             </div>
             <div style="margin-left:6px;">
                 <div style="font-size:11px; opacity:0.85; line-height:1;">Duration</div>
@@ -426,7 +428,31 @@
             </div>
         </div>
 
-        <script src="{{ asset('js/global-call.js') }}"></script>
+        {{-- Incoming call bar — shown by JsSIP when a remote SIP call arrives --}}
+        @if(\App\Models\Setting::get('primary_call_provider', 'twilio') === 'exotel')
+        <div id="gcIncomingBar" style="display:none; position:fixed; top:20px; right:20px; z-index:1070; background:#ffffff; border:2px solid #10b981; border-radius:12px; padding:14px 18px; box-shadow:0 4px 20px rgba(0,0,0,0.15); min-width:240px;">
+            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                <span class="material-icons" style="color:#10b981; font-size:22px; animation:gcRing 0.6s infinite alternate;">call</span>
+                <div>
+                    <div style="font-size:11px; color:#64748b; line-height:1;">Incoming Call</div>
+                    <div id="gcIncomingPhone" style="font-weight:700; font-size:15px; color:#0f172a; line-height:1.3;"></div>
+                    <a id="gcIncomingLeadLink" href="#" style="display:none; color:#137fec; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
+                </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button id="gcIncomingAnswerBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#10b981; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
+                    <span class="material-icons" style="font-size:16px;">call</span> Answer
+                </button>
+                <button id="gcIncomingRejectBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#ef4444; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
+                    <span class="material-icons" style="font-size:16px;">call_end</span> Reject
+                </button>
+            </div>
+        </div>
+        <style>@keyframes gcRing { from { transform:rotate(-15deg); } to { transform:rotate(15deg); } }</style>
+
+        @endif
+
+        <script src="{{ asset('js/global-call.js?v=2') }}"></script>
     @endif
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 

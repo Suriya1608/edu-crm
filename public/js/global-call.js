@@ -1,232 +1,931 @@
 /**
- * global-call.js — Persistent Twilio Call Manager
- * Loaded in every layout. Intercepts navigation during active calls.
- * Pages with call buttons call GC.initDevice() + GC.startCall().
+ * global-call.js - Provider-aware call manager (Twilio + Exotel VOIP)
  */
+
 (function () {
-    'use strict';
+"use strict";
 
-    var GC = {
-        _device: null,
-        _call: null,
-        _state: null,      // { callLogId, phone, leadId, answeredAt }
-        _csrf: null,
-        _timerInterval: null,
-        _manualHangup: false,
-        _endReported: false,
+var metaProvider = document.querySelector('meta[name="call-provider"]');
+var PROVIDER = metaProvider ? metaProvider.getAttribute("content") : "twilio";
 
-        /** Fetch Twilio token and initialize Device. Safe to call on each page that needs it. */
-        initDevice: async function () {
-            if (this._device) return;
-            try {
-                var res = await fetch('/twilio/token');
-                var data = await res.json();
-                var self = this;
-                this._device = new window.TwilioDevice(data.token, {
-                    codecPreferences: ['opus', 'pcmu'],
-                    enableRingingState: true
-                });
-                this._device.on('registered', function () { console.log('[GC] Twilio ready'); });
-                this._device.on('error', function (err) { console.error('[GC] Error', err); });
-            } catch (e) {
-                console.error('[GC] initDevice error', e);
-            }
-        },
+var GC = {
 
-        /**
-         * Start a Twilio call.
-         * Dispatches gc:callRinging, gc:callAccepted, gc:callEnded on document.
-         */
-        startCall: async function (phone, leadId) {
-            if (!this._device) {
-                alert('Call system not ready. Please wait a moment and try again.');
-                return;
-            }
-            if (this._state) {
-                alert('A call is already in progress.');
-                return;
-            }
+_device: null,
+_call: null,
 
-            this._manualHangup = false;
-            this._endReported = false;
+_ua: null,
+_registered: false,
+_session: null,
+_incomingVoipSession: null,
+_voipConfig: null,
 
-            var logRes = await fetch('/call/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this._csrf },
-                body: JSON.stringify({ lead_id: leadId })
-            });
-            var logData = await logRes.json();
+_state: null,
+_csrf: null,
+_timerInterval: null,
+_pollInterval: null,
+_manualHangup: false,
+_endReported: false,
 
-            this._state = { callLogId: logData.call_log_id, phone: phone, leadId: leadId, answeredAt: null };
-            document.dispatchEvent(new CustomEvent('gc:callRinging', { detail: { phone: phone } }));
+_pendingUrl: null,
+_navInterceptBound: false,
+_barEndBtnBound: false,
 
-            await navigator.mediaDevices.getUserMedia({ audio: true });
+_pstnPollInterval: null,
+_pstnShownCallLogId: null,
+_pstnIncomingBtnBound: false,
 
-            var self = this;
-            this._call = await this._device.connect({
-                params: { To: phone, call_log_id: this._state.callLogId }
-            });
+isActive: function () {
+    return !!this._state;
+},
 
-            this._call.on('accept', function () {
-                self._state.answeredAt = Date.now();
-                fetch('/call/update-sid', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': self._csrf },
-                    body: JSON.stringify({
-                        call_log_id: self._state.callLogId,
-                        call_sid: self._call.parameters.CallSid
-                    })
-                });
-                self._showBar(phone);
-                self._startTimer(self._state.answeredAt);
-                document.dispatchEvent(new CustomEvent('gc:callAccepted', { detail: { phone: phone } }));
-            });
+initDevice: async function () {
+    if (PROVIDER === "exotel") {
+        await this._initExotel();
+        this._startPstnIncomingPoll();
+    } else {
+        await this._initTwilio();
+    }
 
-            this._call.on('disconnect', function () { self._finalize(); });
-            this._call.on('cancel', function () { self._finalize(); });
-            this._call.on('reject', function () { self._finalize(); });
-        },
+    this._setupNavIntercept();
+    this._setupBarEndBtn();
+    this._setupPstnIncomingBtns();
+},
 
-        /** Manually end the active call. */
-        endCall: function () {
-            if (this._call) {
-                this._manualHangup = true;
-                this._call.disconnect();
-            }
-        },
+_initTwilio: async function () {
+    if (this._device) return;
 
-        isActive: function () { return !!this._state; },
+    try {
+        var res = await fetch("/twilio/token");
+        var data = await res.json();
+        this._device = new window.TwilioDevice(data.token);
+    } catch (e) {
+        console.error("Twilio init error", e);
+    }
+},
 
-        _finalize: async function () {
-            if (this._endReported) return;
-            this._endReported = true;
+_loadJsSIP: function () {
+    if (typeof JsSIP !== "undefined") return Promise.resolve();
 
-            var wasAnswered = !!(this._state && this._state.answeredAt);
-            var duration = wasAnswered ? Math.max(0, Math.floor((Date.now() - this._state.answeredAt) / 1000)) : 0;
-            var endedBy = this._manualHangup ? 'telecaller' : 'customer';
-            var finalStatus = wasAnswered ? 'completed' : (this._manualHangup ? 'canceled' : 'no-answer');
-            var logId = this._state ? this._state.callLogId : null;
-            var phone = this._state ? this._state.phone : '';
+    return new Promise(function (resolve, reject) {
+        var s = document.createElement("script");
+        s.src = "/js/jssip.min.js";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+    });
+},
 
-            this._stopTimer();
-            this._hideBar();
+_initExotel: async function () {
+    if (this._ua) return;
 
-            if (logId) {
-                await fetch('/call/end', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this._csrf },
-                    body: JSON.stringify({
-                        call_log_id: logId,
-                        ended_by: endedBy,
-                        final_status: finalStatus,
-                        end_reason: finalStatus,
-                        duration: duration
-                    })
-                });
-            }
+    try {
+        await this._loadJsSIP();
+    } catch (e) {
+        console.error("JsSIP load failed", e);
+        return;
+    }
 
-            this._call = null;
-            this._state = null;
-            this._manualHangup = false;
-            document.dispatchEvent(new CustomEvent('gc:callEnded', { detail: { phone: phone, callLogId: logId } }));
-        },
+    try {
 
-        _showBar: function (phone) {
-            var bar = document.getElementById('gcCallBar');
-            var phoneEl = document.getElementById('gcCallPhone');
-            if (phoneEl) phoneEl.textContent = phone;
-            if (bar) bar.style.display = 'flex';
-        },
+        const res = await fetch("/settings/voip");
+        const cfg = await res.json();
+        console.log("Using TEST VOIP CONFIG:", cfg);
 
-        _hideBar: function () {
-            var bar = document.getElementById('gcCallBar');
-            if (bar) bar.style.display = 'none';
-        },
-
-        _startTimer: function (startAtMs) {
-            var timerEl = document.getElementById('gcCallTimer');
-            this._timerInterval = setInterval(function () {
-                var secs = Math.floor((Date.now() - startAtMs) / 1000);
-                var m = Math.floor(secs / 60);
-                var s = secs % 60;
-                if (timerEl) timerEl.textContent = m + ':' + (s < 10 ? '0' : '') + s;
-            }, 1000);
-        },
-
-        _stopTimer: function () {
-            clearInterval(this._timerInterval);
-            var timerEl = document.getElementById('gcCallTimer');
-            if (timerEl) timerEl.textContent = '0:00';
-        },
-
-        _setupNavIntercept: function () {
-            var self = this;
-
-            // Intercept all link clicks during an active call (capture phase)
-            document.addEventListener('click', function (e) {
-                if (!self.isActive()) return;
-                var link = e.target.closest('a[href]');
-                if (!link) return;
-                var href = link.getAttribute('href');
-                if (!href || href === '#' || href.startsWith('javascript:') || href.charAt(0) === '#') return;
-                e.preventDefault();
-                e.stopPropagation();
-                self._showNavWarning(href);
-            }, true);
-
-            // Warn on browser-level navigation (refresh, back button, address bar, tab close)
-            window.addEventListener('beforeunload', function (e) {
-                if (!self.isActive()) return;
-                e.preventDefault();
-                e.returnValue = 'A call is in progress. Leaving this page will end the call.';
-            });
-
-            // Wire up the End & Navigate button in the warning modal
-            var proceedBtn = document.getElementById('gcNavProceedBtn');
-            if (proceedBtn) {
-                proceedBtn.addEventListener('click', function () {
-                    var url = proceedBtn.dataset.targetUrl;
-                    var modal = document.getElementById('gcNavWarningModal');
-                    if (modal && window.bootstrap) {
-                        var inst = bootstrap.Modal.getInstance(modal);
-                        if (inst) inst.hide();
-                    }
-                    self.endCall();
-                    setTimeout(function () { if (url) window.location.href = url; }, 600);
-                });
-            }
-
-            // Wire up End Call button on the global bar
-            var barEndBtn = document.getElementById('gcBarEndBtn');
-            if (barEndBtn) {
-                barEndBtn.addEventListener('click', function () { self.endCall(); });
-            }
-        },
-
-        _showNavWarning: function (targetUrl) {
-            var modal = document.getElementById('gcNavWarningModal');
-            var proceedBtn = document.getElementById('gcNavProceedBtn');
-
-            if (!modal) {
-                if (confirm('A call is in progress. End call and navigate away?')) {
-                    this.endCall();
-                    var self = this;
-                    setTimeout(function () { window.location.href = targetUrl; }, 600);
-                }
-                return;
-            }
-
-            if (proceedBtn) proceedBtn.dataset.targetUrl = targetUrl;
-            bootstrap.Modal.getOrCreateInstance(modal).show();
+        if (!cfg.enabled) {
+            console.warn("Exotel VOIP disabled");
+            return;
         }
+
+        this._voipConfig = cfg;
+
+        const socket = new JsSIP.WebSocketInterface("wss://" + cfg.proxy);
+
+        this._ua = new JsSIP.UA({
+            sockets: [socket],
+           uri: "sip:" + cfg.username + "@" + cfg.domain,
+            password: cfg.password,
+            register: true,
+            session_timers: false
+        });
+
+        const self = this;
+
+        this._ua.on("registered", function () {
+            self._registered = true;
+            console.log("✅ Exotel SIP Registered");
+        });
+
+        this._ua.on("registrationFailed", function (e) {
+            console.error("❌ SIP registration failed:", e.cause);
+        });
+
+        this._ua.on("newRTCSession", function (data) {
+
+            if (data.originator === "remote") {
+                self._incomingCall(data.session);
+            }
+
+        });
+
+        this._ua.start();
+
+    } catch (e) {
+        console.error("VOIP init error", e);
+    }
+},
+
+_waitForRegister: function (timeout) {
+    var self = this;
+
+    if (this._registered) return Promise.resolve();
+    if (!this._ua) return Promise.reject("SIP not initialized");
+
+    return new Promise(function (resolve, reject) {
+        var t = setTimeout(function () {
+            reject("SIP registration timeout");
+        }, timeout || 10000);
+
+        self._ua.once("registered", function () {
+            clearTimeout(t);
+            resolve();
+        });
+    });
+},
+
+startCall: function (phone, leadId) {
+    if (this._state) {
+        alert("Call already active");
+        return;
+    }
+
+    if (PROVIDER === "exotel") {
+        this._startExotelCall(phone, leadId);
+    } else {
+        this._startTwilioCall(phone, leadId);
+    }
+},
+
+_startTwilioCall: async function (phone, leadId) {
+    if (!this._device) {
+        await this._initTwilio();
+    }
+
+    if (!this._device) {
+        alert("Twilio not ready. Please refresh and try again.");
+        return;
+    }
+
+    var logRes = await fetch("/call/start", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": this._csrf
+        },
+        body: JSON.stringify({ lead_id: leadId })
+    });
+
+    var log = await logRes.json();
+
+    this._state = {
+        callLogId: log.call_log_id,
+        phone: phone,
+        leadId: leadId,
+        leadName: null,
+        leadUrl: null,
+        answeredAt: null
     };
 
-    // Auto-read CSRF token from meta tag
-    var metaCsrf = document.querySelector('meta[name="csrf-token"]');
-    if (metaCsrf) GC._csrf = metaCsrf.getAttribute('content');
+    this._showBar("Connecting...");
 
-    // Setup navigation intercept (script is at bottom of body — DOM is ready)
-    GC._setupNavIntercept();
+    var self = this;
 
-    window.GC = GC;
+    try {
+        this._call = await this._device.connect({
+            params: { To: phone, LeadId: leadId }
+        });
+
+        this._call.on("accept", function () {
+            self._markAnswered(phone);
+        });
+
+        this._call.on("disconnect", function () {
+            self._finalize("completed");
+        });
+
+        this._call.on("error", function () {
+            self._finalize("failed");
+        });
+    } catch (e) {
+        this._finalize("failed");
+    }
+},
+
+_startExotelCall: async function (phone, leadId) {
+
+    if (!this._ua) {
+        await this._initExotel();
+    }
+
+    if (!this._ua) {
+        alert("Exotel not initialized");
+        return;
+    }
+
+    try {
+
+        await this._waitForRegister(15000);
+
+    } catch (e) {
+
+        alert("SIP not registered yet");
+        return;
+
+    }
+
+    try {
+
+        await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    } catch (e) {
+
+        alert("Microphone permission required");
+        return;
+
+    }
+
+    const res = await fetch("/exotel/voip-call", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": this._csrf
+        },
+        body: JSON.stringify({
+            phone: phone,
+            lead_id: leadId
+        })
+    });
+
+    const log = await res.json();
+
+    if (!log.ok) {
+
+        alert("Call failed");
+        return;
+
+    }
+
+    this._state = {
+        callLogId: log.call_log_id,
+        phone: phone,
+        leadId: leadId,
+        answeredAt: null
+    };
+
+    this._showBar("Calling " + phone);
+
+    const target = log.dial_to
+        ? log.dial_to
+        : this._buildDialTarget(phone);
+
+    console.log("Dialing:", target);
+
+    const session = this._ua.call(target, {
+        mediaConstraints: { audio: true, video: false }
+    });
+
+    this._session = session;
+
+    this._attachOutboundSession(session);
+
+},
+
+endCall: function () {
+    this._manualHangup = true;
+
+    if (this._call) {
+        this._call.disconnect();
+    } else if (this._session) {
+        this._session.terminate();
+    } else if (this._incomingVoipSession) {
+        this._incomingVoipSession.terminate();
+    } else if (this._state) {
+        this._finalize("canceled");
+    }
+},
+
+_finalize: async function (status) {
+    if (this._endReported) return;
+
+    this._endReported = true;
+
+    var duration = this._state && this._state.answeredAt
+        ? Math.floor((Date.now() - this._state.answeredAt) / 1000)
+        : 0;
+
+    var logId = this._state ? this._state.callLogId : null;
+    var phone = this._state ? this._state.phone : null;
+    var endedBy = this._manualHangup ? "telecaller" : "unknown";
+
+    this._stopExotelStatusPoll();
+    this._stopTimer();
+    this._hideBar();
+
+    if (logId) {
+        await fetch("/call/end", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-TOKEN": this._csrf
+            },
+            body: JSON.stringify({
+                call_log_id: logId,
+                duration: duration,
+                final_status: status,
+                ended_by: endedBy
+            })
+        });
+    }
+
+    this._call = null;
+    this._session = null;
+    this._incomingVoipSession = null;
+    this._state = null;
+    this._endReported = false;
+    this._manualHangup = false;
+
+    document.dispatchEvent(new CustomEvent("gc:callEnded", {
+        detail: { callLogId: logId, phone: phone }
+    }));
+},
+
+_attachOutboundSession: function (session) {
+    var self = this;
+
+    session.on("progress", function () {
+        self._updateBar("Ringing " + self._state.phone + "...");
+        self._syncCallSidFromSession(session, self._state.callLogId);
+    });
+
+    session.on("accepted", function () {
+        self._syncCallSidFromSession(session, self._state.callLogId);
+        self._markAnswered(self._state.phone);
+    });
+
+    session.on("confirmed", function () {
+        self._syncCallSidFromSession(session, self._state.callLogId);
+        if (!self._state.answeredAt) {
+            self._markAnswered(self._state.phone);
+        }
+    });
+
+    session.on("ended", function () {
+        self._finalize("completed");
+    });
+
+    session.on("failed", function (e) {
+        var cause = e && e.cause ? String(e.cause).toLowerCase() : "";
+        var finalStatus = "failed";
+
+        if (cause.indexOf("busy") !== -1) {
+            finalStatus = "busy";
+        } else if (cause.indexOf("cancel") !== -1 || cause.indexOf("reject") !== -1) {
+            finalStatus = self._manualHangup ? "canceled" : "failed";
+        } else if (cause.indexOf("no answer") !== -1 || cause.indexOf("unavailable") !== -1) {
+            finalStatus = "no-answer";
+        }
+
+        self._finalize(finalStatus);
+    });
+},
+
+_incomingCall: function (session) {
+    var self = this;
+    var caller = this._extractSessionNumber(session);
+
+    this._incomingVoipSession = session;
+    this._showIncoming(caller);
+    this._registerIncomingSession(caller, this._extractSessionCallSid(session));
+
+    session.on("accepted", function () {
+        self._syncCallSidFromSession(session, self._currentIncomingCallLogId());
+    });
+
+    session.on("confirmed", function () {
+        var activeLabel = self._currentIncomingLabel();
+        var activeCallLogId = self._currentIncomingCallLogId();
+        var incomingMeta = self._currentIncomingMeta();
+
+        self._session = session;
+        self._incomingVoipSession = null;
+        self._hideIncoming();
+        self._state = {
+            callLogId: activeCallLogId,
+            phone: incomingMeta.phone || activeLabel,
+            leadId: null,
+            leadName: incomingMeta.leadName,
+            leadUrl: incomingMeta.leadUrl,
+            answeredAt: Date.now()
+        };
+
+        self._showBar(activeLabel);
+        self._startTimer(self._state.answeredAt);
+        document.dispatchEvent(new CustomEvent("gc:callAccepted"));
+    });
+
+    session.on("ended", function () {
+        var pendingCallLogId = self._currentIncomingCallLogId();
+        self._incomingVoipSession = null;
+        self._hideIncoming();
+
+        if (self._session === session) {
+            self._finalize("completed");
+        } else if (pendingCallLogId) {
+            fetch("/call/end", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": self._csrf
+                },
+                body: JSON.stringify({
+                    call_log_id: pendingCallLogId,
+                    final_status: self._manualHangup ? "canceled" : "no-answer",
+                    ended_by: self._manualHangup ? "telecaller" : "unknown",
+                    duration: 0
+                })
+            });
+        }
+    });
+
+    session.on("failed", function (e) {
+        var pendingCallLogId = self._currentIncomingCallLogId();
+        self._incomingVoipSession = null;
+        self._hideIncoming();
+
+        if (self._session === session) {
+            self._finalize("failed");
+            return;
+        }
+
+        if (pendingCallLogId) {
+            fetch("/call/end", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRF-TOKEN": self._csrf
+                },
+                body: JSON.stringify({
+                    call_log_id: pendingCallLogId,
+                    final_status: self._mapFailedCauseToStatus(e),
+                    ended_by: self._manualHangup ? "telecaller" : "unknown",
+                    duration: 0
+                })
+            });
+        }
+    });
+},
+
+_registerIncomingSession: async function (phone, callSid) {
+    try {
+        var res = await fetch("/exotel/browser-incoming", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRF-TOKEN": this._csrf,
+                "Accept": "application/json"
+            },
+            body: JSON.stringify({
+                phone: phone,
+                call_sid: callSid
+            })
+        });
+
+        if (!res.ok) return;
+
+        var data = await res.json();
+        if (!data || !data.ok) return;
+
+        this._pstnShownCallLogId = data.call_log_id;
+        this._showPstnIncoming({
+            callLogId: data.call_log_id,
+            phone: data.phone,
+            leadName: data.lead_name || null,
+            leadUrl: data.lead_url || null,
+            label: data.lead_name ? data.lead_name + " • " + data.phone : data.phone
+        });
+    } catch (e) {
+        console.error("Unable to register incoming SIP session", e);
+    }
+},
+
+_startPstnIncomingPoll: function () {
+    if (this._pstnPollInterval) return;
+
+    var self = this;
+
+    this._pstnPollInterval = setInterval(async function () {
+        try {
+            var res = await fetch("/exotel/incoming-poll");
+            var data = await res.json();
+
+            if (data.has_incoming) {
+                if (data.call_log_id === self._pstnShownCallLogId) return;
+
+                self._pstnShownCallLogId = data.call_log_id;
+                self._showPstnIncoming({
+                    callLogId: data.call_log_id,
+                    phone: data.phone,
+                    leadName: data.lead_name || null,
+                    leadUrl: data.lead_url || null,
+                    label: data.lead_name ? data.lead_name + " • " + data.phone : data.phone
+                });
+            } else if (self._pstnShownCallLogId && !self._incomingVoipSession) {
+                self._pstnShownCallLogId = null;
+                self._hidePstnIncoming();
+            }
+        } catch (e) {
+            // ignore transient errors
+        }
+    }, 5000);
+},
+
+_showPstnIncoming: function (payload) {
+    var el = document.getElementById("gcIncomingBar");
+    var ph = document.getElementById("gcIncomingPhone");
+    var callLogId = payload && payload.callLogId ? payload.callLogId : "";
+    var label = payload && payload.label ? payload.label : "";
+
+    if (ph) ph.textContent = label;
+
+    if (el) {
+        el.setAttribute("data-call-log-id", callLogId || "");
+        el.setAttribute("data-lead-name", payload && payload.leadName ? payload.leadName : "");
+        el.setAttribute("data-lead-url", payload && payload.leadUrl ? payload.leadUrl : "");
+        el.setAttribute("data-phone", payload && payload.phone ? payload.phone : "");
+        el.style.display = "flex";
+    }
+
+    this._setIncomingLeadLink(payload && payload.leadUrl ? payload.leadUrl : null);
+
+    document.dispatchEvent(new CustomEvent("gc:incomingCall", {
+        detail: {
+            callLogId: callLogId || null,
+            phone: payload && payload.phone ? payload.phone : null,
+            leadName: payload && payload.leadName ? payload.leadName : null,
+            leadUrl: payload && payload.leadUrl ? payload.leadUrl : null
+        }
+    }));
+},
+
+_hidePstnIncoming: function () {
+    var el = document.getElementById("gcIncomingBar");
+    if (el) el.style.display = "none";
+    this._setIncomingLeadLink(null);
+},
+
+_setupPstnIncomingBtns: function () {
+    if (this._pstnIncomingBtnBound) return;
+
+    var answerBtn = document.getElementById("gcIncomingAnswerBtn");
+    var rejectBtn = document.getElementById("gcIncomingRejectBtn");
+
+    if (!answerBtn && !rejectBtn) return;
+
+    this._pstnIncomingBtnBound = true;
+
+    var self = this;
+
+    if (answerBtn) {
+        answerBtn.addEventListener("click", function () {
+            if (self._incomingVoipSession) {
+                self._incomingVoipSession.answer({
+                    mediaConstraints: { audio: true, video: false }
+                });
+                return;
+            }
+
+            self._pstnShownCallLogId = null;
+            self._hidePstnIncoming();
+        });
+    }
+
+    if (rejectBtn) {
+        rejectBtn.addEventListener("click", function () {
+            if (self._incomingVoipSession) {
+                self._incomingVoipSession.terminate();
+                self._incomingVoipSession = null;
+            }
+
+            self._pstnShownCallLogId = null;
+            self._hidePstnIncoming();
+        });
+    }
+},
+
+_setupNavIntercept: function () {
+    if (this._navInterceptBound) return;
+
+    this._navInterceptBound = true;
+
+    var self = this;
+
+    document.addEventListener("click", function (e) {
+        if (!self.isActive()) return;
+
+        var link = e.target.closest("a[href]");
+        if (!link) return;
+
+        var href = link.getAttribute("href");
+        if (!href || href === "#" || href.startsWith("javascript:")) return;
+
+        e.preventDefault();
+        self._pendingUrl = href;
+
+        var modal = document.getElementById("gcNavWarningModal");
+        if (modal && typeof bootstrap !== "undefined") {
+            new bootstrap.Modal(modal).show();
+        }
+    });
+
+    var proceedBtn = document.getElementById("gcNavProceedBtn");
+    if (proceedBtn) {
+        proceedBtn.addEventListener("click", function () {
+            var url = GC._pendingUrl;
+            GC._pendingUrl = null;
+            GC.endCall();
+            setTimeout(function () {
+                window.location.href = url;
+            }, 300);
+        });
+    }
+},
+
+_setupBarEndBtn: function () {
+    if (this._barEndBtnBound) return;
+
+    var endBtn = document.getElementById("gcBarEndBtn");
+    if (!endBtn) return;
+
+    this._barEndBtnBound = true;
+    endBtn.addEventListener("click", function () {
+        GC.endCall();
+    });
+},
+
+_normalize: function (phone) {
+    if (!phone) return phone;
+
+    var d = String(phone).replace(/\D/g, "");
+
+    if (d.length === 10) return "91" + d;
+    if (d.length === 11 && d.startsWith("0")) return "91" + d.substring(1);
+    if (d.startsWith("91")) return d;
+
+    return d;
+},
+
+_sanitizeProxyHost: function (proxy) {
+    var host = String(proxy || "voip.in1.exotel.com").trim();
+    host = host.replace(/^wss?:\/\//i, "");
+    host = host.replace(/\/+$/, "");
+    host = host.replace(/:443$/, "");
+    return host || "voip.in1.exotel.com";
+},
+
+// _buildDialTarget: function (phone) {
+//     var normalized = this._normalize(phone);
+//     var domain = this._voipConfig && this._voipConfig.domain ? this._voipConfig.domain : "";
+//     return "sip:" + normalized + "@" + domain;
+// },
+_buildDialTarget: function () {
+
+    return "sip:11913@insighthcm5m.voip.exotel.com";
+
+},
+
+_extractSessionNumber: function (session) {
+    try {
+        var user = session && session.remote_identity && session.remote_identity.uri
+            ? session.remote_identity.uri.user
+            : "";
+
+        if (!user) return "Incoming call";
+
+        return this._normalize(user) || user;
+    } catch (e) {
+        return "Incoming call";
+    }
+},
+
+_extractSessionCallSid: function (session) {
+    try {
+        return session && session.request && session.request.call_id
+            ? session.request.call_id
+            : null;
+    } catch (e) {
+        return null;
+    }
+},
+
+_syncCallSidFromSession: function (session, callLogId) {
+    var callSid = this._extractSessionCallSid(session);
+    if (!callSid || !callLogId) return;
+
+    fetch("/call/update-sid", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": this._csrf
+        },
+        body: JSON.stringify({
+            call_log_id: callLogId,
+            call_sid: callSid
+        })
+    });
+},
+
+_mapFailedCauseToStatus: function (event) {
+    var cause = event && event.cause ? String(event.cause).toLowerCase() : "";
+
+    if (cause.indexOf("busy") !== -1) return "busy";
+    if (cause.indexOf("no answer") !== -1 || cause.indexOf("unavailable") !== -1) return "no-answer";
+    if (cause.indexOf("cancel") !== -1 || cause.indexOf("reject") !== -1) return this._manualHangup ? "canceled" : "failed";
+
+    return "failed";
+},
+
+_markAnswered: function (label) {
+    if (!this._state) return;
+    if (!this._state.answeredAt) {
+        this._state.answeredAt = Date.now();
+    }
+    this._updateBar(label);
+    this._startTimer(this._state.answeredAt);
+    document.dispatchEvent(new CustomEvent("gc:callAccepted"));
+},
+
+_currentIncomingLabel: function () {
+    var ph = document.getElementById("gcIncomingPhone");
+    return ph && ph.textContent ? ph.textContent : "Incoming call";
+},
+
+_currentIncomingCallLogId: function () {
+    var el = document.getElementById("gcIncomingBar");
+    var raw = el ? el.getAttribute("data-call-log-id") : null;
+    return raw ? parseInt(raw, 10) : null;
+},
+
+_currentIncomingMeta: function () {
+    var el = document.getElementById("gcIncomingBar");
+    return {
+        leadName: el ? (el.getAttribute("data-lead-name") || null) : null,
+        leadUrl: el ? (el.getAttribute("data-lead-url") || null) : null,
+        phone: el ? (el.getAttribute("data-phone") || null) : null
+    };
+},
+
+_showBar: function (text) {
+    var el = document.getElementById("gcCallBar");
+    var ph = document.getElementById("gcCallPhone");
+
+    if (ph) ph.textContent = text;
+    this._setCallLeadLink(this._state && this._state.leadUrl ? this._state.leadUrl : null);
+    if (el) el.style.display = "flex";
+},
+
+_updateBar: function (text) {
+    var ph = document.getElementById("gcCallPhone");
+    if (ph) ph.textContent = text;
+},
+
+_hideBar: function () {
+    var el = document.getElementById("gcCallBar");
+    if (el) el.style.display = "none";
+    this._setCallLeadLink(null);
+},
+
+_showIncoming: function (phone) {
+    var el = document.getElementById("gcIncomingBar");
+    var ph = document.getElementById("gcIncomingPhone");
+
+    if (ph) ph.textContent = phone;
+    this._setIncomingLeadLink(this._currentIncomingMeta().leadUrl);
+    if (el) el.style.display = "flex";
+},
+
+_hideIncoming: function () {
+    var el = document.getElementById("gcIncomingBar");
+
+    if (el) {
+        el.style.display = "none";
+        el.removeAttribute("data-call-log-id");
+        el.removeAttribute("data-lead-name");
+        el.removeAttribute("data-lead-url");
+        el.removeAttribute("data-phone");
+    }
+
+    this._setIncomingLeadLink(null);
+},
+
+_setCallLeadLink: function (url) {
+    var link = document.getElementById("gcCallLeadLink");
+    if (!link) return;
+
+    if (url) {
+        link.href = url;
+        link.style.display = "inline-block";
+    } else {
+        link.removeAttribute("href");
+        link.style.display = "none";
+    }
+},
+
+_setIncomingLeadLink: function (url) {
+    var link = document.getElementById("gcIncomingLeadLink");
+    if (!link) return;
+
+    if (url) {
+        link.href = url;
+        link.style.display = "inline-block";
+    } else {
+        link.removeAttribute("href");
+        link.style.display = "none";
+    }
+},
+
+_startTimer: function (start) {
+    this._stopTimer();
+
+    var el = document.getElementById("gcCallTimer");
+
+    this._timerInterval = setInterval(function () {
+        var sec = Math.floor((Date.now() - start) / 1000);
+        var m = Math.floor(sec / 60);
+        var s = sec % 60;
+
+        if (el) el.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+    }, 1000);
+},
+
+_stopTimer: function () {
+    clearInterval(this._timerInterval);
+    this._timerInterval = null;
+
+    var el = document.getElementById("gcCallTimer");
+    if (el) el.textContent = "0:00";
+},
+
+_startExotelStatusPoll: function () {
+    var self = this;
+
+    this._pollInterval = setInterval(async function () {
+        if (!self._state) {
+            self._stopExotelStatusPoll();
+            return;
+        }
+
+        try {
+            var res = await fetch("/exotel/status/" + self._state.callLogId);
+            var data = await res.json();
+
+            if (data.status === "in-progress" || data.status === "answered") {
+                self._stopExotelStatusPoll();
+                self._state.answeredAt = data.answered_at
+                    ? new Date(data.answered_at).getTime()
+                    : Date.now();
+                self._updateBar(self._state.phone);
+                self._startTimer(self._state.answeredAt);
+                document.dispatchEvent(new CustomEvent("gc:callAccepted"));
+                return;
+            }
+
+            if (["completed", "no-answer", "failed", "busy", "canceled", "missed"].indexOf(data.status) !== -1) {
+                self._stopExotelStatusPoll();
+                if (!self._endReported) {
+                    self._finalize(data.status === "missed" ? "no-answer" : data.status);
+                }
+            }
+        } catch (e) {
+            // ignore transient errors
+        }
+    }, 3000);
+},
+
+_stopExotelStatusPoll: function () {
+    clearInterval(this._pollInterval);
+    this._pollInterval = null;
+}
+
+};
+
+var metaCsrf = document.querySelector('meta[name="csrf-token"]');
+if (metaCsrf) {
+    GC._csrf = metaCsrf.getAttribute("content");
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    GC.initDevice();
+});
+
+window.GC = GC;
+
 })();
