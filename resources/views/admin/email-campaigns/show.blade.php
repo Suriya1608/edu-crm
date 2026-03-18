@@ -29,8 +29,8 @@
         </div>
     @endif
 
-    {{-- Stats --}}
-    <div class="row g-3 mb-4">
+    {{-- Delivery stats --}}
+    <div class="row g-3 mb-3">
         <div class="col-6 col-md-2">
             <div class="stat-card">
                 <div class="stat-icon blue"><span class="material-icons">people</span></div>
@@ -54,51 +54,107 @@
         </div>
         <div class="col-6 col-md-2">
             <div class="stat-card">
-                <div class="stat-icon red"><span class="material-icons">error_outline</span></div>
+                <div class="stat-icon purple"><span class="material-icons">ads_click</span></div>
+                <div class="stat-label">Clicked</div>
+                <div class="stat-value">{{ number_format($campaign->click_count) }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="stat-card">
+                <div class="stat-icon red"><span class="material-icons">block</span></div>
+                <div class="stat-label">Bounced</div>
+                <div class="stat-value">{{ number_format($campaign->bounced_count) }}</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="stat-card">
+                <div class="stat-icon red"><span class="material-icons">cancel</span></div>
                 <div class="stat-label">Failed</div>
                 <div class="stat-value">{{ number_format($campaign->failed_count) }}</div>
             </div>
         </div>
-        <div class="col-6 col-md-2">
+    </div>
+
+    {{-- Rate stats --}}
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
             <div class="stat-card highlight-success">
                 <div class="stat-icon green"><span class="material-icons">local_post_office</span></div>
                 <div class="stat-label">Delivery Rate</div>
                 <div class="stat-value">{{ $campaign->delivery_rate }}%</div>
             </div>
         </div>
-        <div class="col-6 col-md-2">
+        <div class="col-6 col-md-3">
             <div class="stat-card">
                 <div class="stat-icon blue"><span class="material-icons">drafts</span></div>
                 <div class="stat-label">Open Rate</div>
                 <div class="stat-value">{{ $campaign->open_rate }}%</div>
             </div>
         </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon purple"><span class="material-icons">touch_app</span></div>
+                <div class="stat-label">Click Rate</div>
+                <div class="stat-value">{{ $campaign->click_rate }}%</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon red"><span class="material-icons">warning_amber</span></div>
+                <div class="stat-label">Bounce Rate</div>
+                <div class="stat-value">{{ $campaign->bounce_rate }}%</div>
+            </div>
+        </div>
     </div>
 
     {{-- Progress bars --}}
     <div class="row g-3 mb-4">
-        <div class="col-md-6">
+        <div class="col-md-3">
             <div class="chart-card">
                 <div class="d-flex justify-content-between mb-1" style="font-size:13px;">
-                    <span class="fw-semibold">Delivery Rate</span>
-                    <span>{{ $campaign->sent_count }} / {{ $campaign->recipients_count }}</span>
+                    <span class="fw-semibold">Delivery</span>
+                    <span>{{ $campaign->sent_count }}/{{ $campaign->recipients_count }}</span>
                 </div>
-                <div class="progress" style="height:8px;">
+                <div class="progress" style="height:6px;">
                     <div class="progress-bar bg-success" style="width:{{ $campaign->delivery_rate }}%"></div>
                 </div>
-                <div class="text-muted mt-1" style="font-size:12px;">{{ $campaign->delivery_rate }}% delivered</div>
+                <div class="text-muted mt-1" style="font-size:11px;">{{ $campaign->delivery_rate }}% delivered</div>
             </div>
         </div>
-        <div class="col-md-6">
+        <div class="col-md-3">
             <div class="chart-card">
                 <div class="d-flex justify-content-between mb-1" style="font-size:13px;">
-                    <span class="fw-semibold">Open Rate</span>
-                    <span>{{ $campaign->opened_count }} / {{ $campaign->sent_count }}</span>
+                    <span class="fw-semibold">Opens</span>
+                    <span>{{ $campaign->opened_count }}/{{ $campaign->sent_count }}</span>
                 </div>
-                <div class="progress" style="height:8px;">
+                <div class="progress" style="height:6px;">
                     <div class="progress-bar bg-primary" style="width:{{ $campaign->open_rate }}%"></div>
                 </div>
-                <div class="text-muted mt-1" style="font-size:12px;">{{ $campaign->open_rate }}% opened</div>
+                <div class="text-muted mt-1" style="font-size:11px;">{{ $campaign->open_rate }}% open rate</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="chart-card">
+                <div class="d-flex justify-content-between mb-1" style="font-size:13px;">
+                    <span class="fw-semibold">Clicks</span>
+                    <span>{{ $campaign->click_count }}/{{ $campaign->sent_count }}</span>
+                </div>
+                <div class="progress" style="height:6px;">
+                    <div class="progress-bar" style="width:{{ $campaign->click_rate }}%;background:#8b5cf6;"></div>
+                </div>
+                <div class="text-muted mt-1" style="font-size:11px;">{{ $campaign->click_rate }}% click rate</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="chart-card">
+                <div class="d-flex justify-content-between mb-1" style="font-size:13px;">
+                    <span class="fw-semibold">Bounces</span>
+                    <span>{{ $campaign->bounced_count }}/{{ $campaign->sent_count }}</span>
+                </div>
+                <div class="progress" style="height:6px;">
+                    <div class="progress-bar bg-danger" style="width:{{ $campaign->bounce_rate }}%"></div>
+                </div>
+                <div class="text-muted mt-1" style="font-size:11px;">{{ $campaign->bounce_rate }}% bounce rate</div>
             </div>
         </div>
     </div>

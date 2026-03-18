@@ -25,7 +25,7 @@ class SecurityHeaders
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
 
         // Restrict browser features
-        $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+        $response->headers->set('Permissions-Policy', 'camera=(), microphone=(self), geolocation=(), payment=(), usb=()');
 
         // HSTS — only sent over HTTPS
         if ($request->secure()) {
@@ -44,7 +44,7 @@ class SecurityHeaders
             "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com",
             "font-src 'self' fonts.gstatic.com fonts.googleapis.com cdnjs.cloudflare.com data:",
             "img-src 'self' data: blob: https://placehold.co https://cdn-icons-png.flaticon.com",
-            "connect-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com fonts.gstatic.com",
+            "connect-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com fonts.gstatic.com wss:",
             "frame-src 'self' blob:",
             "frame-ancestors 'self'",
             "base-uri 'self'",

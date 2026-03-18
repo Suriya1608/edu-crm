@@ -27,21 +27,6 @@
                         value="{{ \App\Models\Setting::get('site_url') }}" required>
                 </div>
 
-                <!-- Telephony Provider -->
-                <div class="col-md-6">
-                    <label class="form-label fw-semibold">Telephony Provider *</label>
-                    <select name="telephony_provider" class="form-select" required>
-                        <option value="twilio"
-                            {{ \App\Models\Setting::get('telephony_provider') == 'twilio' ? 'selected' : '' }}>
-                            Twilio
-                        </option>
-                        <option value="exotel"
-                            {{ \App\Models\Setting::get('telephony_provider') == 'exotel' ? 'selected' : '' }}>
-                            Exotel
-                        </option>
-                    </select>
-                </div>
-
                 <!-- Site Logo -->
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Site Logo</label>

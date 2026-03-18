@@ -363,7 +363,7 @@ class CampaignController extends Controller
         $contactMessages = WhatsAppMessage::where('campaign_contact_id', $contact->id)
             ->latest()->limit(50)->get()->reverse()->values();
 
-        $provider    = Setting::get('call_provider', 'twilio');
+        $provider    = Setting::get('primary_call_provider', 'twilio');
         $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
 
         return view('manager.campaigns.contact', compact('campaign', 'contact', 'activities', 'contactMessages', 'provider', 'telecallers'));

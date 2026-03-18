@@ -1,6 +1,6 @@
 {{-- Email Preview Modal --}}
 <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:760px;">
+    <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:740px;">
         <div class="modal-content" style="border-radius:12px;overflow:hidden;border:0;box-shadow:0 20px 60px rgba(0,0,0,.18);">
             <div class="modal-header" style="background:#0f172a;border:0;padding:14px 20px;">
                 <div class="d-flex align-items-center gap-3">
@@ -32,11 +32,11 @@
                     </button>
                 </div>
                 {{-- Iframe container --}}
-                <div id="previewIframeWrap" style="overflow:auto;max-height:72vh;padding:16px;display:flex;justify-content:center;">
+                <div id="previewIframeWrap" style="overflow:auto;max-height:78vh;padding:16px;display:flex;justify-content:center;background:#e8ecf0;">
                     <iframe id="previewIframe"
-                        style="width:100%;max-width:700px;height:600px;border:0;border-radius:8px;box-shadow:0 2px 16px rgba(0,0,0,.12);background:#fff;transition:max-width .3s;"
+                        style="width:100%;max-width:680px;height:680px;border:0;border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.15);background:#f6f7f8;transition:max-width .3s,height .3s;"
                         title="Email Preview"
-                        srcdoc="<html><body style='font-family:Arial,sans-serif;color:#94a3b8;text-align:center;padding:60px 20px;'>Loading preview…</body></html>">
+                        srcdoc="<html><body style='font-family:Arial,sans-serif;color:#94a3b8;text-align:center;padding:60px 20px;background:#f6f7f8;'>Loading preview…</body></html>">
                     </iframe>
                 </div>
             </div>
@@ -52,14 +52,14 @@ function switchPreview(mode) {
 
     if (mode === 'mobile') {
         iframe.style.maxWidth  = '390px';
-        iframe.style.height    = '680px';
+        iframe.style.height    = '760px';
         mobileBtn.style.background  = '#334155';
         mobileBtn.style.color       = '#e2e8f0';
         desktopBtn.style.background = 'transparent';
         desktopBtn.style.color      = '#94a3b8';
     } else {
-        iframe.style.maxWidth  = '700px';
-        iframe.style.height    = '600px';
+        iframe.style.maxWidth  = '680px';
+        iframe.style.height    = '680px';
         desktopBtn.style.background = '#334155';
         desktopBtn.style.color      = '#e2e8f0';
         mobileBtn.style.background  = 'transparent';

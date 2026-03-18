@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\EmailCampaignRecipient;
+use App\Models\EmailClick;
 
 class EmailTrackingController extends Controller
 {
@@ -44,6 +45,41 @@ class EmailTrackingController extends Controller
         }
 
         return $this->pixelResponse();
+    }
+
+    /**
+     * Track link click, then redirect to the original URL.
+     */
+    public function click(string $token)
+    {
+        $click = EmailClick::where('tracking_token', $token)->first();
+
+        if ($click) {
+            $isFirst = is_null($click->clicked_at);
+
+            $click->increment('click_count');
+            $click->update([
+                'clicked_at' => $click->clicked_at ?? now(),
+                'ip_address' => request()->ip(),
+            ]);
+
+            // Increment campaign click_count once per unique recipient
+            if ($isFirst) {
+                $alreadyClicked = EmailClick::where('email_campaign_id', $click->email_campaign_id)
+                    ->where('recipient_id', $click->recipient_id)
+                    ->where('id', '!=', $click->id)
+                    ->whereNotNull('clicked_at')
+                    ->exists();
+
+                if (!$alreadyClicked) {
+                    $click->campaign()->increment('click_count');
+                }
+            }
+
+            return redirect()->away($click->url);
+        }
+
+        return redirect(config('app.url'));
     }
 
     // Return 1×1 transparent GIF

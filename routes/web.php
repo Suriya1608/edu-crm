@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\Settings\FacebookLeadsSettingController;
 use App\Http\Controllers\Admin\Settings\LeadPortalsSettingController;
 use App\Http\Controllers\Admin\PageSettingsController;
 use App\Http\Controllers\CallController;
+use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\TelecallerStatusController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\Manager\CampaignController as ManagerCampaignController;
@@ -48,6 +49,7 @@ use App\Http\Controllers\Admin\EmailCampaignController as AdminEmailCampaignCont
 use App\Http\Controllers\Admin\CourseController as AdminCourseController;
 use App\Http\Controllers\Manager\EmailCampaignController as ManagerEmailCampaignController;
 use App\Http\Controllers\EmailTrackingController;
+use App\Http\Controllers\EmailWebhookController;
 use App\Http\Controllers\InstagramController;
 Route::get('/', function () {
     return view('auth.login');
@@ -182,6 +184,9 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::get('/whatsapp', [SystemSettingsController::class, 'whatsapp'])->name('whatsapp');
             Route::post('/whatsapp', [SystemSettingsController::class, 'updateWhatsapp'])->name('whatsapp.update');
 
+            Route::get('/call', [SystemSettingsController::class, 'callSettings'])->name('call');
+            Route::post('/call', [SystemSettingsController::class, 'updateCallSettings'])->name('call.update');
+
             Route::get('/twilio', [SystemSettingsController::class, 'twilio'])->name('twilio');
             Route::post('/twilio', [SystemSettingsController::class, 'updateTwilio'])->name('twilio.update');
 
@@ -214,6 +219,9 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
 
             Route::get('/instagram', [SystemSettingsController::class, 'instagram'])->name('instagram');
             Route::post('/instagram', [SystemSettingsController::class, 'updateInstagram'])->name('instagram.update');
+
+            Route::get('/voip', [SystemSettingsController::class, 'voipSettings'])->name('voip');
+            Route::post('/voip', [SystemSettingsController::class, 'updateVoipSettings'])->name('voip.update');
         });
 
         Route::get('/settings', fn() => redirect()->route('admin.settings.general'))->name('settings');
@@ -229,6 +237,7 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::get('/create', [EmailTemplateController::class, 'create'])->name('create');
             Route::post('/', [EmailTemplateController::class, 'store'])->name('store');
             Route::post('/upload-image', [EmailTemplateController::class, 'uploadImage'])->name('upload-image');
+            Route::post('/send-test', [EmailTemplateController::class, 'sendTest'])->name('send-test');
             Route::get('/{emailTemplate}/edit', [EmailTemplateController::class, 'edit'])->name('edit');
             Route::put('/{emailTemplate}', [EmailTemplateController::class, 'update'])->name('update');
             Route::patch('/{emailTemplate}/toggle-status', [EmailTemplateController::class, 'toggleStatus'])->name('toggle-status');
@@ -551,6 +560,12 @@ Route::middleware(['auth'])->group(function () {
 
     Route::delete('/profile', [ProfileController::class, 'destroy'])
         ->name('profile.destroy');
+
+    // Change Password (all roles)
+    Route::get('/change-password', [ChangePasswordController::class, 'show'])
+        ->name('password.change');
+    Route::post('/change-password', [ChangePasswordController::class, 'update'])
+        ->name('password.change.update');
 });
 
 // ── Email open tracking (public, no auth) ─────────────────────────────────
@@ -561,6 +576,15 @@ Route::get('/email/open/{campaignId}/{recipientId}', [EmailTrackingController::c
 // Legacy token route — kept for emails sent before the route change
 Route::get('/email/track/{token}', [EmailTrackingController::class, 'track'])
     ->name('email.track');
+
+// ── Email click tracking (public, no auth) ────────────────────────────────
+Route::get('/email/click/{token}', [EmailTrackingController::class, 'click'])
+    ->name('email.click');
+
+// ── Email bounce webhook (public, no auth, CSRF exempt — see VerifyCsrfToken) ──
+Route::post('/email/webhook/bounce', [EmailWebhookController::class, 'bounce'])
+    ->name('email.webhook.bounce')
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class]);
 
 Route::post('/lead-capture', [LeadCaptureController::class, 'store']);
 
@@ -601,11 +625,10 @@ Route::match(['get', 'post'], '/webhooks/meta/facebook', [SocialMediaController:
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
     ->name('meta.facebook.webhook');
 
-Route::post('/exotel/connect', function (Request $request) {
-    return response('<Response>
-        <Dial>' . $request->lead . '</Dial>
-    </Response>', 200)->header('Content-Type', 'text/xml');
-})->name('exotel.connect.callback');
+// Exotel Passthru App callback — routes incoming calls to the correct telecaller
+Route::post('/exotel/incoming', [ExotelController::class, 'incomingConnect'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+    ->name('exotel.incoming');
 
 Route::post('/manager/exotel-call', [ManagerLeadController::class, 'makeCall'])
     ->name('manager.exotel.call')
@@ -613,6 +636,39 @@ Route::post('/manager/exotel-call', [ManagerLeadController::class, 'makeCall'])
 
 Route::post('/exotel/token', [ExotelController::class, 'generateToken'])
     ->name('exotel.token');
+
+// ── Exotel call endpoints (authenticated) ─────────────────────────────────────
+Route::middleware('auth')->group(function () {
+    // PSTN click-to-call (kept for backward compat, VOIP preferred)
+    Route::post('/exotel/call', [ExotelController::class, 'call'])
+        ->name('exotel.call');
+
+    // JS polls call status while Exotel PSTN call is active
+    Route::get('/exotel/status/{callLogId}', [ExotelController::class, 'status'])
+        ->whereNumber('callLogId')
+        ->name('exotel.status');
+
+    // VOIP credentials for JsSIP client
+    Route::get('/settings/voip', [ExotelController::class, 'voipConfig'])
+        ->name('settings.voip');
+
+    // Telecaller browser polls for pending inbound calls (PSTN mode)
+    Route::get('/exotel/incoming-poll', [ExotelController::class, 'incomingPoll'])
+        ->name('exotel.incoming-poll');
+
+    // VOIP outbound: browser dials via JsSIP; server only creates the log row
+    Route::post('/exotel/voip-call', [ExotelController::class, 'voipCall'])
+        ->name('exotel.voip-call');
+
+    // Browser-side SIP incoming session -> create/update CRM inbound call log
+    Route::post('/exotel/browser-incoming', [ExotelController::class, 'registerBrowserIncoming'])
+        ->name('exotel.browser-incoming');
+});
+
+// ── Exotel status webhook (public, no CSRF) ───────────────────────────────────
+Route::post('/exotel/webhook', [ExotelController::class, 'webhook'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class])
+    ->name('exotel.webhook');
 
 
 // Route::post(
