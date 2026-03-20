@@ -74,9 +74,35 @@ class ExotelController extends Controller
             'ok'          => true,
             'call_log_id' => $callLog->id,
             'status'      => 'initiated',
-            // 'dial_to'     => 'sip:' . $phone . '@' . $voipDomain,
-            'dial_to' => 'sip:11913@' . $voipDomain,
+            'dial_to'     => 'sip:' . $phone . '@' . $voipDomain,
+            // 'dial_to' => 'sip:11913@' . $voipDomain,
         ]);
+    }
+    public function outgoing(Request $request)
+    {
+        Log::info('[Exotel Outgoing]', $request->all());
+
+        $phone = $request->input('To') ?? $request->input('phone');
+
+        if (!$phone) {
+            return response('<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Hangup/>
+</Response>', 200)->header('Content-Type', 'text/xml');
+        }
+
+        $phone = preg_replace('/\D/', '', $phone);
+
+        if (strlen($phone) == 10) {
+            $phone = '91' . $phone;
+        }
+
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Dial>' . $phone . '</Dial>
+</Response>';
+
+        return response($xml, 200)->header('Content-Type', 'text/xml');
     }
 
     public function registerBrowserIncoming(Request $request)
@@ -134,23 +160,23 @@ class ExotelController extends Controller
         Log::info('[Exotel Webhook]', $request->all());
 
         $callSid      = (string) ($request->input('CallSid')
-                        ?? $request->input('call_sid')
-                        ?? $request->input('Sid')
-                        ?? $request->input('sid')
-                        ?? '');
+            ?? $request->input('call_sid')
+            ?? $request->input('Sid')
+            ?? $request->input('sid')
+            ?? '');
         $status       = strtolower((string) ($request->input('Status')
-                        ?? $request->input('status')
-                        ?? $request->input('CallStatus')
-                        ?? ''));
+            ?? $request->input('status')
+            ?? $request->input('CallStatus')
+            ?? ''));
         $duration     = $request->input('Duration', $request->input('duration', $request->input('CallDuration')));
         $recordingUrl = $request->input('RecordingUrl') ?? $request->input('recording_url');
 
         $call = $callSid !== ''
             ? CallLog::query()
-                ->where('provider', 'exotel')
-                ->where('call_sid', $callSid)
-                ->latest('id')
-                ->first()
+            ->where('provider', 'exotel')
+            ->where('call_sid', $callSid)
+            ->latest('id')
+            ->first()
             : null;
 
         if (!$call) {
@@ -333,7 +359,7 @@ class ExotelController extends Controller
         return Lead::query()
             ->latest('id')
             ->get()
-            ->first(fn (Lead $lead) => $this->comparablePhone((string) $lead->phone) === $needle);
+            ->first(fn(Lead $lead) => $this->comparablePhone((string) $lead->phone) === $needle);
     }
 
     private function resolveInboundTelecaller(?Lead $lead): ?User
