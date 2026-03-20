@@ -696,9 +696,12 @@ _sanitizeProxyHost: function (proxy) {
 //     var domain = this._voipConfig && this._voipConfig.domain ? this._voipConfig.domain : "";
 //     return "sip:" + normalized + "@" + domain;
 // },
-_buildDialTarget: function () {
+_buildDialTarget: function (phone) {
 
-    return "sip:11913@insighthcm5m.voip.exotel.com";
+    var normalized = this._normalize(phone);
+    var domain = this._voipConfig.domain;
+
+    return "sip:" + normalized + "@" + domain;
 
 },
 
