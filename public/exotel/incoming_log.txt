@@ -255,3 +255,87 @@ SIP Target: sip:jayasurr9179f2a0@insighthcm5m.voip.exotel.com
     "raw_body": ""
 }
 SIP Target: sip:jayasurr9179f2a0@insighthcm5m.voip.exotel.com
+------------------------------------------------------------
+{
+    "timestamp": "2026-03-20 12:17:32",
+    "method": "GET",
+    "remote_ip": "127.0.0.1",
+    "user_agent": "",
+    "query": {
+        "CallSid": "203cdfda384ac0a51caad3031b161a3k",
+        "CallFrom": "06383702482",
+        "CallTo": "04469173757",
+        "CallStatus": "ringing",
+        "Direction": "incoming",
+        "Created": "Fri, 20 Mar 2026 17:47:31",
+        "DialCallDuration": "0",
+        "StartTime": "2026-03-20 17:47:31",
+        "EndTime": "1970-01-01 05:30:00",
+        "CallType": "call-attempt",
+        "DialWhomNumber": "",
+        "flow_id": "39173",
+        "tenant_id": "3745",
+        "From": "06383702482",
+        "To": "04469173757",
+        "CurrentTime": "2026-03-20 17:47:31"
+    },
+    "body": [],
+    "raw_body": ""
+}
+SIP Target: sip:jayasurr9179f2a0@insighthcm5m.voip.exotel.com
+------------------------------------------------------------
+{
+    "timestamp": "2026-03-20 12:19:49",
+    "method": "GET",
+    "remote_ip": "127.0.0.1",
+    "user_agent": "",
+    "query": {
+        "CallSid": "b9605dee3b3f41ec0b401308b9081a3k",
+        "CallFrom": "06383702482",
+        "CallTo": "04469173757",
+        "CallStatus": "ringing",
+        "Direction": "incoming",
+        "Created": "Fri, 20 Mar 2026 17:49:47",
+        "DialCallDuration": "0",
+        "StartTime": "2026-03-20 17:49:47",
+        "EndTime": "1970-01-01 05:30:00",
+        "CallType": "call-attempt",
+        "DialWhomNumber": "",
+        "flow_id": "39173",
+        "tenant_id": "3745",
+        "From": "06383702482",
+        "To": "04469173757",
+        "CurrentTime": "2026-03-20 17:49:48"
+    },
+    "body": [],
+    "raw_body": ""
+}
+SIP Target: sip:jayasurr9179f2a0@insighthcm5m.voip.exotel.com
+------------------------------------------------------------
+{
+    "timestamp": "2026-03-20 12:21:43",
+    "method": "GET",
+    "remote_ip": "127.0.0.1",
+    "user_agent": "",
+    "query": {
+        "CallSid": "0172deb156b7d0a31e00fb97b5e51a3k",
+        "CallFrom": "06383702482",
+        "CallTo": "04469173757",
+        "CallStatus": "ringing",
+        "Direction": "incoming",
+        "Created": "Fri, 20 Mar 2026 17:51:42",
+        "DialCallDuration": "0",
+        "StartTime": "2026-03-20 17:51:42",
+        "EndTime": "1970-01-01 05:30:00",
+        "CallType": "call-attempt",
+        "DialWhomNumber": "",
+        "flow_id": "39173",
+        "tenant_id": "3745",
+        "From": "06383702482",
+        "To": "04469173757",
+        "CurrentTime": "2026-03-20 17:51:42"
+    },
+    "body": [],
+    "raw_body": ""
+}
+SIP Target: sip:jayasurr9179f2a0@insighthcm5m.voip.exotel.com
