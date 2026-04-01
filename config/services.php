@@ -39,7 +39,8 @@ return [
         'whatsapp_token'            => env('META_WHATSAPP_TOKEN', ''),
         'whatsapp_phone_id'         => env('META_WHATSAPP_PHONE_NUMBER_ID', ''),
         'whatsapp_verify_token'     => env('META_WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'crm_verify_token'),
-        'whatsapp_default_template' => env('META_WHATSAPP_DEFAULT_TEMPLATE', 'hello_world'),
+        'whatsapp_default_template'          => env('META_WHATSAPP_DEFAULT_TEMPLATE', 'hello_world'),
+        'whatsapp_default_template_language' => env('META_WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE', 'en'),
     ],
 
 ];

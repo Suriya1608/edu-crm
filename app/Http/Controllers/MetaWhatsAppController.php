@@ -11,6 +11,8 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
 use App\Notifications\WhatsAppInboundNotification;
+use App\Services\WhatsAppService;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -28,8 +30,12 @@ class MetaWhatsAppController extends Controller
     {
         $request->validate(['message' => 'required|string|max:4096']);
 
-        $leadId = decrypt($encryptedId);
-        $lead   = Lead::findOrFail($leadId);
+        try {
+            $leadId = decrypt($encryptedId);
+        } catch (DecryptException) {
+            abort(404);
+        }
+        $lead = Lead::findOrFail($leadId);
 
         if (Auth::check() && Auth::user()->role === 'telecaller'
             && (int) $lead->assigned_to !== (int) Auth::id()) {
@@ -43,6 +49,138 @@ class MetaWhatsAppController extends Controller
     }
 
     // ──────────────────────────────────────────────
+    //  Send an approved WhatsApp template to a lead
+    //  POST /manager/leads/{encryptedId}/whatsapp/template
+    //  POST /telecaller/leads/{encryptedId}/whatsapp/template
+    // ──────────────────────────────────────────────
+    public function sendLeadTemplate(Request $request, string $encryptedId)
+    {
+        $request->validate([
+            'template_name' => 'required|string|max:100',
+            'params'        => 'nullable|array',
+            'params.*'      => 'nullable|string|max:255',
+            'display_body'  => 'nullable|string|max:1024',
+        ]);
+
+        try {
+            $leadId = decrypt($encryptedId);
+        } catch (DecryptException) {
+            abort(404);
+        }
+        $lead = Lead::findOrFail($leadId);
+
+        if (Auth::check() && Auth::user()->role === 'telecaller'
+            && (int) $lead->assigned_to !== (int) Auth::id()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You are not allowed to message this lead.',
+            ], 403);
+        }
+
+        $token         = $this->accessToken();
+        $phoneNumberId = $this->phoneNumberId();
+
+        if (! $token || ! $phoneNumberId) {
+            return response()->json(['success' => false, 'message' => 'WhatsApp not configured.'], 422);
+        }
+
+        $to           = $this->normalizePhone((string) $lead->phone);
+        $templateName = $request->input('template_name');
+        $params       = $request->input('params', []);
+
+        $templateLanguage = (string) Setting::get(
+            'meta_whatsapp_template_language',
+            config('services.meta.whatsapp_default_template_language', 'en')
+        );
+
+        $template = [
+            'name'     => $templateName,
+            'language' => ['code' => $templateLanguage],
+        ];
+
+        if (! empty($params)) {
+            $template['components'] = [[
+                'type'       => 'body',
+                'parameters' => array_map(fn($p) => ['type' => 'text', 'text' => (string) $p], $params),
+            ]];
+        }
+
+        try {
+            $http = Http::withToken($token)->timeout(15)->asJson();
+            if (app()->environment('local')) {
+                $http = $http->withoutVerifying();
+            }
+
+            $response = $http->post(
+                "https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/messages",
+                [
+                    'messaging_product' => 'whatsapp',
+                    'recipient_type'    => 'individual',
+                    'to'                => $to,
+                    'type'              => 'template',
+                    'template'          => $template,
+                ]
+            );
+
+            if (! $response->successful()) {
+                $errCode = $response->json('error.code');
+                $err     = $response->json('error.message', 'Template send failed');
+                Log::error('MetaWA sendLeadTemplate failed', ['error' => $err, 'code' => $errCode, 'template' => $templateName]);
+
+                if ($errCode === 190 || str_contains(strtolower($err), 'token')) {
+                    return response()->json(['success' => false, 'message' => 'Meta token expired — update in Admin → Settings → WhatsApp.'], 422);
+                }
+                return response()->json(['success' => false, 'message' => 'Meta API: ' . $err], 422);
+            }
+
+            $metaMessageId = $response->json('messages.0.id');
+
+        } catch (\Throwable $e) {
+            Log::error('MetaWA sendLeadTemplate exception', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $displayBody = $request->input('display_body')
+            ?: (! empty($params) ? implode(' ', $params) : '📋 Template: ' . $templateName);
+
+        $row = [
+            'lead_id'             => $lead->id,
+            'from_number'         => $phoneNumberId,
+            'message_body'        => $displayBody,
+            'direction'           => 'outbound',
+            'provider_message_id' => $metaMessageId,
+            'provider'            => 'meta',
+            'sent_at'             => now(),
+            'meta_data'           => ['meta_status' => 'sent', 'to' => $to, 'template' => $templateName],
+        ];
+
+        if (Schema::hasColumn('whatsapp_messages', 'message')) {
+            $row['message'] = $displayBody;
+        }
+
+        $saved = WhatsAppMessage::create($row);
+
+        LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => Auth::id(),
+            'type'          => 'whatsapp',
+            'description'   => "Template sent: {$templateName}",
+            'meta_data'     => ['direction' => 'outbound', 'template' => $templateName,
+                                'message_id' => $metaMessageId],
+            'activity_time' => now(),
+        ]);
+
+        return response()->json([
+            'success'    => true,
+            'message_id' => $saved->id,
+            'message'    => $saved->message_body,
+            'direction'  => 'outbound',
+            'time'       => optional($saved->created_at)->format('h:i A'),
+            'status'     => 'sent',
+        ]);
+    }
+
+    // ──────────────────────────────────────────────
     //  Send a media file (image / document / audio / video)
     //  POST /manager/leads/{encryptedId}/whatsapp/media
     // ──────────────────────────────────────────────
@@ -53,8 +191,12 @@ class MetaWhatsAppController extends Controller
             'caption' => 'nullable|string|max:1024',
         ]);
 
-        $leadId = decrypt($encryptedId);
-        $lead   = Lead::findOrFail($leadId);
+        try {
+            $leadId = decrypt($encryptedId);
+        } catch (DecryptException) {
+            abort(404);
+        }
+        $lead = Lead::findOrFail($leadId);
 
         if (Auth::check() && Auth::user()->role === 'telecaller'
             && (int) $lead->assigned_to !== (int) Auth::id()) {
@@ -190,7 +332,11 @@ class MetaWhatsAppController extends Controller
     // ──────────────────────────────────────────────
     public function fetchMessages(Request $request, string $encryptedId)
     {
-        $leadId  = decrypt($encryptedId);
+        try {
+            $leadId = decrypt($encryptedId);
+        } catch (DecryptException) {
+            abort(404);
+        }
         $afterId = (int) $request->query('after', 0);
 
         $messages = WhatsAppMessage::where('lead_id', $leadId)
@@ -247,8 +393,12 @@ class MetaWhatsAppController extends Controller
     {
         $request->validate(['message' => 'required|string|max:4096']);
 
-        $cId    = decrypt($campaignId);
-        $ctId   = decrypt($contactId);
+        try {
+            $cId  = decrypt($campaignId);
+            $ctId = decrypt($contactId);
+        } catch (DecryptException) {
+            abort(404);
+        }
         $contact = CampaignContact::where('campaign_id', $cId)->findOrFail($ctId);
 
         if (Auth::check() && Auth::user()->role === 'telecaller'
@@ -270,8 +420,12 @@ class MetaWhatsAppController extends Controller
             'caption' => 'nullable|string|max:1024',
         ]);
 
-        $cId    = decrypt($campaignId);
-        $ctId   = decrypt($contactId);
+        try {
+            $cId  = decrypt($campaignId);
+            $ctId = decrypt($contactId);
+        } catch (DecryptException) {
+            abort(404);
+        }
         $contact = CampaignContact::where('campaign_id', $cId)->findOrFail($ctId);
 
         if (Auth::check() && Auth::user()->role === 'telecaller'
@@ -392,8 +546,12 @@ class MetaWhatsAppController extends Controller
     // ──────────────────────────────────────────────
     public function fetchCampaignContactMessages(Request $request, string $campaignId, string $contactId)
     {
-        $cId    = decrypt($campaignId);
-        $ctId   = decrypt($contactId);
+        try {
+            $cId  = decrypt($campaignId);
+            $ctId = decrypt($contactId);
+        } catch (DecryptException) {
+            abort(404);
+        }
         $contact = CampaignContact::where('campaign_id', $cId)->findOrFail($ctId);
 
         $afterId  = (int) $request->query('after', 0);
@@ -430,85 +588,40 @@ class MetaWhatsAppController extends Controller
     }
 
     // ──────────────────────────────────────────────
-    //  Core: send text to a campaign contact phone via Meta Cloud API
+    //  Core: send text to a Campaign Contact (provider-agnostic)
     // ──────────────────────────────────────────────
     private function sendToPhone(CampaignContact $contact, string $messageBody)
     {
-        $token         = $this->accessToken();
-        $phoneNumberId = $this->phoneNumberId();
+        /** @var WhatsAppService $wa */
+        $wa = app(WhatsAppService::class);
 
-        if (! $token || ! $phoneNumberId) {
+        if (! $wa->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Meta WhatsApp is not configured. Please set META_WHATSAPP_TOKEN and META_WHATSAPP_PHONE_NUMBER_ID.',
+                'message' => 'WhatsApp is not configured. Please check Admin → Settings → WhatsApp.',
             ], 422);
         }
 
         $to = $this->normalizePhone((string) $contact->phone);
 
-        // 24-hour free-form window check (use campaign_contact_id)
-        $lastInbound = WhatsAppMessage::where('campaign_contact_id', $contact->id)
+        $inbound24h = WhatsAppMessage::where('campaign_contact_id', $contact->id)
             ->where('direction', 'inbound')
             ->where('created_at', '>=', now()->subHours(24))
             ->exists();
 
-        if ($lastInbound) {
-            $payload = [
-                'messaging_product' => 'whatsapp',
-                'recipient_type'    => 'individual',
-                'to'                => $to,
-                'type'              => 'text',
-                'text'              => ['preview_url' => false, 'body' => $messageBody],
-            ];
-        } else {
-            $templateName = config('services.meta.whatsapp_default_template', 'hello_world');
-            $payload = [
-                'messaging_product' => 'whatsapp',
-                'recipient_type'    => 'individual',
-                'to'                => $to,
-                'type'              => 'template',
-                'template'          => ['name' => $templateName, 'language' => ['code' => 'en_US']],
-            ];
-        }
+        $result = $wa->send($to, $messageBody, $inbound24h, (string) $contact->name);
 
-        try {
-            $http = Http::withToken($token)->timeout(15);
-            if (app()->environment('local')) {
-                $http = $http->withoutVerifying();
-            }
-
-            $response = $http->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/messages", $payload);
-
-            if (! $response->successful()) {
-                $errCode = $response->json('error.code');
-                $error   = $response->json('error.message', 'Unknown Meta API error');
-                Log::error('Meta WA campaign send failed', [
-                    'contact_id' => $contact->id,
-                    'to'         => $to,
-                    'error'      => $error,
-                ]);
-                if ($errCode === 190 || str_contains(strtolower($error), 'token')) {
-                    return response()->json(['success' => false, 'message' => 'Meta token expired — update in Admin → Settings → WhatsApp.'], 422);
-                }
-                if ($errCode === 100) {
-                    return response()->json(['success' => false, 'message' => 'Phone Number ID wrong or missing permissions — check Admin → Settings → WhatsApp.'], 422);
-                }
-                return response()->json(['success' => false, 'message' => 'Meta API: ' . $error], 422);
-            }
-
-            $metaMessageId = $response->json('messages.0.id');
-
-        } catch (\Throwable $e) {
-            Log::error('Meta WA campaign exception', ['contact_id' => $contact->id, 'error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        if (! $result['ok']) {
+            return response()->json(['success' => false, 'message' => $result['error']], 422);
         }
 
         $row = [
             'campaign_contact_id' => $contact->id,
-            'from_number'         => $phoneNumberId,
+            'from_number'         => $this->phoneNumberId(),
             'message_body'        => $messageBody,
             'direction'           => 'outbound',
-            'provider_message_id' => $metaMessageId,
+            'provider_message_id' => $result['provider_message_id'],
+            'provider'            => $result['provider'],
             'sent_at'             => now(),
             'meta_data'           => ['meta_status' => 'sent', 'to' => $to],
         ];
@@ -523,7 +636,8 @@ class MetaWhatsAppController extends Controller
             'campaign_contact_id' => $contact->id,
             'type'                => 'whatsapp',
             'description'         => $messageBody,
-            'meta'                => ['direction' => 'outbound', 'meta_message_id' => $metaMessageId],
+            'meta'                => ['direction' => 'outbound', 'provider' => $result['provider'],
+                                      'message_id' => $result['provider_message_id']],
             'created_by'          => Auth::id(),
         ]);
 
@@ -547,6 +661,8 @@ class MetaWhatsAppController extends Controller
             $token     = $request->query('hub_verify_token');
             $challenge = $request->query('hub_challenge');
 
+            Log::info('Meta webhook: verification attempt', ['mode' => $mode, 'token_match' => $token === $this->verifyToken()]);
+
             if ($mode === 'subscribe' && $token === $this->verifyToken()) {
                 return response($challenge, 200)->header('Content-Type', 'text/plain');
             }
@@ -554,9 +670,23 @@ class MetaWhatsAppController extends Controller
             return response('Forbidden', 403);
         }
 
+        Log::info('Meta webhook: POST received', ['object' => $request->input('object'), 'ip' => $request->ip()]);
+
+        // Verify X-Hub-Signature-256 to ensure the request came from Meta
+        $secret = $this->appSecret();
+        if ($secret) {
+            $signature = $request->header('X-Hub-Signature-256', '');
+            $expected  = 'sha256=' . hash_hmac('sha256', $request->getContent(), $secret);
+            if (! hash_equals($expected, $signature)) {
+                Log::warning('Meta webhook: signature mismatch — possible spoofed request');
+                return response('Unauthorized', 401);
+            }
+        }
+
         $payload = $request->all();
 
         if (($payload['object'] ?? '') !== 'whatsapp_business_account') {
+            Log::info('Meta webhook: ignored non-whatsapp object', ['object' => $payload['object'] ?? 'none']);
             return response('OK', 200);
         }
 
@@ -577,6 +707,7 @@ class MetaWhatsAppController extends Controller
 
                     $lead = $this->resolveLeadByPhone($from);
                     if (! $lead) {
+                        Log::warning('Meta webhook: inbound message — no lead matched phone', ['from' => $from]);
                         continue;
                     }
 
@@ -660,86 +791,40 @@ class MetaWhatsAppController extends Controller
     }
 
     // ──────────────────────────────────────────────
-    //  Core: send text via Meta Cloud API
+    //  Core: send text to a Lead (provider-agnostic)
     // ──────────────────────────────────────────────
     private function sendToLead(Lead $lead, string $messageBody)
     {
-        $token         = $this->accessToken();
-        $phoneNumberId = $this->phoneNumberId();
+        /** @var WhatsAppService $wa */
+        $wa = app(WhatsAppService::class);
 
-        if (! $token || ! $phoneNumberId) {
+        if (! $wa->isConfigured()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Meta WhatsApp is not configured. Please set META_WHATSAPP_TOKEN and META_WHATSAPP_PHONE_NUMBER_ID.',
+                'message' => 'WhatsApp is not configured. Please check Admin → Settings → WhatsApp.',
             ], 422);
         }
 
         $to = $this->normalizePhone((string) $lead->phone);
 
-        // 24-hour free-form window check
-        $lastInbound = WhatsAppMessage::where('lead_id', $lead->id)
+        $inbound24h = WhatsAppMessage::where('lead_id', $lead->id)
             ->where('direction', 'inbound')
             ->where('created_at', '>=', now()->subHours(24))
             ->exists();
 
-        if ($lastInbound) {
-            $payload = [
-                'messaging_product' => 'whatsapp',
-                'recipient_type'    => 'individual',
-                'to'                => $to,
-                'type'              => 'text',
-                'text'              => ['preview_url' => false, 'body' => $messageBody],
-            ];
-        } else {
-            $templateName = config('services.meta.whatsapp_default_template', 'hello_world');
-            $payload = [
-                'messaging_product' => 'whatsapp',
-                'recipient_type'    => 'individual',
-                'to'                => $to,
-                'type'              => 'template',
-                'template'          => ['name' => $templateName, 'language' => ['code' => 'en_US']],
-            ];
-        }
+        $result = $wa->send($to, $messageBody, $inbound24h, (string) $lead->name);
 
-        try {
-            $http = Http::withToken($token)->timeout(15);
-            if (app()->environment('local')) {
-                $http = $http->withoutVerifying();
-            }
-
-            $response = $http->post("https://graph.facebook.com/{$this->graphApiVersion()}/{$phoneNumberId}/messages", $payload);
-
-            if (! $response->successful()) {
-                $errCode = $response->json('error.code');
-                $error   = $response->json('error.message', 'Unknown Meta API error');
-                Log::error('Meta WhatsApp send failed', [
-                    'lead_id' => $lead->id,
-                    'to'      => $to,
-                    'error'   => $error,
-                    'body'    => $response->body(),
-                ]);
-                if ($errCode === 190 || str_contains(strtolower($error), 'auth') || str_contains(strtolower($error), 'token')) {
-                    return response()->json(['success' => false, 'message' => 'Meta token expired — update it in Admin → Settings → WhatsApp.'], 422);
-                }
-                if (str_contains($error, 'does not exist') || str_contains($error, 'missing permissions') || $errCode === 100) {
-                    return response()->json(['success' => false, 'message' => 'Phone Number ID is wrong or your token lacks permission for it — check Admin → Settings → WhatsApp.'], 422);
-                }
-                return response()->json(['success' => false, 'message' => 'Meta API: ' . $error], 422);
-            }
-
-            $metaMessageId = $response->json('messages.0.id');
-
-        } catch (\Throwable $e) {
-            Log::error('Meta WhatsApp exception', ['lead_id' => $lead->id, 'error' => $e->getMessage()]);
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        if (! $result['ok']) {
+            return response()->json(['success' => false, 'message' => $result['error']], 422);
         }
 
         $row = [
             'lead_id'             => $lead->id,
-            'from_number'         => $phoneNumberId,
+            'from_number'         => $this->phoneNumberId(),
             'message_body'        => $messageBody,
             'direction'           => 'outbound',
-            'provider_message_id' => $metaMessageId,
+            'provider_message_id' => $result['provider_message_id'],
+            'provider'            => $result['provider'],
             'sent_at'             => now(),
             'meta_data'           => ['meta_status' => 'sent', 'to' => $to],
         ];
@@ -755,7 +840,8 @@ class MetaWhatsAppController extends Controller
             'user_id'       => Auth::id(),
             'type'          => 'whatsapp',
             'description'   => $messageBody,
-            'meta_data'     => ['direction' => 'outbound', 'meta_message_id' => $metaMessageId],
+            'meta_data'     => ['direction' => 'outbound', 'provider' => $result['provider'],
+                                'message_id' => $result['provider_message_id']],
             'activity_time' => now(),
         ]);
 
@@ -875,6 +961,7 @@ class MetaWhatsAppController extends Controller
         $digits = preg_replace('/\D+/', '', $phone);
         $last10 = substr($digits, -10);
 
+        // Try exact matches first (covers +91XXXXXXXXXX, 91XXXXXXXXXX, and raw formats)
         $lead = Lead::where('phone', $phone)
             ->orWhere('phone', '+' . $digits)
             ->orWhere('phone', $digits)
@@ -884,16 +971,22 @@ class MetaWhatsAppController extends Controller
             return $lead;
         }
 
-        return Lead::all(['id', 'phone'])
-            ->first(function ($item) use ($digits, $last10) {
-                $c = preg_replace('/\D+/', '', (string) $item->phone);
-                return $c === $digits || substr($c, -10) === $last10;
-            });
+        // Fallback: last-10-digit suffix LIKE match — avoids full-table scan
+        if (strlen($last10) === 10) {
+            return Lead::where('phone', 'like', '%' . $last10)->first();
+        }
+
+        return null;
     }
 
     private function accessToken(): string
     {
         return (string) Setting::getSecure('meta_whatsapp_token', config('services.meta.whatsapp_token', ''));
+    }
+
+    private function appSecret(): string
+    {
+        return (string) Setting::getSecure('meta_whatsapp_app_secret', config('services.meta.whatsapp_app_secret', ''));
     }
 
     private function phoneNumberId(): string

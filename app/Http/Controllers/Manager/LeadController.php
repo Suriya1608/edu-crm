@@ -309,7 +309,7 @@ class LeadController extends Controller
             Followup::create([
                 'lead_id'       => $lead->id,
                 'user_id'       => Auth::id(),
-                'remarks'       => $request->remarks,
+                'remarks'       => $request->remarks ?? '',
                 'next_followup' => $request->next_followup,
                 'followup_time' => $request->followup_time,
             ]);
@@ -436,6 +436,180 @@ class LeadController extends Controller
             ], 500);
         }
     }
+    // ─── Pipeline (Kanban Board) ────────────────────────────────────────────────
+
+    public function pipeline(Request $request)
+    {
+        $managerId = Auth::id();
+
+        $statuses = ['new', 'assigned', 'contacted', 'interested', 'follow_up', 'not_interested', 'converted'];
+
+        $base = Lead::with(['assignedUser', 'enrolledCourse', 'followups'])
+            ->where('assigned_by', $managerId);
+
+        if ($request->search) {
+            $s = $request->search;
+            $base->where(fn($q) => $q
+                ->where('lead_code', 'like', "%$s%")
+                ->orWhere('name', 'like', "%$s%")
+                ->orWhere('phone', 'like', "%$s%")
+            );
+        }
+
+        if ($request->telecaller) {
+            $base->where('assigned_to', $request->telecaller);
+        }
+
+        if ($request->date_range) {
+            if ($request->date_range === 'today') {
+                $base->whereDate('created_at', today());
+            } else {
+                $base->whereDate('created_at', '>=', now()->subDays((int) $request->date_range));
+            }
+        }
+
+        $columns       = [];
+        $columnTotals  = [];
+        foreach ($statuses as $status) {
+            $q = (clone $base)->where('status', $status);
+            $columnTotals[$status] = $q->count();
+            $columns[$status]      = $q->latest()->limit(20)->get();
+        }
+
+        $telecallers = User::where('role', 'telecaller')
+            ->where('status', 1)
+            ->whereIn('id', Lead::where('assigned_by', $managerId)->whereNotNull('assigned_to')->distinct()->pluck('assigned_to'))
+            ->get();
+
+        return view('manager.leads.pipeline', compact('columns', 'columnTotals', 'telecallers'));
+    }
+
+    public function pipelineMore(Request $request)
+    {
+        $request->validate([
+            'status' => 'required|in:new,assigned,contacted,interested,follow_up,not_interested,converted',
+            'offset' => 'required|integer|min:0',
+        ]);
+
+        $managerId = Auth::id();
+
+        $base = Lead::with(['assignedUser', 'enrolledCourse', 'followups'])
+            ->where('assigned_by', $managerId);
+
+        if ($request->search) {
+            $s = $request->search;
+            $base->where(fn($q) => $q
+                ->where('lead_code', 'like', "%$s%")
+                ->orWhere('name', 'like', "%$s%")
+                ->orWhere('phone', 'like', "%$s%")
+            );
+        }
+        if ($request->telecaller) {
+            $base->where('assigned_to', $request->telecaller);
+        }
+        if ($request->date_range) {
+            if ($request->date_range === 'today') {
+                $base->whereDate('created_at', today());
+            } else {
+                $base->whereDate('created_at', '>=', now()->subDays((int) $request->date_range));
+            }
+        }
+
+        $statusBase = (clone $base)->where('status', $request->status);
+        $total  = (clone $statusBase)->count();
+        $leads  = $statusBase->latest()->limit(20)->offset((int) $request->offset)->get();
+        $loaded = (int) $request->offset + $leads->count();
+
+        $cards = $leads->map(fn($lead) => view('manager.leads._pipeline-card', compact('lead'))->render())->values();
+
+        return response()->json([
+            'cards'    => $cards,
+            'has_more' => $loaded < $total,
+            'loaded'   => $loaded,
+            'total'    => $total,
+        ]);
+    }
+
+    public function updatePipelineStatus(Request $request)
+    {
+        $request->validate([
+            'lead_id'       => 'required|string',
+            'status'        => 'required|in:new,assigned,contacted,interested,not_interested,converted,follow_up',
+            'telecaller_id' => 'nullable|string',
+        ]);
+
+        if ($request->status === 'assigned' && !$request->telecaller_id) {
+            return response()->json(['success' => false, 'message' => 'Please select a telecaller.'], 422);
+        }
+
+        try {
+            $id = decrypt($request->lead_id);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Invalid lead.'], 422);
+        }
+
+        $lead      = Lead::where('assigned_by', Auth::id())->findOrFail($id);
+        $oldStatus = $lead->status;
+
+        $telecaller = null;
+        if ($request->status === 'assigned' && $request->telecaller_id) {
+            try {
+                $telecallerId = decrypt($request->telecaller_id);
+            } catch (\Exception $e) {
+                return response()->json(['success' => false, 'message' => 'Invalid telecaller.'], 422);
+            }
+
+            $telecaller    = User::findOrFail($telecallerId);
+            $oldAssignedTo = $lead->assigned_to;
+            $lead->assigned_to = $telecaller->id;
+
+            $telecaller->notify(new LeadAssignmentNotification(
+                title:   'Lead Assigned by Manager',
+                message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' assigned to you.',
+                link:    route('telecaller.leads.show', encrypt($lead->id)),
+                meta:    ['type' => 'lead_assignment', 'lead_id' => $lead->id]
+            ));
+
+            LeadActivity::create([
+                'lead_id'       => $lead->id,
+                'user_id'       => Auth::id(),
+                'type'          => 'assignment',
+                'title'         => $oldAssignedTo ? 'Lead Reassigned' : 'Lead Assigned',
+                'description'   => ($oldAssignedTo ? 'Reassigned' : 'Assigned') . ' to ' . $telecaller->name . ' via Pipeline',
+                'activity_time' => now(),
+            ]);
+
+            AuditLogService::log('lead.assigned', 'Lead', $lead->id,
+                ['assigned_to' => $oldAssignedTo],
+                ['assigned_to' => $telecaller->id, 'source' => 'pipeline']
+            );
+        }
+
+        $lead->status = $request->status;
+        $lead->save();
+
+        LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => Auth::id(),
+            'type'          => 'status_change',
+            'description'   => 'Status changed to ' . ucfirst(str_replace('_', ' ', $request->status)) . ' via Pipeline',
+            'activity_time' => now(),
+        ]);
+
+        AuditLogService::log(
+            'lead.status_changed', 'Lead', $lead->id,
+            ['status' => $oldStatus],
+            ['status' => $request->status, 'source' => 'pipeline']
+        );
+
+        $response = ['success' => true, 'status' => $request->status];
+        if ($telecaller) {
+            $response['telecaller_name'] = $telecaller->name;
+        }
+
+        return response()->json($response);
+    }
+
     public function logCall(Request $request)
     {
         $leadId = decrypt($request->lead_id);

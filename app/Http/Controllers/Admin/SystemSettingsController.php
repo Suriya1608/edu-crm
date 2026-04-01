@@ -89,9 +89,11 @@ class SystemSettingsController extends Controller
     public function whatsapp()
     {
         return view('admin.settings.whatsapp', [
-            'token'       => Setting::getSecure('meta_whatsapp_token', ''),
-            'phoneId'     => Setting::get('meta_whatsapp_phone_number_id', ''),
-            'verifyToken' => Setting::get('meta_whatsapp_webhook_verify_token', 'crm_verify_token'),
+            'token'            => Setting::getSecure('meta_whatsapp_token', ''),
+            'phoneId'          => Setting::get('meta_whatsapp_phone_number_id', ''),
+            'verifyToken'      => Setting::get('meta_whatsapp_webhook_verify_token', 'crm_verify_token'),
+            'templateName'     => Setting::get('meta_whatsapp_template_name', config('services.meta.whatsapp_default_template', 'welcome_template')),
+            'templateLanguage' => Setting::get('meta_whatsapp_template_language', config('services.meta.whatsapp_default_template_language', 'en')),
         ]);
     }
 
@@ -101,13 +103,19 @@ class SystemSettingsController extends Controller
             'meta_whatsapp_token'                => 'nullable|string|max:512',
             'meta_whatsapp_phone_number_id'      => 'nullable|string|max:100',
             'meta_whatsapp_webhook_verify_token' => 'nullable|string|max:255',
+            'meta_whatsapp_template_name'        => 'nullable|string|max:255',
+            'meta_whatsapp_template_language'    => 'nullable|string|max:20',
         ]);
 
-        Setting::setSecure('meta_whatsapp_token', $data['meta_whatsapp_token'] ?? null);
+        if (!empty($data['meta_whatsapp_token'])) {
+            Setting::setSecure('meta_whatsapp_token', $data['meta_whatsapp_token']);
+        }
         Setting::set('meta_whatsapp_phone_number_id', $data['meta_whatsapp_phone_number_id'] ?? '');
         Setting::set('meta_whatsapp_webhook_verify_token', $data['meta_whatsapp_webhook_verify_token'] ?? 'crm_verify_token');
+        Setting::set('meta_whatsapp_template_name', $data['meta_whatsapp_template_name'] ?? 'welcome_template');
+        Setting::set('meta_whatsapp_template_language', $data['meta_whatsapp_template_language'] ?? 'en');
 
-        return back()->with('success', 'Meta WhatsApp settings saved.');
+        return back()->with('success', 'WhatsApp settings saved successfully.');
     }
 
     public function twilio()

@@ -146,9 +146,11 @@
 
                             <div class="wa-chat-footer">
                                 <div class="wa-template-row">
-                                    <button type="button" class="wa-template-btn"
-                                        data-msg="Hello {{ $lead->name }}, thanks for your interest. Can we connect now?">
-                                        Intro
+                                    <button type="button" class="wa-template-btn wa-tpl-direct-btn"
+                                        data-template="welcome_template"
+                                        data-params="{{ json_encode([$lead->name]) }}"
+                                        data-display="Hello {{ $lead->name }}, thank you for your interest in our programs!">
+                                        ✅ Welcome
                                     </button>
                                     <button type="button" class="wa-template-btn"
                                         data-msg="Reminder: your follow-up is scheduled. Please confirm your preferred time.">
@@ -435,10 +437,55 @@
                 msgInput.focus();
             });
 
-            document.querySelectorAll('.wa-template-btn').forEach(btn => {
+            // Template quick-reply: text-fill buttons (populate input)
+            document.querySelectorAll('.wa-template-btn:not(.wa-tpl-direct-btn)').forEach(btn => {
                 btn.addEventListener('click', () => {
                     msgInput.value = btn.dataset.msg || '';
                     msgInput.focus();
+                });
+            });
+
+            // Template quick-reply: direct-send buttons (fire approved Meta template immediately)
+            const TEMPLATE_URL = @json(route('telecaller.leads.whatsapp.template', encrypt($lead->id)));
+            document.querySelectorAll('.wa-tpl-direct-btn').forEach(btn => {
+                btn.addEventListener('click', async function () {
+                    const templateName = btn.dataset.template;
+                    const params       = JSON.parse(btn.dataset.params || '[]');
+                    const displayBody  = btn.dataset.display || '';
+
+                    const origHtml = btn.innerHTML;
+                    btn.disabled   = true;
+                    btn.innerHTML  = '⏳ Sending…';
+
+                    try {
+                        const res = await fetch(TEMPLATE_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': CSRF,
+                                'Accept': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                template_name: templateName,
+                                params:        params,
+                                display_body:  displayBody,
+                            }),
+                        });
+
+                        const data = await res.json().catch(() => ({}));
+
+                        if (!res.ok) { showError(data.message || 'Template send failed'); return; }
+
+                        document.getElementById('waEmptyPlaceholder')?.remove();
+                        appendBubble({ id: data.message_id, body: data.message, direction: 'outbound', time: data.time, status: 'sent' });
+                        if (data.message_id > lastMsgId) lastMsgId = data.message_id;
+
+                    } catch (err) {
+                        showError(err.message || 'Network error.');
+                    } finally {
+                        btn.disabled  = false;
+                        btn.innerHTML = origHtml;
+                    }
                 });
             });
 

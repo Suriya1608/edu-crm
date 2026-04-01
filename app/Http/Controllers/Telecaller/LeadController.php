@@ -55,6 +55,17 @@ class LeadController extends Controller
             ->limit(5)
             ->get();
 
+        $calQuery = Followup::whereHas('lead', fn($q) => $q->where('assigned_to', $userId))
+            ->whereYear('next_followup', now()->year)
+            ->whereMonth('next_followup', now()->month);
+        if (Schema::hasColumn('followups', 'completed_at')) {
+            $calQuery->whereNull('completed_at');
+        }
+        $followupCalendar = $calQuery
+            ->selectRaw('DATE(next_followup) as day, COUNT(*) as total')
+            ->groupByRaw('DATE(next_followup)')
+            ->pluck('total', 'day');
+
         return view('telecaller.dashboard', compact(
             'totalAssignedLeads',
             'newLeads',
@@ -63,7 +74,8 @@ class LeadController extends Controller
             'totalCallsToday',
             'talkTimeTodaySeconds',
             'activeCallCount',
-            'missedCallbacks'
+            'missedCallbacks',
+            'followupCalendar'
         ));
     }
 
@@ -189,6 +201,76 @@ class LeadController extends Controller
 
 
 
+    // ─── Pipeline (Kanban Board) ────────────────────────────────────────────────
+
+    public function pipeline(Request $request)
+    {
+        $userId   = Auth::id();
+        $statuses = ['new', 'assigned', 'contacted', 'interested', 'follow_up', 'not_interested', 'converted'];
+
+        $base = Lead::with(['enrolledCourse', 'followups'])
+            ->where('assigned_to', $userId);
+
+        if ($request->search) {
+            $s = $request->search;
+            $base->where(fn($q) => $q
+                ->where('lead_code', 'like', "%$s%")
+                ->orWhere('name', 'like', "%$s%")
+                ->orWhere('phone', 'like', "%$s%")
+            );
+        }
+
+        if ($request->date_range) {
+            if ($request->date_range === 'today') {
+                $base->whereDate('created_at', today());
+            } else {
+                $base->whereDate('created_at', '>=', now()->subDays((int) $request->date_range));
+            }
+        }
+
+        $columns = [];
+        foreach ($statuses as $status) {
+            $columns[$status] = (clone $base)->where('status', $status)->latest()->limit(60)->get();
+        }
+
+        return view('telecaller.leads.pipeline', compact('columns'));
+    }
+
+    public function updatePipelineStatus(Request $request)
+    {
+        $request->validate([
+            'lead_id' => 'required|string',
+            'status'  => 'required|in:new,assigned,contacted,interested,not_interested,converted,follow_up',
+        ]);
+
+        try {
+            $id = decrypt($request->lead_id);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Invalid lead.'], 422);
+        }
+
+        $lead = Lead::where('assigned_to', Auth::id())->findOrFail($id);
+
+        $oldStatus    = $lead->status;
+        $lead->status = $request->status;
+        $lead->save();
+
+        $lead->activities()->create([
+            'user_id'       => Auth::id(),
+            'type'          => 'status_change',
+            'description'   => 'Status changed to ' . ucfirst(str_replace('_', ' ', $request->status)) . ' via Pipeline',
+            'activity_time' => now(),
+        ]);
+
+        AuditLogService::log(
+            'lead.status_changed', 'Lead', $lead->id,
+            ['status' => $oldStatus],
+            ['status' => $request->status, 'source' => 'pipeline']
+        );
+
+        return response()->json(['success' => true, 'status' => $request->status]);
+    }
+
     /* ======================================================
         STORE FOLLOWUP
     ======================================================*/
@@ -260,7 +342,7 @@ class LeadController extends Controller
             Followup::create([
                 'lead_id'       => $lead->id,
                 'user_id'       => Auth::id(),
-                'remarks'       => $request->remarks,
+                'remarks'       => $request->remarks ?? '',
                 'next_followup' => $request->next_followup,
                 'followup_time' => $request->followup_time,
             ]);

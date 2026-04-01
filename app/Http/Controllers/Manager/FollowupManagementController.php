@@ -87,6 +87,36 @@ class FollowupManagementController extends Controller
         ]);
     }
 
+    public function calendarData(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $year  = (int) $request->get('year',  now()->year);
+        $month = (int) $request->get('month', now()->month);
+
+        if ($month < 1)  { $month = 12; $year--; }
+        if ($month > 12) { $month = 1;  $year++; }
+
+        $myLeadsSubquery = Lead::where('assigned_by', Auth::id())->select('id');
+
+        $query = Followup::whereIn('lead_id', $myLeadsSubquery)
+            ->whereYear('next_followup', $year)
+            ->whereMonth('next_followup', $month);
+
+        if (Schema::hasColumn('followups', 'completed_at')) {
+            $query->whereNull('completed_at');
+        }
+
+        $days = $query
+            ->selectRaw('DATE(next_followup) as day, COUNT(*) as total')
+            ->groupByRaw('DATE(next_followup)')
+            ->pluck('total', 'day');
+
+        return response()->json([
+            'year'  => $year,
+            'month' => $month,
+            'days'  => $days,
+        ]);
+    }
+
     public function markAllNotificationsRead(Request $request)
     {
         if ($request->user()) {

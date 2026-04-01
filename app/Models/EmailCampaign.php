@@ -3,9 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Contracts\Encryption\DecryptException;
 
 class EmailCampaign extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
         'name', 'description', 'template_id', 'template_name', 'template_subject', 'template_body',
         'course_filter', 'scheduled_at', 'sent_at', 'status', 'created_by',
@@ -22,6 +27,24 @@ class EmailCampaign extends Model
         'bounced_count'    => 'integer',
         'click_count'      => 'integer',
     ];
+
+    // ── Encrypted Route Binding ───────────────────────────────────────────────
+
+    public function getRouteKey(): string
+    {
+        return Crypt::encryptString((string) $this->getKey());
+    }
+
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        try {
+            $id = Crypt::decryptString($value);
+        } catch (DecryptException) {
+            abort(404);
+        }
+
+        return $this->where('id', $id)->firstOrFail();
+    }
 
     public function creator()
     {

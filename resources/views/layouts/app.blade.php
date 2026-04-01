@@ -150,10 +150,8 @@
             (function() {
                 const csrfToken = @json(csrf_token());
                 const heartbeatUrl = @json(route('telecaller.status.heartbeat'));
-                const offlineUrl = @json(route('telecaller.status.offline'));
-                const availabilityStorageKey = 'telecaller_availability';
 
-                async function post(url, payload = {}) {
+                async function post(url) {
                     try {
                         return await fetch(url, {
                             method: 'POST',
@@ -161,29 +159,15 @@
                                 'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': csrfToken
                             },
-                            body: JSON.stringify(payload)
+                            body: JSON.stringify({})
                         });
                     } catch (e) {
                         return null;
                     }
                 }
 
-                function isAvailable() {
-                    const v = localStorage.getItem(availabilityStorageKey);
-                    return v !== 'offline';
-                }
-
-                if (isAvailable()) {
-                    post(heartbeatUrl);
-                } else {
-                    post(offlineUrl);
-                }
-
-                setInterval(function() {
-                    if (isAvailable()) {
-                        post(heartbeatUrl);
-                    }
-                }, 30000);
+                post(heartbeatUrl);
+                setInterval(function() { post(heartbeatUrl); }, 30000);
 
             })();
         </script>

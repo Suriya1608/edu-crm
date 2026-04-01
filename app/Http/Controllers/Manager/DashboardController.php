@@ -160,6 +160,17 @@ class DashboardController extends Controller
                 'rate'        => $row->total > 0 ? round($row->conversions / $row->total * 100, 1) : 0,
             ]);
 
+        $calQuery = Followup::whereIn('lead_id', Lead::where('assigned_by', $managerId)->select('id'))
+            ->whereYear('next_followup', $now->year)
+            ->whereMonth('next_followup', $now->month);
+        if (Schema::hasColumn('followups', 'completed_at')) {
+            $calQuery->whereNull('completed_at');
+        }
+        $followupCalendar = $calQuery
+            ->selectRaw('DATE(next_followup) as day, COUNT(*) as total')
+            ->groupByRaw('DATE(next_followup)')
+            ->pluck('total', 'day');
+
         return view('manager.dashboard.index', [
             'period' => $period,
             'leadsToday' => $leadsToday,
@@ -177,6 +188,7 @@ class DashboardController extends Controller
             'telecallerPresence' => $telecallerPresence,
             'missedInboundCalls' => $missedInboundCalls,
             'courseStats' => $courseStats,
+            'followupCalendar' => $followupCalendar,
         ]);
     }
 }

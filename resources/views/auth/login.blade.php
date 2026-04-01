@@ -10,10 +10,21 @@
         </div>
     @endif
 
+    {{-- Session expired notice (from 419 redirect) --}}
+    @if ($errors->has('session_expired'))
+        <div class="auth-alert mb-3" style="background:#fef3c7; color:#92400e; border-left:3px solid #f59e0b;">
+            <span class="material-icons" style="font-size:15px;vertical-align:middle;margin-right:4px;">schedule</span>
+            {{ $errors->first('session_expired') }}
+        </div>
+    @endif
+
     {{-- Validation Errors --}}
-    @if ($errors->any())
+    @if ($errors->hasAny(['email', 'password']))
         <div class="auth-alert mb-3" style="background:#fee2e2; color:#991b1b;">
-            @foreach ($errors->all() as $error)
+            @foreach ($errors->get('email') as $error)
+                <div>{{ $error }}</div>
+            @endforeach
+            @foreach ($errors->get('password') as $error)
                 <div>{{ $error }}</div>
             @endforeach
         </div>

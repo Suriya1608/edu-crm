@@ -52,7 +52,7 @@ class EmailCampaignController extends Controller
 
         $template = EmailTemplate::where('status', 'active')->findOrFail($data['template_id']);
 
-        $recipientEmails = array_unique($data['recipient_emails']);
+        $recipientEmails = array_values(array_unique($data['recipient_emails']));
         $recipientNames  = $data['recipient_names'] ?? [];
 
         $nameLookup = CampaignContact::whereIn('email', $recipientEmails)
@@ -91,7 +91,7 @@ class EmailCampaignController extends Controller
             SendEmailCampaignJob::dispatch($campaign->id);
         }
 
-        return redirect()->route('manager.email-campaigns.show', $campaign->id)
+        return redirect()->route('manager.email-campaigns.show', $campaign)
             ->with('success', $isScheduled
                 ? 'Email campaign scheduled for ' . \Carbon\Carbon::parse($data['scheduled_at'])->format('d M Y, h:i A') . '.'
                 : 'Email campaign created and queued for sending.');

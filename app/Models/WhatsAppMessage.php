@@ -19,6 +19,7 @@ class WhatsAppMessage extends Model
         'sent_at',
         'meta_data',
         'is_read',
+        'provider',
         'media_type',
         'media_url',
         'media_filename',

@@ -113,7 +113,7 @@ class UserController extends Controller
         $user->status = $request->status;
 
         if ($request->filled('password')) {
-            $user->password = bcrypt($request->password);
+            $user->password = Hash::make($request->password);
         }
 
         $user->save();

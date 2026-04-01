@@ -284,6 +284,9 @@ Route::middleware(['auth'])
         Route::post('/leads/store', [ManagerLeadController::class, 'store'])->name('leads.store');
 
         // IMPORTANT: Import & Export & specific paths MUST be above /{id}
+        Route::get('/leads/pipeline', [ManagerLeadController::class, 'pipeline'])->name('leads.pipeline');
+        Route::get('/leads/pipeline/more', [ManagerLeadController::class, 'pipelineMore'])->name('leads.pipeline.more');
+        Route::post('/leads/pipeline-status', [ManagerLeadController::class, 'updatePipelineStatus'])->name('leads.pipeline.status');
         Route::get('/leads/import', [LeadImportController::class, 'index'])->name('leads.import');
         Route::post('/leads/import/preview', [LeadImportController::class, 'preview'])->name('leads.import.preview');
         Route::post('/leads/import/store', [LeadImportController::class, 'store'])->name('leads.import.store');
@@ -297,6 +300,7 @@ Route::middleware(['auth'])
         Route::post('/leads/{id}/change-status', [ManagerLeadController::class, 'changeStatus'])->name('leads.changeStatus');
         Route::post('/leads/{id}/add-note', [ManagerLeadController::class, 'addNote'])->name('leads.addNote');
         Route::post('/leads/{id}/whatsapp', [MetaWhatsAppController::class, 'sendLeadMessage'])->name('leads.whatsapp.store');
+        Route::post('/leads/{id}/whatsapp/template', [MetaWhatsAppController::class, 'sendLeadTemplate'])->name('leads.whatsapp.template');
         Route::post('/leads/{id}/whatsapp/media', [MetaWhatsAppController::class, 'sendMedia'])->name('leads.whatsapp.media');
         Route::get('/leads/{id}/whatsapp/messages', [MetaWhatsAppController::class, 'fetchMessages'])->name('leads.whatsapp.fetch');
 
@@ -326,6 +330,7 @@ Route::middleware(['auth'])
             Route::get('/overdue', [FollowupManagementController::class, 'overdue'])->name('overdue');
             Route::get('/upcoming', [FollowupManagementController::class, 'upcoming'])->name('upcoming');
             Route::get('/missed-by-telecaller', [FollowupManagementController::class, 'missedByTelecaller'])->name('missed');
+            Route::get('/calendar-data', [FollowupManagementController::class, 'calendarData'])->name('calendar-data');
         });
 
         /*
@@ -435,10 +440,13 @@ Route::middleware(['auth'])
         |------------------------------------------------------------------
         */
         Route::get('/leads', [TeleLeadController::class, 'index'])->name('leads');
+        Route::get('/leads/pipeline', [TeleLeadController::class, 'pipeline'])->name('leads.pipeline');
+        Route::post('/leads/pipeline-status', [TeleLeadController::class, 'updatePipelineStatus'])->name('leads.pipeline.status');
         Route::get('/leads/{id}', [TeleLeadController::class, 'show'])->name('leads.show');
         Route::post('/leads/status/{id}', [TeleLeadController::class, 'changeStatus'])->name('leads.changeStatus');
         Route::post('/leads/note/{id}', [TeleLeadController::class, 'addNote'])->name('leads.addNote');
         Route::post('/leads/{id}/whatsapp', [MetaWhatsAppController::class, 'sendLeadMessage'])->name('leads.whatsapp.store');
+        Route::post('/leads/{id}/whatsapp/template', [MetaWhatsAppController::class, 'sendLeadTemplate'])->name('leads.whatsapp.template');
         Route::post('/leads/{id}/whatsapp/media', [MetaWhatsAppController::class, 'sendMedia'])->name('leads.whatsapp.media');
         Route::get('/leads/{id}/whatsapp/messages', [MetaWhatsAppController::class, 'fetchMessages'])->name('leads.whatsapp.fetch');
 
@@ -455,6 +463,7 @@ Route::middleware(['auth'])
             Route::get('/overdue', [TeleFollowupController::class, 'overdue'])->name('overdue');
             Route::get('/upcoming', [TeleFollowupController::class, 'upcoming'])->name('upcoming');
             Route::get('/completed', [TeleFollowupController::class, 'completed'])->name('completed');
+            Route::get('/calendar-data', [TeleFollowupController::class, 'calendarData'])->name('calendar-data');
             Route::post('/{id}/reschedule', [TeleFollowupController::class, 'reschedule'])->name('reschedule');
             Route::post('/{id}/complete', [TeleFollowupController::class, 'markCompleted'])->name('mark-complete');
         });
@@ -616,9 +625,9 @@ Route::post('/email/webhook/bounce', [EmailWebhookController::class, 'bounce'])
 */
 
 // Exotel webhooks (public, no CSRF)
-Route::post('/exotel/incoming', [ExotelController::class, 'incomingConnect'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('exotel.incoming');
+// Route::post('/exotel/incoming', [ExotelController::class, 'incomingConnect'])
+//     ->withoutMiddleware([VerifyCsrfToken::class])
+//     ->name('exotel.incoming');
 
 Route::post('/exotel/outgoing', [ExotelController::class, 'outgoing'])
     ->withoutMiddleware([VerifyCsrfToken::class]);

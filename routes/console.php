@@ -35,3 +35,6 @@ Schedule::command('email:process-scheduled')
     ->everyMinute()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Horizon: take a metrics snapshot every 5 minutes (powers the throughput graphs)
+Schedule::command('horizon:snapshot')->everyFiveMinutes();
