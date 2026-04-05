@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\WelcomeCredentialsMail;
+use App\Models\Setting;
+use App\Models\TcnUserAccount;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Services\AuditLogService;
@@ -40,7 +42,11 @@ class UserController extends Controller
 
     public function create()
     {
-        return view('admin.users.create');
+        $prefix = Setting::get('employee_id_prefix', 'EMP');
+        $lastNumber = User::whereNotNull('employee_id')->count();
+        $previewId = strtoupper($prefix) . str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+
+        return view('admin.users.create', compact('previewId'));
     }
 
     public function store(Request $request)
@@ -58,14 +64,29 @@ class UserController extends Controller
             'password.regex'      => 'Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character (@$!%*#?&^_-).',
         ]);
 
-        User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'phone'    => '+91' . $request->phone,
-            'role'     => $request->role,
-            'status'   => 1,
-            'password' => Hash::make($request->password),
+        $prefix = strtoupper(Setting::get('employee_id_prefix', 'EMP'));
+        $lastNumber = User::whereNotNull('employee_id')->count();
+        $employeeId = $prefix . str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+
+        $user = User::create([
+            'employee_id' => $employeeId,
+            'name'        => $request->name,
+            'email'       => $request->email,
+            'phone'       => '+91' . $request->phone,
+            'role'        => $request->role,
+            'status'      => 1,
+            'password'    => Hash::make($request->password),
         ]);
+
+        // Save TCN user account if provided
+        if ($request->filled('tcn_username') || $request->filled('tcn_agent_id') || $request->filled('tcn_refresh_token')) {
+            TcnUserAccount::saveForUser($user->id, [
+                'tcn_username'  => $request->input('tcn_username'),
+                'agent_id'      => $request->input('tcn_agent_id'),
+                'hunt_group_id' => $request->input('tcn_hunt_group_id'),
+                'refresh_token' => $request->input('tcn_refresh_token'),
+            ]);
+        }
 
         try {
             Mail::to($request->email)->send(new WelcomeCredentialsMail(
@@ -86,9 +107,10 @@ class UserController extends Controller
     {
         $decryptedId = decrypt($id);
 
-        $user = User::findOrFail($decryptedId);
+        $user       = User::findOrFail($decryptedId);
+        $tcnAccount = TcnUserAccount::forUser($decryptedId);
 
-        return view('admin.users.edit', compact('user', 'id'));
+        return view('admin.users.edit', compact('user', 'id', 'tcnAccount'));
     }
     public function update(Request $request, $id)
     {
@@ -117,6 +139,16 @@ class UserController extends Controller
         }
 
         $user->save();
+
+        // Save TCN account fields (only update non-empty values)
+        if ($request->filled('tcn_username') || $request->filled('tcn_agent_id') || $request->filled('tcn_refresh_token')) {
+            TcnUserAccount::saveForUser($user->id, [
+                'tcn_username'  => $request->input('tcn_username'),
+                'agent_id'      => $request->input('tcn_agent_id'),
+                'hunt_group_id' => $request->input('tcn_hunt_group_id'),
+                'refresh_token' => $request->input('tcn_refresh_token'),
+            ]);
+        }
 
         AuditLogService::log('user.updated', 'User', $user->id, $old, $user->only(['name', 'email', 'phone', 'role', 'status']));
 

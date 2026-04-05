@@ -9,6 +9,7 @@ use App\Http\Controllers\LeadImportController;
 use App\Http\Controllers\TelecallerStatusController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ExotelController;
+use App\Http\Controllers\TcnController;
 use App\Http\Controllers\TwilioController;
 use App\Http\Controllers\CallController;
 use App\Http\Controllers\MetaWhatsAppController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\Api\LeadCaptureController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SystemSettingsController;
+use App\Http\Controllers\Admin\TcnSettingsController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\LeadManagementController as AdminLeadManagementController;
 use App\Http\Controllers\Admin\ReportsController as AdminReportsController;
@@ -195,6 +197,10 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::post('/instagram', [SystemSettingsController::class, 'updateInstagram'])->name('instagram.update');
             Route::get('/voip', [SystemSettingsController::class, 'voipSettings'])->name('voip');
             Route::post('/voip', [SystemSettingsController::class, 'updateVoipSettings'])->name('voip.update');
+
+            // TCN global settings
+            Route::get('/tcn',  [TcnSettingsController::class, 'index'])->name('tcn');
+            Route::post('/tcn', [TcnSettingsController::class, 'update'])->name('tcn.update');
         });
 
         /*
@@ -617,6 +623,70 @@ Route::get('/email/click/{token}', [EmailTrackingController::class, 'click'])
 Route::post('/email/webhook/bounce', [EmailWebhookController::class, 'bounce'])
     ->withoutMiddleware([VerifyCsrfToken::class])
     ->name('email.webhook.bounce');
+
+/*
+|--------------------------------------------------------------------------
+| TCN SOFTPHONE
+|--------------------------------------------------------------------------
+*/
+
+// Per-user TCN config API — returns access_token for logged-in user, never exposes secrets
+Route::middleware('auth')->get('/api/tcn/config', [TcnController::class, 'userConfig'])->name('api.tcn.config');
+
+// TCN OAuth — connect redirect and callback (no auth middleware needed)
+Route::get('/tcn/auth/connect',  [TcnController::class, 'authRedirect'])->name('tcn.auth.connect')->middleware('auth');
+Route::get('/tcn/auth/callback', [TcnController::class, 'authCallback'])->name('tcn.auth.callback');
+
+// TCN per-user OAuth — admin connects individual user accounts.
+// The static /tcn/auth/callback URI is reused for the callback so that the
+// redirect_uri sent to TCN exactly matches the one registered in their OAuth app.
+// user_id is passed via session (set in userConnectRedirect) — NOT via the URL.
+Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'])
+    ->get('/tcn/connect/{encryptedId}', [TcnController::class, 'userConnectRedirect'])
+    ->name('tcn.user.connect');
+
+// TCN Softphone iframe page — embedded in layouts via <iframe src="/softphone">
+Route::middleware('auth')->get('/softphone', [TcnController::class, 'softphonePage'])->name('softphone');
+
+// TCN Test Console (admin only)
+Route::middleware(['auth'])->group(function () {
+    Route::get('/tcn/test',        [TcnController::class, 'testPage'])->name('tcn.test');
+    Route::post('/tcn/test/token', [TcnController::class, 'testToken'])->name('tcn.test.token');
+});
+
+// TCN authenticated proxy routes
+Route::middleware('auth')->prefix('tcn')->name('tcn.')->group(function () {
+    // Non-sensitive config for the browser
+    Route::get('/config',           [TcnController::class, 'config'])->name('config');
+
+    // Login flow (5 steps)
+    Route::post('/token',           [TcnController::class, 'token'])->name('token');
+    Route::post('/agent',           [TcnController::class, 'agent'])->name('agent');
+    Route::post('/skills',          [TcnController::class, 'skills'])->name('skills');
+    Route::post('/session',         [TcnController::class, 'session'])->name('session');
+    // Session management
+    Route::post('/keepalive',       [TcnController::class, 'keepalive'])->name('keepalive');
+    Route::post('/status',          [TcnController::class, 'agentStatus'])->name('status');
+    Route::post('/set-status',      [TcnController::class, 'setAgentStatus'])->name('set-status');
+
+    // Outbound call — single manualdial/execute endpoint (preferred)
+    Route::post('/dial',            [TcnController::class, 'dial'])->name('dial');
+
+    // Legacy 3-step manualdial (kept for fallback / debugging)
+    Route::post('/dial-prepare',    [TcnController::class, 'dialPrepare'])->name('dial-prepare');
+    Route::post('/dial-process',    [TcnController::class, 'dialProcess'])->name('dial-process');
+    Route::post('/dial-start',      [TcnController::class, 'dialStart'])->name('dial-start');
+
+    // Endpoint probe — POST /tcn/dial-debug to find correct manualdial path
+    Route::post('/dial-debug',      [TcnController::class, 'dialDebug'])->name('dial-debug');
+
+    // End call
+    Route::post('/disconnect',      [TcnController::class, 'disconnect'])->name('disconnect');
+
+    // Call log management
+    Route::post('/call-log',        [TcnController::class, 'createCallLog'])->name('call-log.create');
+    Route::patch('/call-log/{id}',  [TcnController::class, 'updateCallLog'])->whereNumber('id')->name('call-log.update');
+});
 
 /*
 |--------------------------------------------------------------------------

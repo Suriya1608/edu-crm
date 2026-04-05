@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'twilio') }}">
+    <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
 
     {{-- Dynamic Title --}}
     <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
@@ -30,6 +31,24 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
     <link href="{{ asset('css/style.css') }}" rel="stylesheet">
+
+    {{-- Global 419 handler: intercept all fetch() calls and redirect to login on session expiry --}}
+    <script>
+    (function () {
+        var _origFetch = window.fetch;
+        window.fetch = function (input, init) {
+            init = Object.assign({}, init);
+            // Ensure the server can detect AJAX requests (enables JSON 419 response)
+            init.headers = Object.assign({ 'X-Requested-With': 'XMLHttpRequest' }, init.headers);
+            return _origFetch.call(window, input, init).then(function (response) {
+                if (response.status === 419) {
+                    window.location.href = @json(route('login'));
+                }
+                return response;
+            });
+        };
+    })();
+    </script>
 
     @vite(['resources/js/app.js'])
 </head>
@@ -363,7 +382,7 @@
 
                 setSoundEnabled(getSoundEnabled());
                 fetchNotifications();
-                setInterval(fetchNotifications, 20000);
+                setInterval(fetchNotifications, 60000);
             })();
         </script>
     @endif
@@ -436,6 +455,103 @@
 
         @endif
 
+        @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
+        {{-- Floating TCN softphone — embedded iframe (bottom-right).
+             The iframe keeps the SIP/WebRTC session alive across page navigations. --}}
+        <iframe id="tcnSoftphoneFrame"
+            src="{{ route('softphone') }}"
+            allow="microphone"
+            style="position:fixed;bottom:20px;right:20px;width:300px;height:480px;
+                   border:none;z-index:1065;border-radius:14px;
+                   box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;
+                   transition:height .2s,width .2s;">
+        </iframe>
+        {{-- Toggle button (shown once agent is READY) --}}
+        <button id="tcnToggleBtn" title="Toggle Softphone"
+            style="position:fixed;bottom:20px;right:20px;z-index:1066;
+                   width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+                   background:#64748b;color:#fff;display:none;
+                   align-items:center;justify-content:center;
+                   box-shadow:0 4px 20px rgba(0,0,0,.22);transition:background .25s;">
+            <span class="material-icons" style="font-size:24px;pointer-events:none;" id="tcnToggleIco">phone</span>
+        </button>
+        <script>
+        (function () {
+            var _frame   = null;
+            var _btn     = null;
+            var _visible = false;
+            var _ready   = false;
+
+            function frame()  { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
+            function btn()    { if (!_btn)   _btn   = document.getElementById('tcnToggleBtn');       return _btn;   }
+            function ico()    { return document.getElementById('tcnToggleIco'); }
+
+            function show() {
+                var f = frame(); if (!f) return;
+                f.style.display = 'block';
+                f.style.bottom  = '80px';
+                f.style.height  = '480px';
+                f.style.width   = '300px';
+                f.style.borderRadius = '14px';
+                _visible = true;
+                var i = ico(); if (i) i.textContent = 'close';
+            }
+            function hide() {
+                var f = frame(); if (!f) return;
+                f.style.display = 'none';
+                var b = btn(); if (b) b.style.bottom = '20px';
+                _visible = false;
+                var i = ico(); if (i) i.textContent = 'phone';
+            }
+
+            document.addEventListener('DOMContentLoaded', function () {
+                var b = btn();
+                if (b) b.addEventListener('click', function () {
+                    if (_visible) hide(); else show();
+                });
+                // Forward [data-phone] clicks into the iframe
+                document.addEventListener('click', function (e) {
+                    var el = e.target.closest('[data-phone]');
+                    if (!el) return;
+                    var phone = el.getAttribute('data-phone');
+                    if (!phone) return;
+                    var f = frame(); if (!f) return;
+                    f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
+                    if (!_visible) show();
+                }, true);
+            });
+
+            window.addEventListener('message', function (ev) {
+                var d = ev.data;
+                if (!d || typeof d !== 'object') return;
+                var b = btn();
+
+                if (d.type === 'TCN_READY') {
+                    _ready = true;
+                    if (b) { b.style.display = 'flex'; b.style.background = '#10b981'; }
+                } else if (d.type === 'TCN_CALL_STARTED') {
+                    if (b) { b.style.background = '#137fec'; b.style.animation = 'tcnBtnPulse 1s ease-in-out infinite'; }
+                    if (!_visible) show();
+                } else if (d.type === 'TCN_CALL_ANSWERED') {
+                    if (b) { b.style.background = '#ef4444'; b.style.animation = ''; }
+                } else if (d.type === 'TCN_CALL_ENDED') {
+                    if (b) { b.style.background = '#10b981'; b.style.animation = ''; }
+                } else if (d.type === 'TCN_LOGGED_OUT') {
+                    if (b) b.style.background = '#64748b';
+                } else if (d.type === 'TCN_SIP_DROPPED') {
+                    if (b) b.style.background = '#f59e0b';
+                } else if (d.type === 'SP_MINIMIZE') {
+                    var f = frame();
+                    if (f) { f.style.height = '44px'; f.style.width = '170px'; f.style.borderRadius = '22px'; }
+                } else if (d.type === 'SP_EXPAND') {
+                    var f = frame();
+                    if (f) { f.style.height = '480px'; f.style.width = '300px'; f.style.borderRadius = '14px'; }
+                }
+            });
+        })();
+        </script>
+        <style>@keyframes tcnBtnPulse{0%,100%{opacity:1}50%{opacity:.55}}</style>
+        @endif
         <script src="{{ asset('js/global-call.js?v=2') }}"></script>
     @endif
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -584,10 +700,10 @@
                 items.forEach(function(item) { if (item.id) shownIds.add(item.id); });
 
                 if (items.length > 0) {
+                    playWaSound();
                     if (data.is_first) {
                         showLoginSummary(items.length);
                     } else {
-                        playWaSound();
                         items.forEach(function(item) { showToast(item.title, item.message, item.link); });
                     }
                 }
@@ -607,7 +723,7 @@
         }
 
         poll();
-        setInterval(poll, 5000);
+        setInterval(poll, 30000);
     })();
     </script>
     @endauth

@@ -47,12 +47,21 @@ return Application::configure(basePath: dirname(__DIR__))
     })
 
     ->withExceptions(function (Exceptions $exceptions): void {
-        // On CSRF token mismatch (419 Page Expired), redirect to login with a
-        // clear error message and a fresh session — instead of the default
-        // silent redirect-back that looks like an invisible "page refresh".
+        // On CSRF token mismatch (419 Page Expired), clear the session and either:
+        // - Return a 419 JSON response for AJAX/fetch requests (so the client-side
+        //   interceptor can trigger a full page redirect to login), or
+        // - Redirect directly to login for regular full-page form submissions.
         $exceptions->render(function (TokenMismatchException $e, Request $request) {
             $request->session()->invalidate();
             $request->session()->regenerateToken();
+
+            if ($request->ajax() || $request->expectsJson()) {
+                return response()->json([
+                    'message'  => 'Session expired. Please log in again.',
+                    'redirect' => route('login'),
+                ], 419);
+            }
+
             return redirect()->route('login', [], 303)
                 ->withErrors(['session_expired' => 'Your session has expired. Please sign in again.']);
         });

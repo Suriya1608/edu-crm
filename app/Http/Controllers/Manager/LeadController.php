@@ -86,9 +86,12 @@ class LeadController extends Controller
 
         $myLeadsSubquery = Lead::where('assigned_by', $managerId)->select('id');
 
-        $totalLeads    = Lead::where('assigned_by', $managerId)->count();
-        $newLeads      = Lead::where('assigned_by', $managerId)->where('status', 'new')->count();
-        $assignedLeads = Lead::where('assigned_by', $managerId)->where('status', 'assigned')->count();
+        $leadCounts    = Lead::where('assigned_by', $managerId)
+            ->selectRaw("COUNT(*) as total, SUM(status='new') as new_count, SUM(status='assigned') as assigned_count")
+            ->first();
+        $totalLeads    = (int) $leadCounts->total;
+        $newLeads      = (int) $leadCounts->new_count;
+        $assignedLeads = (int) $leadCounts->assigned_count;
         $followupToday = Followup::whereDate('next_followup', now())->whereIn('lead_id', $myLeadsSubquery)->count();
 
 
@@ -279,8 +282,9 @@ class LeadController extends Controller
         $whatsappMessages = Schema::hasTable('whatsapp_messages')
             ? WhatsAppMessage::where('lead_id', $lead->id)->orderBy('created_at')->get()
             : collect();
+        $waTemplateName = Setting::get('meta_whatsapp_template_name', 'welcome_template');
 
-        return view('manager.leads.show', compact('lead', 'telecallers', 'provider', 'whatsappMessages'));
+        return view('manager.leads.show', compact('lead', 'telecallers', 'provider', 'whatsappMessages', 'waTemplateName'));
     }
 
     public function changeStatus(Request $request, $encryptedId)
@@ -468,12 +472,20 @@ class LeadController extends Controller
             }
         }
 
-        $columns       = [];
-        $columnTotals  = [];
+        // Single GROUP BY query for column totals instead of 7 separate count() calls
+        $rawTotals = Lead::where('assigned_by', $managerId)
+            ->whereIn('status', $statuses)
+            ->selectRaw('status, COUNT(*) as cnt')
+            ->groupBy('status')
+            ->pluck('cnt', 'status');
+
+        $columns      = [];
+        $columnTotals = array_fill_keys($statuses, 0);
+        foreach ($rawTotals as $s => $cnt) {
+            $columnTotals[$s] = (int) $cnt;
+        }
         foreach ($statuses as $status) {
-            $q = (clone $base)->where('status', $status);
-            $columnTotals[$status] = $q->count();
-            $columns[$status]      = $q->latest()->limit(20)->get();
+            $columns[$status] = (clone $base)->where('status', $status)->latest()->limit(20)->get();
         }
 
         $telecallers = User::where('role', 'telecaller')

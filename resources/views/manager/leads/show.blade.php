@@ -1,6 +1,4 @@
 @extends('layouts.manager.app')
-<meta name="call-provider" content="exotel">
-<meta name="csrf-token" content="{{ csrf_token() }}">
 @section('content')
     @include('layouts.whatsappchat')
     <!-- Lead sub-nav (non-sticky — avoids duplicate sticky header over notification dropdown) -->
@@ -214,7 +212,7 @@
                             <div class="wa-chat-footer">
                                 <div class="wa-template-row">
                                     <button type="button" class="wa-template-btn wa-tpl-direct-btn"
-                                        data-template="welcome_template"
+                                        data-template="{{ $waTemplateName }}"
                                         data-params="{{ json_encode([$lead->name]) }}"
                                         data-display="Hello {{ $lead->name }}, thank you for your interest in our programs!">
                                         ✅ Welcome
@@ -515,6 +513,42 @@
             const fetchUrl  = @json(route('manager.leads.whatsapp.fetch', encrypt($lead->id)));
             const csrfToken = '{{ csrf_token() }}';
 
+            // ── Notification helpers ───────────────────────────
+            let _waAudioCtx = null;
+            function playWaChime() {
+                try {
+                    if (!_waAudioCtx) _waAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    [[1100, 0], [880, 0.18]].forEach(function(pair) {
+                        const osc  = _waAudioCtx.createOscillator();
+                        const gain = _waAudioCtx.createGain();
+                        osc.connect(gain); gain.connect(_waAudioCtx.destination);
+                        osc.type = 'sine'; osc.frequency.value = pair[0];
+                        const t = _waAudioCtx.currentTime + pair[1];
+                        gain.gain.setValueAtTime(0, t);
+                        gain.gain.linearRampToValueAtTime(0.3, t + 0.01);
+                        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+                        osc.start(t); osc.stop(t + 0.22);
+                    });
+                } catch(e) {}
+            }
+
+            function showWaToast(title, message, color) {
+                const stack = document.getElementById('waToastStack');
+                if (!stack) return;
+                const div = document.createElement('div');
+                div.style.cssText = 'background:#fff;border:1px solid #e2e8f0;border-left:4px solid ' + (color || '#25D366') + ';border-radius:10px;padding:10px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.12);pointer-events:auto;animation:waSlideIn .25s ease;';
+                div.innerHTML = '<div style="display:flex;align-items:flex-start;gap:8px;">' +
+                    '<span class="material-icons" style="color:' + (color || '#25D366') + ';font-size:20px;flex-shrink:0;margin-top:1px;">chat</span>' +
+                    '<div style="flex:1;min-width:0;">' +
+                        '<div style="font-weight:700;font-size:13px;color:#0f172a;">' + title + '</div>' +
+                        (message ? '<div style="font-size:12px;color:#64748b;margin-top:2px;">' + message + '</div>' : '') +
+                    '</div>' +
+                    '<button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:18px;line-height:1;padding:0;flex-shrink:0;">&times;</button>' +
+                    '</div>';
+                stack.appendChild(div);
+                setTimeout(function() { try { div.remove(); } catch(e){} }, 5000);
+            }
+
             // ── File attach ──────────────────────────────────
             const fileInput      = document.getElementById('waLeadFileInput');
             const attachBtn      = document.getElementById('waLeadAttachBtn');
@@ -723,12 +757,18 @@
                     const data = await res.json();
 
                     // Append any new messages (inbound or outbound from another session)
+                    let newInbound = 0;
                     (data.messages || []).forEach(msg => {
                         if (!chatBody.querySelector(`[data-msg-id="${msg.id}"]`)) {
                             appendBubble(msg);
+                            if (msg.direction === 'inbound') newInbound++;
                         }
                         if (msg.id > lastMsgId) lastMsgId = msg.id;
                     });
+                    if (newInbound > 0) {
+                        playWaChime();
+                        showWaToast('New WhatsApp message', newInbound > 1 ? newInbound + ' new messages received' : 'New message received', '#25D366');
+                    }
 
                     // Update tick marks on already-shown outbound bubbles
                     Object.entries(data.statuses || {}).forEach(([id, status]) => {
@@ -738,7 +778,7 @@
                 } catch (_) { /* silent on network errors */ }
             }
 
-            setInterval(poll, 5000);
+            setInterval(poll, 15000);
 
             function showWaError(msg) {
                 const err = document.createElement('div');
@@ -789,6 +829,7 @@
 
                     if (data.message_id > lastMsgId) lastMsgId = data.message_id;
                     msgInput.value = '';
+                    showWaToast('Message sent', 'WhatsApp message delivered to queue', '#137fec');
 
                 } catch (err) {
                     showWaError(err.message || 'Network error — check your connection.');
@@ -826,6 +867,7 @@
                         media_filename: data.media_filename,
                     });
                     if (data.message_id > lastMsgId) lastMsgId = data.message_id;
+                    showWaToast('Media sent', 'File delivered to queue', '#137fec');
                 } catch (err) {
                     showWaError(err.message || 'Upload failed.');
                 } finally {

@@ -19,13 +19,16 @@ class CampaignController extends Controller
 
     public function index()
     {
-        $base = Campaign::where('created_by', Auth::id());
+        $statusCounts = Campaign::where('created_by', Auth::id())
+            ->selectRaw('status, COUNT(*) as cnt')
+            ->groupBy('status')
+            ->pluck('cnt', 'status');
 
         $totalStats = [
-            'total'     => (clone $base)->count(),
-            'active'    => (clone $base)->where('status', 'active')->count(),
-            'paused'    => (clone $base)->where('status', 'paused')->count(),
-            'completed' => (clone $base)->where('status', 'completed')->count(),
+            'total'     => $statusCounts->sum(),
+            'active'    => (int) $statusCounts->get('active', 0),
+            'paused'    => (int) $statusCounts->get('paused', 0),
+            'completed' => (int) $statusCounts->get('completed', 0),
         ];
 
         $campaigns = Campaign::where('created_by', Auth::id())
@@ -90,12 +93,17 @@ class CampaignController extends Controller
         $contacts    = $query->latest()->paginate(25)->withQueryString();
         $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
 
+        $contactCounts = $campaign->contacts()
+            ->selectRaw('status, COUNT(*) as cnt')
+            ->groupBy('status')
+            ->pluck('cnt', 'status');
+        $totalContacts = $contactCounts->sum();
         $stats = [
-            'total'      => $campaign->contacts()->count(),
-            'pending'    => $campaign->contacts()->where('status', 'pending')->count(),
-            'interested' => $campaign->contacts()->where('status', 'interested')->count(),
-            'converted'  => $campaign->contacts()->where('status', 'converted')->count(),
-            'called'     => $campaign->contacts()->where('status', '!=', 'pending')->count(),
+            'total'      => $totalContacts,
+            'pending'    => (int) $contactCounts->get('pending', 0),
+            'interested' => (int) $contactCounts->get('interested', 0),
+            'converted'  => (int) $contactCounts->get('converted', 0),
+            'called'     => $totalContacts - (int) $contactCounts->get('pending', 0),
         ];
 
         return view('manager.campaigns.show', compact('campaign', 'contacts', 'telecallers', 'stats'));

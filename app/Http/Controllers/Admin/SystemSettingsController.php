@@ -92,7 +92,7 @@ class SystemSettingsController extends Controller
             'token'            => Setting::getSecure('meta_whatsapp_token', ''),
             'phoneId'          => Setting::get('meta_whatsapp_phone_number_id', ''),
             'verifyToken'      => Setting::get('meta_whatsapp_webhook_verify_token', 'crm_verify_token'),
-            'templateName'     => Setting::get('meta_whatsapp_template_name', config('services.meta.whatsapp_default_template', 'welcome_template')),
+            'templateName'     => Setting::get('meta_whatsapp_template_name', config('services.meta.whatsapp_default_template', 'hello_world')),
             'templateLanguage' => Setting::get('meta_whatsapp_template_language', config('services.meta.whatsapp_default_template_language', 'en')),
         ]);
     }
@@ -138,7 +138,7 @@ class SystemSettingsController extends Controller
     public function updateCallSettings(Request $request)
     {
         $data = $request->validate([
-            'primary_call_provider' => 'required|in:twilio,exotel',
+            'primary_call_provider' => 'required|in:twilio,exotel,tcn',
             // Twilio
             'twilio_account_sid' => 'nullable|string|max:255',
             'twilio_auth_token'  => 'nullable|string|max:255',
@@ -152,6 +152,12 @@ class SystemSettingsController extends Controller
             'exotel_sid'       => 'nullable|string|max:255',
             'exotel_caller_id' => 'nullable|string|max:50',
             'exotel_subdomain' => 'nullable|string|max:100',
+            // TCN
+            'tcn_client_id'     => 'nullable|string|max:255',
+            'tcn_client_secret' => 'nullable|string|max:255',
+            'tcn_refresh_token' => 'nullable|string|max:500',
+            'tcn_redirect_uri'  => 'nullable|url|max:500',
+            'tcn_caller_id'     => 'nullable|string|max:20',
             // Browser VOIP
             'voip_domain'   => 'nullable|string|max:255',
             'voip_proxy'    => 'nullable|string|max:255',
@@ -187,6 +193,19 @@ class SystemSettingsController extends Controller
         Setting::set('exotel_sid',       $data['exotel_sid']       ?? '');
         Setting::set('exotel_caller_id', $data['exotel_caller_id'] ?? '');
         Setting::set('exotel_subdomain', $data['exotel_subdomain'] ?? 'api.in.exotel.com');
+
+        // TCN — blank means "keep existing secret"
+        if (!empty($data['tcn_client_id'])) {
+            Setting::setSecure('tcn_client_id', $data['tcn_client_id']);
+        }
+        if (!empty($data['tcn_client_secret'])) {
+            Setting::setSecure('tcn_client_secret', $data['tcn_client_secret']);
+        }
+        if (!empty($data['tcn_refresh_token'])) {
+            Setting::setSecure('tcn_refresh_token', $data['tcn_refresh_token']);
+        }
+        Setting::set('tcn_redirect_uri', $data['tcn_redirect_uri'] ?? '');
+        Setting::set('tcn_caller_id',   $data['tcn_caller_id']   ?? '');
 
         // Browser VOIP
         Setting::set('voip_enabled',  $request->boolean('voip_enabled') ? '1' : '0');

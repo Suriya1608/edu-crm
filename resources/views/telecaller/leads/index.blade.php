@@ -205,7 +205,7 @@
             }
 
             fetchSnapshot();
-            setInterval(fetchSnapshot, 20000);
+            setInterval(fetchSnapshot, 45000);
         })();
     </script>
 @endsection
