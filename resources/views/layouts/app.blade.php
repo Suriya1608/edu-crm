@@ -456,17 +456,25 @@
         @endif
 
         @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
-        {{-- Floating TCN softphone — embedded iframe (bottom-right).
-             The iframe keeps the SIP/WebRTC session alive across page navigations. --}}
+        {{--
+            TCN Softphone — embedded iframe widget (bottom-right corner).
+            Architecture:
+              • The iframe loads /softphone which runs TcnService + TCN SIP stack.
+              • On first load: full login (config → skills → ASM session → SIP INVITE).
+              • On page navigation: iframe is recreated but reads session from localStorage.
+                canResumeCachedSession() pings keepalive → if session alive, skips to SIP
+                INVITE only (~1-2s). loginWithToken is NOT called again if session is valid.
+              • localStorage (not sessionStorage) ensures cache survives iframe recreation.
+        --}}
         <iframe id="tcnSoftphoneFrame"
             src="{{ route('softphone') }}"
             allow="microphone"
-            style="position:fixed;bottom:20px;right:20px;width:300px;height:480px;
+            style="position:fixed;bottom:80px;right:20px;width:300px;height:480px;
                    border:none;z-index:1065;border-radius:14px;
                    box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;
                    transition:height .2s,width .2s;">
         </iframe>
-        {{-- Toggle button (shown once agent is READY) --}}
+        {{-- Toggle button — shown once agent is READY --}}
         <button id="tcnToggleBtn" title="Toggle Softphone"
             style="position:fixed;bottom:20px;right:20px;z-index:1066;
                    width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
@@ -477,14 +485,11 @@
         </button>
         <script>
         (function () {
-            var _frame   = null;
-            var _btn     = null;
-            var _visible = false;
-            var _ready   = false;
+            var _frame = null, _btn = null, _visible = false;
 
-            function frame()  { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
-            function btn()    { if (!_btn)   _btn   = document.getElementById('tcnToggleBtn');       return _btn;   }
-            function ico()    { return document.getElementById('tcnToggleIco'); }
+            function frame() { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
+            function btn()   { if (!_btn)   _btn   = document.getElementById('tcnToggleBtn');       return _btn;   }
+            function ico()   { return document.getElementById('tcnToggleIco'); }
 
             function show() {
                 var f = frame(); if (!f) return;
@@ -499,7 +504,6 @@
             function hide() {
                 var f = frame(); if (!f) return;
                 f.style.display = 'none';
-                var b = btn(); if (b) b.style.bottom = '20px';
                 _visible = false;
                 var i = ico(); if (i) i.textContent = 'phone';
             }
@@ -509,6 +513,7 @@
                 if (b) b.addEventListener('click', function () {
                     if (_visible) hide(); else show();
                 });
+
                 // Forward [data-phone] clicks into the iframe
                 document.addEventListener('click', function (e) {
                     var el = e.target.closest('[data-phone]');
@@ -521,14 +526,14 @@
                 }, true);
             });
 
+            // Receive status messages from the softphone iframe
             window.addEventListener('message', function (ev) {
                 var d = ev.data;
                 if (!d || typeof d !== 'object') return;
                 var b = btn();
 
                 if (d.type === 'TCN_READY') {
-                    _ready = true;
-                    if (b) { b.style.display = 'flex'; b.style.background = '#10b981'; }
+                    if (b) { b.style.display = 'flex'; b.style.background = '#10b981'; b.style.animation = ''; }
                 } else if (d.type === 'TCN_CALL_STARTED') {
                     if (b) { b.style.background = '#137fec'; b.style.animation = 'tcnBtnPulse 1s ease-in-out infinite'; }
                     if (!_visible) show();
@@ -537,9 +542,9 @@
                 } else if (d.type === 'TCN_CALL_ENDED') {
                     if (b) { b.style.background = '#10b981'; b.style.animation = ''; }
                 } else if (d.type === 'TCN_LOGGED_OUT') {
-                    if (b) b.style.background = '#64748b';
+                    if (b) { b.style.background = '#64748b'; b.style.animation = ''; }
                 } else if (d.type === 'TCN_SIP_DROPPED') {
-                    if (b) b.style.background = '#f59e0b';
+                    if (b) { b.style.background = '#f59e0b'; b.style.animation = ''; }
                 } else if (d.type === 'SP_MINIMIZE') {
                     var f = frame();
                     if (f) { f.style.height = '44px'; f.style.width = '170px'; f.style.borderRadius = '22px'; }

@@ -519,9 +519,266 @@ class TcnController extends Controller
         $response = Http::withToken($token)
             ->post(self::API_BASE . '/api/v0alpha/acd/agentdisconnect', [
                 'sessionSid' => (string) $sessionSid,
+                'reason'     => 'endcall',
             ]);
 
         return response()->json($response->json(), $response->status());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Hold — PUT simple hold on the active call (Operator API)
+    // ─────────────────────────────────────────────────────────────
+
+    public function hold(Request $request): JsonResponse
+    {
+        $token      = $request->bearerToken() ?? $request->input('access_token');
+        $sessionSid = $request->input('sessionSid');
+        $holdType   = strtoupper($request->input('holdType', 'SIMPLE'));
+        if (!in_array($holdType, ['SIMPLE', 'MULTI'])) $holdType = 'SIMPLE';
+
+        $response = Http::withToken($token)
+            ->post(self::API_BASE . '/api/v0alpha/acd/agentputcallonhold', [
+                'sessionSid' => (string) $sessionSid,
+                'holdType'   => $holdType,
+            ]);
+
+        return response()->json($response->json() ?? [], $response->status());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Resume — take call off hold (Operator API)
+    // ─────────────────────────────────────────────────────────────
+
+    public function resume(Request $request): JsonResponse
+    {
+        $token      = $request->bearerToken() ?? $request->input('access_token');
+        $sessionSid = $request->input('sessionSid');
+
+        $response = Http::withToken($token)
+            ->post(self::API_BASE . '/api/v0alpha/acd/agentgetcallfromhold', [
+                'sessionSid' => (string) $sessionSid,
+            ]);
+
+        return response()->json($response->json() ?? [], $response->status());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // DTMF — send tone during active call (Operator API)
+    // ─────────────────────────────────────────────────────────────
+
+    public function dtmf(Request $request): JsonResponse
+    {
+        $token      = $request->bearerToken() ?? $request->input('access_token');
+        $sessionSid = $request->input('sessionSid');
+        $digit      = (string) $request->input('digit');
+
+        // TCN spec: * = 10, # = 11, digits 0-9 as integer
+        $digitMap = ['*' => 10, '#' => 11];
+        $tone = isset($digitMap[$digit]) ? $digitMap[$digit] : (int) $digit;
+
+        $response = Http::withToken($token)
+            ->post(self::API_BASE . '/api/v0alpha/acd/playdtmf?sessionSid=' . urlencode((string) $sessionSid), [
+                'dtmfDigits' => [$tone],
+            ]);
+
+        return response()->json($response->json() ?? [], $response->status());
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Manual Dial — unified 3-step Operator API call initiation
+    // Route: POST /tcn/dial
+    //
+    // Steps:
+    //   1. dialmanualprepare     (sessionSid)
+    //   2. processmanualdialcall (phone, agentSid, clientSid, callerId…)
+    //   3. manualdialstart       (agentSessionSid, huntGroupSid, simpleCallData)
+    //
+    // Requires TCN_CLIENT_SID in .env or tcn_client_sid in settings.
+    // ─────────────────────────────────────────────────────────────
+
+    public function dial(Request $request): JsonResponse
+    {
+        $token      = $request->bearerToken() ?? $request->input('access_token');
+        $sessionSid = $request->input('sessionSid');
+        $rawPhone   = preg_replace('/\D/', '', (string) $request->input('phone', ''));
+
+        // Normalise to exactly 10 local digits (strip leading country code "91" if present).
+        // phoneNumber in TCN API must be 10 digits; countryCode is a separate field.
+        // Sending 12 digits (e.g. 916383702482) + countryCode="91" = duplicate → "Invalid".
+        $phone = $rawPhone;
+        if (strlen($phone) === 12 && str_starts_with($phone, '91')) {
+            $phone = substr($phone, 2);
+        }
+        if (strlen($phone) !== 10) {
+            return response()->json([
+                'error' => 'Phone must be exactly 10 local digits (without country code). Got: ' . $rawPhone,
+            ], 422);
+        }
+
+        if (blank($sessionSid)) {
+            return response()->json(['error' => 'sessionSid and phone are required'], 422);
+        }
+
+        $user    = Auth::user();
+        $account = TcnUserAccount::forUser($user->id);
+
+        if (!$account) {
+            return response()->json(['error' => 'TCN account not configured for this user'], 422);
+        }
+
+        $agentSid     = (int) ($account->agent_id    ?? 0);
+        $huntGroupSid = (int) ($account->hunt_group_id ?? 0);
+        $callerId     = Setting::get('tcn_caller_id',  env('TCN_CALLER_ID', ''));
+        $clientSid    = Setting::get('tcn_client_sid', env('TCN_CLIENT_SID', ''));
+        $countryCode  = '91';
+        $countrySid   = '10'; // India
+
+        if (blank($clientSid)) {
+            return response()->json([
+                'error' => 'TCN client SID not configured. Add TCN_CLIENT_SID=<your_client_sid> to .env or set tcn_client_sid in admin settings.',
+            ], 422);
+        }
+
+        // ── Step 1: Prepare manual dial ───────────────────────────
+        $prepareResp = Http::withToken($token)
+            ->post(self::API_BASE . '/api/v0alpha/acd/dialmanualprepare', [
+                'sessionSid' => (string) $sessionSid,
+            ]);
+
+        Log::info('TCN dialmanualprepare', [
+            'sessionSid' => $sessionSid,
+            'http'       => $prepareResp->status(),
+            'body'       => $prepareResp->body(),
+        ]);
+
+        if (!$prepareResp->successful()) {
+            return response()->json([
+                'error'      => 'dialmanualprepare failed',
+                'tcn_status' => $prepareResp->status(),
+                'tcn_body'   => $prepareResp->json() ?? ['_raw' => $prepareResp->body()],
+            ], $prepareResp->status() ?: 500);
+        }
+
+        // ── Step 2: Process manual dial ───────────────────────────
+        $processResp = Http::withToken($token)
+            ->post(self::API_BASE . '/api/v0alpha/callqueue/processmanualdialcall', [
+                'call' => [
+                    'agentSid'             => $agentSid,
+                    'callerId'             => $callerId,
+                    'clientSid'            => (string) $clientSid,
+                    'doRecord'             => 'true',
+                    'phoneNumber'          => $phone,
+                    'callerIdCountryCode'  => $countryCode,
+                    'countryCode'          => $countryCode,
+                    'countrySid'           => $countrySid,
+                    'doDnclScrub'          => 'true',
+                    'callDataType'         => 'manual',
+                    'doCellPhoneScrub'     => 'false',
+                    'callerIdCountrySid'   => $countrySid,
+                ],
+            ]);
+
+        $processData = $processResp->json() ?? [];
+
+        // Extract validation scrub flags — these are the key indicators of why
+        // TCN marks a call "Invalid" and drops it immediately to WRAPUP with 0 min.
+        $scrubbedCall       = $processData['scrubbedCall'] ?? $processData ?? [];
+        $isDialValidationOk = $scrubbedCall['isDialValidationOk'] ?? null;
+        $isDnclScrubOk      = $scrubbedCall['isDnclScrubOk']      ?? null;
+        $isTimeZoneScrubOk  = $scrubbedCall['isTimeZoneScrubOk']  ?? null;
+        $callSid            = $scrubbedCall['callSid']             ?? null;
+        $taskGroupSid       = $scrubbedCall['taskGroupSid']        ?? null;
+
+        Log::info('TCN processmanualdialcall', [
+            'phone'               => $phone,
+            'http'                => $processResp->status(),
+            'isDialValidationOk'  => $isDialValidationOk,
+            'isDnclScrubOk'       => $isDnclScrubOk,
+            'isTimeZoneScrubOk'   => $isTimeZoneScrubOk,
+            'callSid'             => $callSid,
+            'body'                => $processResp->body(),
+        ]);
+
+        if (!$processResp->successful()) {
+            return response()->json([
+                'error'      => 'processmanualdialcall failed',
+                'tcn_status' => $processResp->status(),
+                'tcn_body'   => $processData,
+            ], $processResp->status() ?: 500);
+        }
+
+        // Hard-stop: if TCN's own validation rejected the call there is no point
+        // proceeding to manualdialstart — the call will be "Invalid" with 0 duration.
+        if ($isDialValidationOk === false) {
+            $reason = match(true) {
+                $isDnclScrubOk === false     => 'Number is on the DNCL (Do Not Call List)',
+                $isTimeZoneScrubOk === false => 'Call blocked by timezone scrub (outside allowed hours)',
+                default                      => 'TCN dial validation failed (isDialValidationOk=false)',
+            };
+            Log::warning('TCN call blocked by validation', [
+                'phone'              => $phone,
+                'isDialValidationOk' => $isDialValidationOk,
+                'isDnclScrubOk'      => $isDnclScrubOk,
+                'isTimeZoneScrubOk'  => $isTimeZoneScrubOk,
+            ]);
+            return response()->json([
+                'error'              => $reason,
+                'validationError'    => $reason,
+                'isDialValidationOk' => $isDialValidationOk,
+                'isDnclScrubOk'      => $isDnclScrubOk,
+                'isTimeZoneScrubOk'  => $isTimeZoneScrubOk,
+                'tcn_body'           => $processData,
+            ], 422);
+        }
+
+        if (blank($callSid)) {
+            return response()->json([
+                'error'    => 'processmanualdialcall did not return a callSid',
+                'tcn_body' => $processData,
+            ], 500);
+        }
+
+        // ── Step 3: Start manual dial ─────────────────────────────
+        $startResp = Http::withToken($token)
+            ->post(self::API_BASE . '/api/v0alpha/p3api/manualdialstart', [
+                'agentSessionSid' => (int) $sessionSid,
+                'huntGroupSid'    => $huntGroupSid,
+                'simpleCallData'  => [
+                    'callSid'             => (int) $callSid,
+                    'agentSid'            => $agentSid,
+                    'taskGroupSid'        => (int) ($taskGroupSid ?? 0),
+                    'callerId'            => $callerId,
+                    'clientSid'           => (int) $clientSid,
+                    'doRecord'            => true,
+                    'phoneNumber'         => $phone,
+                    'callerIdCountryCode' => $countryCode,
+                    'countryCode'         => $countryCode,
+                    'callDataType'        => 'manual',
+                    'callerIdCountrySid'  => (int) $countrySid,
+                    'countrySid'          => (int) $countrySid,
+                ],
+            ]);
+
+        Log::info('TCN manualdialstart', [
+            'sessionSid'   => $sessionSid,
+            'phone'        => $phone,
+            'callSid'      => $callSid,
+            'taskGroupSid' => $taskGroupSid,
+            'http'         => $startResp->status(),
+            'body'         => $startResp->body(),
+        ]);
+
+        return response()->json([
+            'ok'                 => $startResp->successful(),
+            'callSid'            => $callSid,
+            'taskGroupSid'       => $taskGroupSid,
+            'sessionSid'         => $sessionSid,
+            'isDialValidationOk' => $isDialValidationOk,
+            'isDnclScrubOk'      => $isDnclScrubOk,
+            'isTimeZoneScrubOk'  => $isTimeZoneScrubOk,
+            'tcn_status'         => $startResp->status(),
+            'tcn_body'           => $startResp->json() ?? ['_raw' => $startResp->body()],
+        ], $startResp->successful() ? 200 : ($startResp->status() ?: 500));
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

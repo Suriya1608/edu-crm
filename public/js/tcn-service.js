@@ -14,7 +14,9 @@ window.TcnService = (function () {
     let _tokenFetchedAt = null;
 
     const TOKEN_TTL_MS = 55 * 60 * 1000;
-    const CACHE_KEY = 'tcn_service_bootstrap_v1';
+    // localStorage (not sessionStorage) so the token survives page navigations
+    // and iframe recreation — sessionStorage is wiped whenever the iframe is destroyed.
+    const CACHE_KEY = 'tcn_service_bootstrap_v2';
 
     function _log(msg, data) {
         const ts = new Date().toLocaleTimeString();
@@ -36,7 +38,7 @@ window.TcnService = (function () {
 
     function _readCache() {
         try {
-            const raw = sessionStorage.getItem(CACHE_KEY);
+            const raw = localStorage.getItem(CACHE_KEY);
             return raw ? JSON.parse(raw) : null;
         } catch (_) {
             return null;
@@ -45,7 +47,7 @@ window.TcnService = (function () {
 
     function _writeCache() {
         try {
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
                 access_token: _accessToken,
                 agent_id: _agentId,
                 hunt_group_id: _huntGroupId,
@@ -57,7 +59,10 @@ window.TcnService = (function () {
 
     function _clearCache() {
         try {
-            sessionStorage.removeItem(CACHE_KEY);
+            localStorage.removeItem(CACHE_KEY);
+            // Remove old sessionStorage key (pre-localStorage migration)
+            localStorage.removeItem('tcn_service_bootstrap_v1');
+            sessionStorage.removeItem('tcn_service_bootstrap_v1');
         } catch (_) { }
     }
 

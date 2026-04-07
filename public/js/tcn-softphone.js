@@ -80,9 +80,12 @@
         _keepAliveFailCount: 0,
         KEEPALIVE_MS: 30000,  // 30 s keep-alive interval
 
-        // Keep-alive — outbound call session (fresh SID per call)
+        // Keep-alive — outbound call session (ACD voice session SID)
         _callKeepAliveTimer: null,
         _callVoiceSessionSid: null,
+
+        // Status polling — detect INCALL / call-ended during Manual Dial calls
+        _callStatusPollTimer: null,
 
         // Lifecycle flags
         _loggedIn: false,
@@ -158,7 +161,9 @@
 
     function readCache() {
         try {
-            var raw = sessionStorage.getItem(TCN.CACHE_KEY);
+            // localStorage persists across page navigations and iframe recreations,
+            // unlike sessionStorage which is wiped whenever the iframe is destroyed.
+            var raw = localStorage.getItem(TCN.CACHE_KEY);
             return raw ? JSON.parse(raw) : null;
         } catch (_) {
             return null;
@@ -169,7 +174,7 @@
         try {
             // dialUrl is single-use per TCN API — never cache it.
             // A new ASM session must be created each login to get a fresh dialUrl.
-            sessionStorage.setItem(TCN.CACHE_KEY, JSON.stringify({
+            localStorage.setItem(TCN.CACHE_KEY, JSON.stringify({
                 savedAt: Date.now(),
                 accessToken: TCN._accessToken,
                 agentSid: TCN._agentSid,
@@ -185,7 +190,7 @@
 
     function clearCache() {
         try {
-            sessionStorage.removeItem(TCN.CACHE_KEY);
+            localStorage.removeItem(TCN.CACHE_KEY);
         } catch (_) { }
     }
 
@@ -226,7 +231,7 @@
             var currentSessionId = String((keepAlive && (keepAlive.currentSessionId || keepAlive.sessionId || 0)) || 0);
             var keepAliveOk = !!(keepAlive && keepAlive.keepAliveSucceeded !== false);
 
-            if (!keepAliveOk || currentSessionId === '0' || status === 'DISCONNECTED' || status === 'LOGGED_OUT') {
+            if (!keepAliveOk || currentSessionId === '0' || status === 'DISCONNECTED' || status === 'LOGGED_OUT' || status === 'WRAPUP') {
                 clearCache();
                 return false;
             }
@@ -293,10 +298,8 @@
                 log('attachRemoteAudio: no peerConnection yet');
                 return;
             }
-            var remoteStream = new MediaStream();
-            sdh.peerConnection.getReceivers().forEach(function (rx) {
-                if (rx.track) remoteStream.addTrack(rx.track);
-            });
+            var pc = sdh.peerConnection;
+
             var audio = document.getElementById(elementId);
             if (!audio) {
                 audio = document.createElement('audio');
@@ -306,7 +309,27 @@
                 audio.setAttribute('playsinline', '');
                 document.body.appendChild(audio);
             }
+
+            var remoteStream = new MediaStream();
+            pc.getReceivers().forEach(function (rx) {
+                if (rx.track) remoteStream.addTrack(rx.track);
+            });
             audio.srcObject = remoteStream;
+
+            // Handle future tracks — TCN bridges PSTN audio dynamically via SDP re-negotiation.
+            // Without this, the audio element never receives the bridged call audio.
+            pc.addEventListener('track', function (evt) {
+                log('Remote track added (bridged by TCN)');
+                if (evt.streams && evt.streams[0]) {
+                    audio.srcObject = evt.streams[0];
+                } else if (evt.track) {
+                    remoteStream.addTrack(evt.track);
+                    audio.srcObject = remoteStream;
+                }
+                var p = audio.play();
+                if (p) p.catch(function () {});
+            });
+
             var p = audio.play();
             if (p) p.catch(function (e) { log('audio.play() blocked (needs user gesture)', e.message); });
             log('Remote audio attached → #' + elementId);
@@ -323,6 +346,7 @@
     TCN._cleanupSip = function () {
         clearAnswerTimer();
         TCN._stopCallKeepAlive();
+        TCN._stopCallStatusPoll();
         if (TCN._outboundSession) {
             try {
                 var s = TCN._outboundSession.state;
@@ -526,7 +550,8 @@
                         settled = true;
                         clearTimeout(timer);
                         TCN._registered = true;
-                        TCN._attachRemoteAudio(inviter, 'tcn-presence-audio');
+                        // Attach to tcn-remote-audio so TCN-bridged Manual Dial audio reaches the UI.
+                        TCN._attachRemoteAudio(inviter, 'tcn-remote-audio');
                         log('Presence SIP Established — agent READY');
                         resolve();
 
@@ -543,10 +568,14 @@
                         log('Presence SIP dropped — scheduling reconnect…');
                         fire('tcn:sipDropped');
 
+                        // Always stop the presence keep-alive — the session SID is
+                        // no longer valid once the presence SIP drops. During an active
+                        // call this prevents repeated UNAVAILABLE pings on the dead SID.
+                        TCN._stopKeepAlive();
+
                         if (!TCN._callActive && !TCN._reconnecting) {
                             TCN._reconnecting = true;
                             TCN._loggedIn = false;
-                            TCN._stopKeepAlive();
                             // Clean up the dead UA so login() gets a clean slate
                             if (TCN._ua) {
                                 try { TCN._ua.stop(); } catch (_) { }
@@ -829,8 +858,25 @@
     //   new ASM session → SIP INVITE(dial_url) → Established → Terminated
     // ─────────────────────────────────────────────────────────────
 
+    // ─────────────────────────────────────────────────────────────
+    // Outbound Call — Manual Dial Operator API flow
+    //
+    // Architecture (v6.0 — ACD-registered Manual Dial edition):
+    //   1. Get currentSessionId from agentgetstatus (ACD voice session SID)
+    //   2. POST /tcn/dial → runs dialmanualprepare + processmanualdialcall
+    //      + manualdialstart server-side. TCN registers the call in ACD.
+    //   3. Agent transitions READY → INCALL in TCN's state machine.
+    //   4. Audio flows through the EXISTING presence SIP session (no new SIP UA).
+    //   5. Status poll every 5s: detects INCALL (answered) and READY (call ended).
+    //
+    // Why Manual Dial instead of SIP direct-dial:
+    //   Direct SIP INVITE bypasses TCN's ACD. The agent stays READY in TCN's
+    //   state machine, so HOLD / MUTE / DISCONNECT Operator APIs fail with
+    //   "state READY does not handle event fsm.PutCallOnHold".
+    // ─────────────────────────────────────────────────────────────
+
     TCN.startCall = async function (phone, leadId) {
-        // ── Pre-checks ─────────────────────────────────────────
+        // ── Pre-checks ──────────────────────────────────────────
         if (!TCN._loggedIn) {
             throw new Error('TCN not logged in. Call TCN.login() first.');
         }
@@ -838,10 +884,7 @@
             throw new Error('A call is already active.');
         }
 
-        // Wait for SIP to be fully ready before proceeding.
-        // This handles: (a) presence session still establishing at login,
-        // (b) call pressed during the ~3s reconnect window after a drop,
-        // (c) any other transient unready state.
+        // Presence SIP must be established for audio channel
         if (!TCN._isUaReady()) {
             log('startCall: SIP not ready — waiting up to 15s for presence session…');
             try {
@@ -851,29 +894,27 @@
             }
         }
 
-        // ── Validate phone (exactly 10 local digits) ───────────
+        // ── Validate phone (exactly 10 local digits) ────────────
+        // Normalise to 10 local digits ONLY.
+        // countryCode "91" is sent separately in the TCN API payload.
+        // Sending e.g. "916383702482" (12 digits) + countryCode="91" causes
+        // duplicate country-code → TCN validation failure → Result: Invalid, 0 duration.
         var digits = String(phone || '').replace(/\D/g, '');
         if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
         if (digits.startsWith('00')) digits = digits.slice(2);
         if (digits.length !== 10) {
-            throw new Error('Invalid phone number — 10 digits required, got ' + digits.length + ' (' + phone + ')');
+            throw new Error('Invalid phone number — exactly 10 digits required, got ' + digits.length + ' ("' + phone + '"). Do not include country code.');
         }
-        var e164 = '91' + digits;
+        var e164Display = '+91' + digits; // display only
 
-        // ── Mark call active BEFORE creating the call ASM session ───
-        // Creating the call ASM session via /tcn/session terminates the
-        // existing presence SIP session on TCN's side. Without this flag
-        // the presence-drop handler fires reconnect(), which creates a NEW
-        // presence session that invalidates the call session's dialUrl —
-        // causing the SIP INVITE to connect and immediately BYE (0s call).
-        // Setting _callActive = true here suppresses that reconnect.
+        // ── Mark call active ────────────────────────────────────
         TCN._callActive = true;
         TCN._callStartTime = Date.now();
         TCN._callEstablishedAt = 0;
         TCN._activePhone = phone;
         TCN._activeLeadId = leadId || null;
 
-        // ── Create DB call-log (non-fatal) ────────────────────
+        // ── Create DB call-log (non-fatal) ──────────────────────
         var callLogId = null;
         try {
             var logRes = await fetch('/tcn/call-log', {
@@ -884,296 +925,123 @@
             if (logRes.ok) {
                 callLogId = (await logRes.json()).call_log_id;
             } else {
-                var errBody = await logRes.json().catch(function () { return {}; });
-                log('call-log create failed (non-fatal), HTTP ' + logRes.status, errBody);
+                log('call-log create failed (non-fatal), HTTP ' + logRes.status);
             }
         } catch (logErr) {
             log('call-log create error (non-fatal)', logErr.message);
         }
         TCN._activeLogId = callLogId;
 
-        // ── Create call-specific ASM session ───────────────────
-        // Passing phoneNumber + countryCode tells TCN to configure the
-        // PSTN leg for this number and return a routing dial_url token.
-        // The presence SIP session will drop during this await — that is
-        // expected and handled (reconnect suppressed by _callActive = true).
-        log('Creating call ASM session for ' + e164 + '…');
-        console.log("DEBUG CALL →", {
-            phone: e164,
-            callerId: TCN._callerId
-        });
-        var callSession;
+        // ── Get current ACD session SID (currentSessionId from agentgetstatus) ──
+        // This SID is used for ALL Operator APIs: dial, hold, mute, disconnect.
+        // It is NOT the same as the ASM session's voiceSessionSid in all cases.
+        var sessionSid = TCN._voiceSessionSid || TCN._asmSessionSid;
         try {
-            callSession = await proxy('/tcn/session', {
-                huntGroupSid: parseInt(TCN._huntGroupSid) || 0,
-                skills: TCN._skills || {},
-                subsession_type: 'VOICE',
-                phoneNumber: e164,
-                countryCode: '91',
-                callerId: TCN._callerId || '+918634134466' // 🔥 IMPORTANT
+            var statusData = await proxy('/tcn/status', {
+                sessionSid: String(sessionSid || '')
             });
-        } catch (sessErr) {
+            var currentId = String(statusData.currentSessionId || '');
+            var agentStatus = (statusData.statusDesc || '').toUpperCase();
+
+            log('Agent status before dial', { currentSessionId: currentId, statusDesc: agentStatus });
+
+            if (currentId && currentId !== '0') {
+                sessionSid = currentId;
+            }
+            if (agentStatus !== 'READY') {
+                log('WARNING: Agent not READY (status=' + agentStatus + ') — attempting dial anyway');
+            }
+        } catch (statusErr) {
+            log('agentgetstatus failed (non-fatal, using cached SID)', statusErr.message);
+        }
+
+        if (!sessionSid) {
             TCN._callActive = false;
             TCN._activePhone = null; TCN._activeLogId = null; TCN._activeLeadId = null;
             if (callLogId) patchCallLog(callLogId, { status: 'failed' });
-            log('startCall: call ASM session failed', sessErr.message);
-            fire('tcn:error', { message: 'Failed to create call session: ' + sessErr.message });
-            throw sessErr;
+            var noSidErr = new Error('No valid TCN session SID — cannot initiate call');
+            fire('tcn:error', { message: noSidErr.message });
+            throw noSidErr;
         }
 
-        var vr = callSession.voiceRegistration || callSession.voice_registration;
-        var callDialUrl = vr ? (vr.dialUrl || vr.dial_url) : null;
-        var callSipUser = vr ? (vr.username) : null;
-        var callSipPass = vr ? (vr.password) : null;
-        var callVoiceSid = callSession.voiceSessionSid || callSession.voice_session_sid
-            || callSession.asmSessionSid || callSession.asm_session_sid;
+        // Store ACD session SID — used by hold / resume / mute / disconnect / dtmf
+        TCN._callVoiceSessionSid = String(sessionSid);
 
-        if (!callDialUrl) {
-            TCN._callActive = false;
-            TCN._activePhone = null; TCN._activeLogId = null; TCN._activeLeadId = null;
-            var missErr = new Error('Call ASM session missing dial_url. Response: ' + JSON.stringify(callSession));
-            if (callLogId) patchCallLog(callLogId, { status: 'failed' });
-            fire('tcn:error', { message: missErr.message });
-            throw missErr;
-        }
-
-        log('Call session ready', {
-            callDialUrl: callDialUrl,
-            callVoiceSid: callVoiceSid,
-            callSipUser: callSipUser,      // new per-call credentials
-            hasSipPass: !!callSipPass,
-        });
-
-        // ── Create dedicated call UA with call-session SIP credentials ──
-        //
-        // ROOT CAUSE OF "Established → Terminated immediately":
-        //   Each call ASM session issues NEW SIP credentials (username/password)
-        //   specific to that call session. TCN's SIP gateway validates the
-        //   SIP Authorization header against those credentials after the
-        //   200 OK. Reusing the old presence UA (with old credentials) causes
-        //   TCN to send BYE immediately after answering.
-        //
-        // Fix: create a fresh SIP.UserAgent with the call session's credentials.
-        //   The presence UA's WebSocket may also be reset during call ASM
-        //   creation, so a new UA avoids transport instability as well.
-        var SIP = (window.SIP && window.SIP.SIP) ? window.SIP.SIP : window.SIP;
-
-        var callUaOptions = {
-            transportConstructor: SIP.Web.Transport,
-            transportOptions: { server: 'wss://sg-webphone.tcnp3.com' },
-            logLevel: 'warn',
-            sessionDescriptionHandlerFactoryOptions: {
-                constraints: { audio: true, video: false },
-                peerConnectionConfiguration: {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                    ],
-                },
-            },
-            delegate: {
-                onInvite: function (invitation) {
-                    try { invitation.reject(); } catch (_) { }
-                },
-            },
-        };
-
-        var callUa;
-        if (callSipUser && callSipPass) {
-            // Use the call session's fresh SIP credentials
-            callUaOptions.uri = SIP.UserAgent.makeURI('sip:' + callSipUser + '@sg-webphone.tcnp3.com');
-            callUaOptions.authorizationUsername = callSipUser;
-            callUaOptions.authorizationPassword = callSipPass;
-            log('Creating dedicated call UA for user=' + callSipUser);
-            callUa = new SIP.UserAgent(callUaOptions);
-            TCN._callUa = callUa;
-        } else {
-            // No new credentials returned — fall back to existing presence UA.
-            // Verify the presence UA is still alive before proceeding.
-            log('Call session returned no SIP credentials — reusing presence UA');
-            if (!TCN._ua || !TCN._ua.userAgentCore) {
-                TCN._callActive = false;
-                TCN._activePhone = null; TCN._activeLogId = null; TCN._activeLeadId = null;
-                var uaErr = new Error('SIP UA was stopped during call setup. Please try again.');
-                if (callLogId) patchCallLog(callLogId, { status: 'failed' });
-                fire('tcn:error', { message: uaErr.message });
-                throw uaErr;
-            }
-            callUa = TCN._ua;
-        }
-
-        // Start call UA if it is a fresh one (needs WebSocket handshake before INVITE)
-        if (callUa !== TCN._ua) {
-            try {
-                await callUa.start();
-            } catch (startErr) {
-                if (TCN._callUa) { try { TCN._callUa.stop(); } catch (_) { } TCN._callUa = null; }
-                TCN._callActive = false;
-                TCN._activePhone = null; TCN._activeLogId = null; TCN._activeLeadId = null;
-                if (callLogId) patchCallLog(callLogId, { status: 'failed' });
-                fire('tcn:error', { message: 'Call UA failed to start: ' + startErr.message });
-                throw startErr;
-            }
-        }
+        log('Manual Dial — sessionSid=' + TCN._callVoiceSessionSid + ', phone=' + e164Display + ' (digits=' + digits + ')');
 
         fire('tcn:callStarted', { phone: phone, callLogId: callLogId });
 
-        // Start call-session keep-alive so TCN doesn't expire the
-        // call session before the PSTN leg is bridged.
-        if (callVoiceSid) {
-            TCN._startCallKeepAlive(String(callVoiceSid));
-        }
+        // Keep-alive on the ACD session during the call
+        TCN._startCallKeepAlive(TCN._callVoiceSessionSid);
 
-        // ── SIP Inviter using call-specific dial_url and dedicated call UA ──
-        var target = SIP.UserAgent.makeURI('sip:' + callDialUrl + '@sg-webphone.tcnp3.com');
-        var inviter = new SIP.Inviter(callUa, target);
-        TCN._outboundSession = inviter;
-
-        log('SIP INVITE → sip:' + callDialUrl + '@sg-webphone.tcnp3.com');
-
-        inviter.stateChange.addListener(function (state) {
-            log('Outbound SIP state: ' + state);
-            if (state === 'Established') {
-
-                log('SIP connected (waiting for real answer)');
-
-                // Attach audio
-                TCN._attachRemoteAudio(inviter, 'tcn-remote-audio');
-
-                // Start keep-alive
-                if (callVoiceSid) {
-                    TCN._startCallKeepAlive(String(callVoiceSid));
-                }
-
-                // ✅ Wait for real pickup (audio detection)
-                setTimeout(function () {
-
-                    if (!TCN._callActive) return;
-
-                    var audio = document.getElementById('tcn-remote-audio');
-
-                    if (audio && !audio.paused) {
-
-                        TCN._callEstablishedAt = Date.now();
-
-                        // Fire event
-                        fire('tcn:callAnswered', {
-                            phone: TCN._activePhone,
-                            callLogId: TCN._activeLogId
-                        });
-
-                        // Notify parent UI
-                        window.parent.postMessage({
-                            type: 'TCN_CALL_ANSWERED',
-                            phone: TCN._activePhone,
-                            callLogId: TCN._activeLogId
-                        }, '*');
-
-                        // Update DB
-                        if (TCN._activeLogId) {
-                            patchCallLog(TCN._activeLogId, {
-                                status: 'answered',
-                                answered_at: new Date().toISOString()
-                            });
-                        }
-
-                        log('✅ Real call answered');
-                    }
-
-                }, 3000);
-            }
-            else if (state === 'Terminated') {
-                var duration = TCN._callEstablishedAt
-                    ? Math.round((Date.now() - TCN._callEstablishedAt) / 1000) : 0;
-                var endedLogId = TCN._activeLogId;
-                var endedPhone = TCN._activePhone;
-
-                TCN._stopCallKeepAlive();
-                TCN._callActive = false;
-                TCN._callStartTime = 0;
-                TCN._callEstablishedAt = 0;
-                TCN._activePhone = null;
-                TCN._activeLogId = null;
-                TCN._activeLeadId = null;
-                TCN._outboundSession = null;
-
-                // Tear down the per-call UA (it was dedicated to this call only)
-                if (TCN._callUa) {
-                    try { TCN._callUa.stop(); } catch (_) { }
-                    TCN._callUa = null;
-                }
-
-                if (endedLogId) {
-                    patchCallLog(endedLogId, {
-                        status: 'completed',
-                        duration: duration,
-                        ended_at: new Date().toISOString(),
-                    });
-                }
-
-                fire('tcn:callEnded', { phone: endedPhone, callLogId: endedLogId, duration: duration });
-                log('Call terminated — duration ' + duration + 's');
-
-                // The presence SIP dropped when the call ASM session was created.
-                // Now that the call is over, re-establish the presence session so
-                // the agent goes back to READY for the next call.
-                if (!TCN._registered && !TCN._reconnecting) {
-                    TCN._loggedIn = false;
-                    TCN._reconnecting = true;
-                    setTimeout(function () {
-                        TCN._reconnecting = false;
-                        log('Post-call reconnect — restoring presence…');
-                        TCN.login().catch(function (e) {
-                            log('Post-call reconnect failed', e.message);
-                            fire('tcn:error', { message: 'Post-call reconnect failed: ' + e.message });
-                        });
-                    }, 1000);
-                }
-            }
-        });
-
+        // ── Initiate call via TCN Manual Dial Operator APIs ─────
+        // Server runs: dialmanualprepare → processmanualdialcall → manualdialstart
+        // TCN registers the call in ACD → agent transitions to INCALL
+        // Audio is bridged to the EXISTING presence SIP session (no new SIP UA)
         try {
-            await inviter.invite({
-                sessionDescriptionHandlerOptions: {
-                    constraints: { audio: true, video: false },
-                },
+            log('Manual Dial payload', { sessionSid: TCN._callVoiceSessionSid, phoneNumber: digits, countryCode: '91' });
+            var dialResult = await proxy('/tcn/dial', {
+                sessionSid: TCN._callVoiceSessionSid,
+                phone: digits,   // 10 local digits — countryCode "91" is added server-side
             });
-            log('SIP INVITE sent — awaiting TCN to bridge PSTN call');
-        } catch (invErr) {
+            log('Manual Dial initiated', {
+                callSid:              dialResult.callSid,
+                taskGroupSid:         dialResult.taskGroupSid,
+                tcn_status:           dialResult.tcn_status,
+                ok:                   dialResult.ok,
+                isDialValidationOk:   dialResult.isDialValidationOk,
+                isDnclScrubOk:        dialResult.isDnclScrubOk,
+                isTimeZoneScrubOk:    dialResult.isTimeZoneScrubOk,
+            });
+            if (dialResult.validationError) {
+                throw new Error('TCN validation failed: ' + dialResult.validationError);
+            }
+            if (!dialResult.ok) {
+                log('WARNING: manualdialstart returned not-ok', dialResult.tcn_body);
+            }
+        } catch (dialErr) {
             TCN._stopCallKeepAlive();
+            TCN._stopCallStatusPoll();
             TCN._callActive = false;
             TCN._callStartTime = 0;
             TCN._callEstablishedAt = 0;
-            TCN._activePhone = null;
-            TCN._activeLogId = null;
-            TCN._activeLeadId = null;
-            TCN._outboundSession = null;
+            TCN._activePhone = null; TCN._activeLogId = null; TCN._activeLeadId = null;
+            TCN._callVoiceSessionSid = null;
             if (callLogId) patchCallLog(callLogId, { status: 'failed' });
-            log('startCall: SIP invite() failed', invErr.message);
-            fire('tcn:error', { message: 'SIP call failed: ' + invErr.message });
-            throw invErr;
+            fire('tcn:error', { message: 'Call initiation failed: ' + dialErr.message });
+            throw dialErr;
         }
+
+        // ── Poll agentgetstatus every 5s to detect INCALL and call-end ──
+        // TCN transitions READY → INCALL when the PSTN call is answered.
+        // INCALL → READY means the customer hung up (remote hangup detection).
+        TCN._startCallStatusPoll();
     };
 
     // ─────────────────────────────────────────────────────────────
-    // End Call
+    // End Call — agentdisconnect Operator API
+    //
+    // With Manual Dial, we don't have a per-call SIP session to BYE.
+    // The TCN agentdisconnect API terminates the call on TCN's side.
+    // The presence SIP session stays alive — no reconnect needed.
     // ─────────────────────────────────────────────────────────────
 
     TCN.endCall = async function (outcome) {
-        if (!TCN._callActive && !TCN._outboundSession) {
+        if (!TCN._callActive) {
             log('endCall: no active call');
             return;
         }
 
+        TCN._stopCallStatusPoll();
         TCN._stopCallKeepAlive();
         clearAnswerTimer();
 
         var endedLogId = TCN._activeLogId;
         var endedPhone = TCN._activePhone;
-        var duration = TCN._callEstablishedAt
+        var duration   = TCN._callEstablishedAt
             ? Math.round((Date.now() - TCN._callEstablishedAt) / 1000) : 0;
 
-        // Patch outcome before SIP teardown (Terminated handler doesn't receive it)
+        // Patch outcome to DB (non-fatal)
         if (endedLogId && outcome) {
             try {
                 await fetch('/tcn/call-log/' + endedLogId, {
@@ -1181,67 +1049,280 @@
                     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf() },
                     body: JSON.stringify({ outcome: outcome }),
                 });
-            } catch (_) { /* non-fatal */ }
+            } catch (_) { }
         }
 
-        if (TCN._outboundSession) {
+        // Tell TCN to end the call
+        var sid = TCN._callVoiceSessionSid;
+        if (sid) {
             try {
-                var s = TCN._outboundSession.state;
-                // Inviter: cancel() pre-answer, bye() post-answer
-                if (s === 'Initial' || s === 'Establishing') {
-                    await TCN._outboundSession.cancel();
-                } else if (s === 'Established') {
-                    await TCN._outboundSession.bye();
-                }
-                // stateChange Terminated fires and does full cleanup + tcn:callEnded
+                await proxy('/tcn/disconnect', { sessionSid: String(sid) });
+                log('agentdisconnect sent (sessionSid=' + sid + ')');
             } catch (e) {
-                log('endCall: SIP terminate error (non-fatal)', e.message);
-                // Force cleanup if SIP failed
-                TCN._callActive = false;
-                TCN._callStartTime = 0;
-                TCN._callEstablishedAt = 0;
-                TCN._activePhone = null;
-                TCN._activeLogId = null;
-                TCN._activeLeadId = null;
-                TCN._outboundSession = null;
-                if (TCN._callUa) { try { TCN._callUa.stop(); } catch (_) { } TCN._callUa = null; }
-                fire('tcn:callEnded', { phone: endedPhone, callLogId: endedLogId, duration: duration });
+                log('endCall: agentdisconnect failed (non-fatal)', e.message);
             }
-        } else {
-            TCN._callActive = false;
-            TCN._callStartTime = 0;
-            TCN._callEstablishedAt = 0;
-            TCN._activePhone = null;
-            TCN._activeLogId = null;
-            TCN._activeLeadId = null;
-            fire('tcn:callEnded', { phone: endedPhone, callLogId: endedLogId, duration: duration });
         }
 
-        log('endCall issued');
+        // Reset call state — presence SIP session stays alive
+        TCN._callActive        = false;
+        TCN._callStartTime     = 0;
+        TCN._callEstablishedAt = 0;
+        TCN._activePhone       = null;
+        TCN._activeLogId       = null;
+        TCN._activeLeadId      = null;
+        TCN._callVoiceSessionSid = null;
+        TCN._onHold            = false;
+
+        if (endedLogId) {
+            patchCallLog(endedLogId, {
+                status: 'completed',
+                duration: duration,
+                ended_at: new Date().toISOString(),
+            });
+        }
+
+        fire('tcn:callEnded', { phone: endedPhone, callLogId: endedLogId, duration: duration });
+        log('endCall complete — duration ' + duration + 's');
+        // Presence SIP session stays alive — agent returns to READY automatically.
     };
 
     // ─────────────────────────────────────────────────────────────
-    // Mute / Unmute (local track only)
+    // Mute / Unmute (local microphone track via presence SIP session)
+    //
+    // With Manual Dial, audio flows through the presence SIP session
+    // (_sipSession). There is no separate per-call SIP session.
     // ─────────────────────────────────────────────────────────────
 
     TCN.mute = function () {
-        var session = TCN._outboundSession || TCN._sipSession;
-        if (!session || !session.sessionDescriptionHandler) return;
+        var session = TCN._sipSession;
+        if (!session || !session.sessionDescriptionHandler) {
+            log('mute: no active SIP session');
+            return;
+        }
         session.sessionDescriptionHandler.peerConnection
             .getSenders().forEach(function (s) {
                 if (s.track && s.track.kind === 'audio') s.track.enabled = false;
             });
-        log('Muted');
+        log('Muted (local mic disabled)');
     };
 
     TCN.unmute = function () {
-        var session = TCN._outboundSession || TCN._sipSession;
-        if (!session || !session.sessionDescriptionHandler) return;
+        var session = TCN._sipSession;
+        if (!session || !session.sessionDescriptionHandler) {
+            log('unmute: no active SIP session');
+            return;
+        }
         session.sessionDescriptionHandler.peerConnection
             .getSenders().forEach(function (s) {
                 if (s.track && s.track.kind === 'audio') s.track.enabled = true;
             });
-        log('Unmuted');
+        log('Unmuted (local mic enabled)');
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Hold / Resume  (TCN Operator API — agentputcallonhold / agentgetcallfromhold)
+    //
+    // sessionSid = TCN._callVoiceSessionSid  (set on each outbound call)
+    // ─────────────────────────────────────────────────────────────
+
+    TCN._onHold = false;
+
+    TCN.hold = async function () {
+        var sid = TCN._callVoiceSessionSid;
+        if (!sid) { log('hold: no call session SID'); return; }
+
+        // Verify agent is in INCALL/TALKING state before attempting hold.
+        // TCN returns 500 "state READY does not handle event fsm.PutCallOnHold"
+        // if called while READY (call not registered in ACD).
+        try {
+            var statusData = await proxy('/tcn/status', { sessionSid: sid });
+            var agentStatus = (statusData.statusDesc || '').toUpperCase();
+            log('Agent status before hold', { agentStatus, sessionSid: sid });
+
+            if (agentStatus !== 'INCALL' && agentStatus !== 'TALKING') {
+                log('hold blocked — agent not INCALL (status=' + agentStatus + ')');
+                fire('tcn:error', { message: 'Cannot hold — agent not in active call state (' + agentStatus + ')' });
+                return;
+            }
+        } catch (e) {
+            log('Status check before hold failed (proceeding anyway)', e.message);
+        }
+
+        try {
+            await proxy('/tcn/hold', { sessionSid: String(sid), holdType: 'SIMPLE' });
+            TCN._onHold = true;
+            log('Call placed on hold (sessionSid=' + sid + ')');
+            fire('tcn:onHold');
+        } catch (e) {
+            log('hold failed', e.message);
+            fire('tcn:error', { message: 'Hold failed: ' + e.message });
+        }
+    };
+
+    TCN.resume = async function () {
+        var sid = TCN._callVoiceSessionSid;
+        if (!sid) { log('resume: no call session SID'); return; }
+        try {
+            await proxy('/tcn/resume', { sessionSid: String(sid) });
+            TCN._onHold = false;
+            log('Call resumed from hold (sessionSid=' + sid + ')');
+            fire('tcn:offHold');
+        } catch (e) {
+            log('resume failed (non-fatal)', e.message);
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // DTMF  (TCN Operator API — playdtmf)
+    // digit: '0'-'9', '*', '#'
+    // ─────────────────────────────────────────────────────────────
+
+    TCN.dtmf = async function (digit) {
+        var sid = TCN._callVoiceSessionSid;
+        if (!sid) { log('dtmf: no call session SID'); return; }
+        try {
+            await proxy('/tcn/dtmf', { sessionSid: String(sid), digit: String(digit) });
+            log('DTMF sent: ' + digit);
+        } catch (e) {
+            log('dtmf failed (non-fatal)', e.message);
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Call Status Polling
+    //
+    // Polls agentgetstatus every 5s during an active Manual Dial call.
+    //   READY → INCALL  : customer answered → fire tcn:callAnswered
+    //   INCALL → READY  : remote hangup → fire tcn:callEnded via _handleCallEnded
+    //   No answer after 3 min: assume failed → _handleCallEnded
+    // ─────────────────────────────────────────────────────────────
+
+    TCN._startCallStatusPoll = function () {
+        TCN._stopCallStatusPoll();
+        var pollCount = 0;
+        var wrapupCount = 0;   // consecutive WRAPUP polls before INCALL
+        var MAX_POLLS = 36;    // 3 minutes at 5s intervals
+        var WRAPUP_FAIL = 4;   // 4 consecutive WRAPUP polls (20s) = call failed on TCN side
+
+        TCN._callStatusPollTimer = setInterval(async function () {
+            if (!TCN._callActive) {
+                TCN._stopCallStatusPoll();
+                return;
+            }
+
+            var sid = TCN._callVoiceSessionSid;
+            if (!sid) return;
+
+            try {
+                var data       = await proxy('/tcn/status', { sessionSid: sid });
+                var status     = (data.statusDesc || '').toUpperCase();
+                var currentSid = String(data.currentSessionId || '0');
+                pollCount++;
+
+                log('Call status poll #' + pollCount, {
+                    statusDesc: status,
+                    currentSessionId: currentSid,
+                });
+
+                // OUTBOUND_LOCKED = TCN accepted the dial and is placing the PSTN leg.
+                // This is the normal intermediate state: READY → OUTBOUND_LOCKED → INCALL.
+                // Reset wrapup counter and wait — it will transition to INCALL shortly.
+                if (status === 'OUTBOUND_LOCKED') {
+                    wrapupCount = 0;
+                    log('OUTBOUND_LOCKED — dial accepted by TCN, waiting for PSTN answer…');
+                    return;
+                }
+
+                // Customer answered — TCN bridged the PSTN call
+                if ((status === 'INCALL' || status === 'TALKING') && !TCN._callEstablishedAt) {
+                    wrapupCount = 0;
+                    TCN._callEstablishedAt = Date.now();
+                    fire('tcn:callAnswered', { phone: TCN._activePhone, callLogId: TCN._activeLogId });
+                    window.parent.postMessage({
+                        type: 'TCN_CALL_ANSWERED',
+                        phone: TCN._activePhone,
+                        callLogId: TCN._activeLogId,
+                    }, '*');
+                    if (TCN._activeLogId) {
+                        patchCallLog(TCN._activeLogId, {
+                            status: 'answered',
+                            answered_at: new Date().toISOString(),
+                        });
+                    }
+                    log('Call answered — INCALL state confirmed');
+                }
+
+                // Remote party ended the call (agent returned to READY)
+                if (status === 'READY' && TCN._callEstablishedAt) {
+                    log('Remote hangup detected (status back to READY)');
+                    TCN._handleCallEnded();
+                    return;
+                }
+
+                // WRAPUP after dial without ever reaching INCALL = call failed on TCN side.
+                // TCN drops directly to WRAPUP when: duplicate country code causes validation
+                // failure, session mismatch, ACD routing error, or DNCL/timezone scrub block.
+                if (status === 'WRAPUP' && !TCN._callEstablishedAt) {
+                    wrapupCount++;
+                    log('Call stuck in WRAPUP (' + wrapupCount + '/' + WRAPUP_FAIL + ') — never reached INCALL');
+                    if (wrapupCount >= WRAPUP_FAIL) {
+                        log('Call failed — agent stuck in WRAPUP (likely TCN validation failure)');
+                        TCN._handleCallEnded();
+                        return;
+                    }
+                } else if (status !== 'WRAPUP') {
+                    wrapupCount = 0;
+                }
+
+                // No answer timeout
+                if (pollCount >= MAX_POLLS && !TCN._callEstablishedAt) {
+                    log('Call timed out — no answer after ' + (pollCount * 5) + 's');
+                    TCN._handleCallEnded();
+                }
+
+            } catch (e) {
+                log('Call status poll error (non-fatal)', e.message);
+            }
+        }, 5000);
+    };
+
+    TCN._stopCallStatusPoll = function () {
+        if (TCN._callStatusPollTimer) {
+            clearInterval(TCN._callStatusPollTimer);
+            TCN._callStatusPollTimer = null;
+        }
+    };
+
+    // Common teardown for remote-hangup and timeout (not agent-initiated endCall)
+    TCN._handleCallEnded = function () {
+        TCN._stopCallStatusPoll();
+        TCN._stopCallKeepAlive();
+        clearAnswerTimer();
+
+        var duration   = TCN._callEstablishedAt
+            ? Math.round((Date.now() - TCN._callEstablishedAt) / 1000) : 0;
+        var endedLogId = TCN._activeLogId;
+        var endedPhone = TCN._activePhone;
+
+        TCN._callActive        = false;
+        TCN._callStartTime     = 0;
+        TCN._callEstablishedAt = 0;
+        TCN._activePhone       = null;
+        TCN._activeLogId       = null;
+        TCN._activeLeadId      = null;
+        TCN._callVoiceSessionSid = null;
+        TCN._onHold            = false;
+
+        if (endedLogId) {
+            patchCallLog(endedLogId, {
+                status: 'completed',
+                duration: duration,
+                ended_at: new Date().toISOString(),
+            });
+        }
+
+        fire('tcn:callEnded', { phone: endedPhone, callLogId: endedLogId, duration: duration });
+        log('Call ended (remote/timeout) — duration ' + duration + 's');
     };
 
     // ─────────────────────────────────────────────────────────────
@@ -1385,6 +1466,7 @@
     TCN.logout = function () {
         TCN._stopKeepAlive();
         TCN._stopCallKeepAlive();
+        TCN._stopCallStatusPoll();
         TCN._cleanupSip();
 
         TCN._loggedIn = false;

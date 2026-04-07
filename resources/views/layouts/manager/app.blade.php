@@ -215,7 +215,7 @@
     @endif
 
     @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
-    {{-- Softphone iframe for managers (hidden by default; shown via enableCallingMode()) --}}
+    {{-- Softphone iframe for managers — same fast-resume architecture as telecaller layout --}}
     <iframe id="tcnSoftphoneFrame"
         src="{{ route('softphone') }}"
         allow="microphone"
@@ -225,16 +225,18 @@
     (function () {
         var _frame = null;
         function frame() { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
+
         document.addEventListener('click', function (e) {
-            var btn = e.target.closest('[data-phone]');
-            if (!btn) return;
+            var el = e.target.closest('[data-phone]');
+            if (!el) return;
             var f = frame(); if (!f) return;
-            var phone = btn.getAttribute('data-phone');
+            var phone = el.getAttribute('data-phone');
             if (phone) {
                 f.style.display = 'block'; f.style.height = '480px'; f.style.width = '300px';
                 f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
             }
         }, true);
+
         window.addEventListener('message', function (ev) {
             var d = ev.data; if (!d || typeof d !== 'object') return;
             var f = frame(); if (!f) return;

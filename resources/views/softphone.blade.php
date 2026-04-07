@@ -48,6 +48,14 @@
         .sp-ibtn:hover{background:#e2e8f0;}
         .sp-ibtn.danger{background:#ef4444;border-color:#ef4444;color:#fff;}
         .sp-ibtn.muted{background:#fee2e2;border-color:#ef4444;color:#ef4444;}
+        .sp-ibtn.held{background:#fef3c7;border-color:#f59e0b;color:#b45309;}
+        /* DTMF in-call keypad */
+        .sp-dtmf-toggle{width:100%;background:none;border:none;color:#64748b;font-family:'Manrope',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:2px 0;display:flex;align-items:center;justify-content:center;gap:4px;}
+        .sp-dtmf-pad{display:none;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px 0;}
+        .sp-dtmf-pad.open{display:grid;}
+        .sp-dkey{height:34px;border:none;border-radius:7px;background:#f1f5f9;font-family:'Manrope',sans-serif;font-size:15px;font-weight:700;color:#0f172a;cursor:pointer;transition:background .1s;}
+        .sp-dkey:hover{background:#e2e8f0;}
+        .sp-dkey:active{background:#dbeafe;color:#137fec;}
 
         /* Agent controls */
         .sp-agent{display:flex;gap:8px;padding:8px 14px 12px;border-top:1px solid #e2e8f0;flex-shrink:0;}
@@ -102,10 +110,19 @@
         <button class="sp-ibtn" id="spMuteBtn">
             <span class="material-icons" style="font-size:21px;">mic</span>Mute
         </button>
+        <button class="sp-ibtn" id="spHoldBtn">
+            <span class="material-icons" style="font-size:21px;" id="spHoldIco">pause_circle</span>
+            <span id="spHoldLbl">Hold</span>
+        </button>
         <button class="sp-ibtn danger" id="spHangupBtn">
             <span class="material-icons" style="font-size:21px;">call_end</span>End
         </button>
     </div>
+    {{-- DTMF keypad (shown during call) --}}
+    <button class="sp-dtmf-toggle" id="spDtmfToggle">
+        <span class="material-icons" style="font-size:14px;">dialpad</span> Keypad
+    </button>
+    <div class="sp-dtmf-pad" id="spDtmfPad"></div>
 </div>
 
 {{-- Agent controls --}}
@@ -153,10 +170,12 @@
     var _state    = 'connecting';
     var _phone    = '';
     var _muted    = false;
+    var _onHold   = false;
     var _paused   = false;
     var _secs     = 0;
     var _timer    = null;
     var _min      = false;   // minimized?
+    var _dtmfOpen = false;
 
     // ── DOM ──────────────────────────────────────────────────────
     function g(id) { return document.getElementById(id); }
@@ -166,7 +185,10 @@
         dp:      g('spDp'),      callBtn: g('spCallBtn'),
         inCall:  g('spInCall'),  timer:   g('spTimer'),
         callLbl: g('spCallLbl'),
-        muteBtn: g('spMuteBtn'), hangupBtn: g('spHangupBtn'),
+        muteBtn: g('spMuteBtn'),
+        holdBtn: g('spHoldBtn'), holdIco: g('spHoldIco'), holdLbl: g('spHoldLbl'),
+        hangupBtn: g('spHangupBtn'),
+        dtmfToggle: g('spDtmfToggle'), dtmfPad: g('spDtmfPad'),
         agent:   g('spAgent'),
         pauseBtn: g('spPauseBtn'), pauseIco: g('spPauseIco'), pauseLbl: g('spPauseLbl'),
         logoutBtn: g('spLogoutBtn'),
@@ -196,6 +218,17 @@
 
         D.phone.textContent = _phone || '\u2014';
         D.phone.className   = 'sp-phone' + (_phone ? '' : ' empty');
+
+        // Hold button appearance
+        if (_onHold) {
+            D.holdIco.textContent  = 'play_circle';
+            D.holdLbl.textContent  = 'Resume';
+            D.holdBtn.className    = 'sp-ibtn held';
+        } else {
+            D.holdIco.textContent  = 'pause_circle';
+            D.holdLbl.textContent  = 'Hold';
+            D.holdBtn.className    = 'sp-ibtn';
+        }
 
         // Pause button appearance
         if (_paused) {
@@ -234,6 +267,24 @@
         _phone = _phone.slice(0, -1); render();
     });
     D.dp.appendChild(bk);
+
+    // ── Build DTMF in-call keypad ─────────────────────────────────
+    ['1','2','3','4','5','6','7','8','9','*','0','#'].forEach(function (k) {
+        var b = document.createElement('button');
+        b.className = 'sp-dkey';
+        b.textContent = k;
+        b.addEventListener('click', function () {
+            if (window.TCN && window.TCN._callActive) window.TCN.dtmf(k);
+        });
+        D.dtmfPad.appendChild(b);
+    });
+
+    // ── DTMF keypad toggle ────────────────────────────────────────
+    D.dtmfToggle.addEventListener('click', function () {
+        _dtmfOpen = !_dtmfOpen;
+        D.dtmfPad.className = 'sp-dtmf-pad' + (_dtmfOpen ? ' open' : '');
+        D.dtmfToggle.innerHTML = '<span class="material-icons" style="font-size:14px;">dialpad</span> ' + (_dtmfOpen ? 'Hide Keypad' : 'Keypad');
+    });
 
     // ── Keyboard input ───────────────────────────────────────────
     window.addEventListener('keydown', function (e) {
@@ -295,7 +346,10 @@
     });
     window.addEventListener('tcn:callEnded', function (e) {
         var d = e.detail || {};
-        stopTimer(); _muted = false; resetMute();
+        stopTimer(); _muted = false; _onHold = false; _dtmfOpen = false;
+        resetMute();
+        D.dtmfPad.className = 'sp-dtmf-pad';
+        D.dtmfToggle.innerHTML = '<span class="material-icons" style="font-size:14px;">dialpad</span> Keypad';
         setState(_paused ? 'paused' : 'ready');
         toParent({ type: 'TCN_CALL_ENDED', phone: _phone, callLogId: d.callLogId, duration: d.duration, status: d.status || 'completed' });
     });
@@ -320,6 +374,8 @@
         if (d.type === 'CALL')     { if (d.phone) setPhone(d.phone); handleCall(); }
         if (d.type === 'HANGUP')   { handleHangup(); }
         if (d.type === 'MUTE')     { toggleMute(); }
+        if (d.type === 'HOLD')     { toggleHold(); }
+        if (d.type === 'DTMF')     { if (window.TCN && d.digit) window.TCN.dtmf(d.digit); }
         if (d.type === 'SET_PHONE'){ setPhone(d.phone || ''); }
         if (d.type === 'LOGOUT')   { handleLogout(); }
     });
@@ -342,6 +398,19 @@
     function handleHangup() {
         if (window.TCN && window.TCN._callActive) window.TCN.endCall();
     }
+
+    function toggleHold() {
+        if (!window.TCN || !window.TCN._callActive) return;
+        if (_onHold) {
+            window.TCN.resume();
+        } else {
+            window.TCN.hold();
+        }
+    }
+
+    // Reflect TCN hold/resume events in the UI
+    window.addEventListener('tcn:onHold', function () { _onHold = true;  render(); });
+    window.addEventListener('tcn:offHold', function () { _onHold = false; render(); });
 
     function toggleMute() {
         if (!window.TCN) return;
@@ -394,6 +463,7 @@
     // ── Button events ────────────────────────────────────────────
     D.callBtn.addEventListener('click', handleCall);
     D.hangupBtn.addEventListener('click', handleHangup);
+    D.holdBtn.addEventListener('click', toggleHold);
     D.muteBtn.addEventListener('click', toggleMute);
     D.pauseBtn.addEventListener('click', togglePause);
     D.logoutBtn.addEventListener('click', handleLogout);

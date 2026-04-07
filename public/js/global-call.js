@@ -21,7 +21,6 @@ _registered: false,
 _session: null,
 _incomingVoipSession: null,
 _voipConfig: null,
-_tcnPopupWin: null,
 
 _state: null,
 _csrf: null,
@@ -82,12 +81,12 @@ initDevice: async function () {
 _tcnEventsWired: false,
 _pendingLeadId:  null,
 
-// Return the embedded softphone iframe element (present in both layouts).
+// Return the embedded softphone iframe (present in both layouts).
 _tcnFrame: function () {
     return document.getElementById('tcnSoftphoneFrame');
 },
 
-// Show the iframe and the toggle button (if hidden).
+// Show the iframe. Called on call start so the widget is visible.
 _showTcnFrame: function () {
     var f = this._tcnFrame();
     if (f && f.style.display === 'none') {
@@ -96,52 +95,17 @@ _showTcnFrame: function () {
     }
 },
 
-// Return the live popup window if it is still open, otherwise null.
-_tcnPopup: function () {
-    if (this._tcnPopupWin && !this._tcnPopupWin.closed) return this._tcnPopupWin;
-    // After a page navigation _tcnPopupWin is gone — try to reattach by name.
-    try {
-        var w = window.open('', 'tcnSoftphone');
-        if (w && !w.closed) {
-            var href = '';
-            try { href = w.location.href; } catch (e) {}
-            if (href && href.indexOf('softphone') !== -1) {
-                this._tcnPopupWin = w;
-                return w;
-            }
-            // window.open opened a blank window — close it immediately.
-            if (!href || href === 'about:blank') { try { w.close(); } catch (e) {} }
-        }
-    } catch (e) {}
-    return null;
-},
-
-// Open (or focus) the softphone popup and return it.
-_openTcnPopup: function () {
-    var existing = this._tcnPopup();
-    if (existing) { try { existing.focus(); } catch (e) {} return existing; }
-    var w = window.open(
-        '/softphone', 'tcnSoftphone',
-        'width=300,height=500,resizable=no,scrollbars=no,toolbar=no,menubar=no'
-    );
-    if (w) this._tcnPopupWin = w;
-    return w;
-},
+// No-op shims — popup approach removed; iframe is used instead.
+_tcnPopup:     function () { return null; },
+_openTcnPopup: function () { return null; },
 
 _initTcn: async function () {
     var self = this;
 
-    // Singleton guard
-    if (window.tcnInitialized) {
-        console.log('[GC-TCN] Already initialized.');
-        return;
-    }
-    window.tcnInitialized = true;
-
     if (self._tcnEventsWired) return;
     self._tcnEventsWired = true;
 
-    // Receive status messages from the softphone iframe
+    // Receive status messages from the softphone iframe.
     window.addEventListener("message", function (ev) {
         var d = ev.data;
         if (!d || typeof d !== "object") return;
@@ -186,19 +150,17 @@ _initTcn: async function () {
     });
 },
 
-// Manager: turn ON calling mode — show the iframe
+// Manager: turn ON calling mode — show the softphone iframe.
 enableCallingMode: async function () {
     if (PROVIDER !== "tcn") return;
     this._showTcnFrame();
     console.log("[GC-TCN] Calling mode enabled.");
 },
 
-// Manager: turn OFF calling mode — tell softphone to logout
+// Manager: turn OFF calling mode — tell softphone iframe to logout.
 disableCallingMode: function () {
     var f = this._tcnFrame();
-    if (f && f.contentWindow) {
-        f.contentWindow.postMessage({ type: "LOGOUT" }, "*");
-    }
+    if (f && f.contentWindow) f.contentWindow.postMessage({ type: "LOGOUT" }, "*");
     console.log("[GC-TCN] Calling mode disabled.");
 },
 
@@ -207,14 +169,7 @@ _startTcnCall: function (phone, leadId) {
     var f = self._tcnFrame();
 
     if (!f) {
-        // Iframe not in DOM — fall back to in-page TcnService if available
-        if (window.TcnService) {
-            window.TcnService.call(phone, leadId).catch(function (e) {
-                console.error("[GC-TCN] TcnService.call failed:", e.message);
-            });
-        } else {
-            console.error("[GC-TCN] Softphone iframe not found.");
-        }
+        console.error("[GC-TCN] Softphone iframe not found in DOM.");
         return Promise.resolve();
     }
 
@@ -485,9 +440,9 @@ endCall: function () {
     this._manualHangup = true;
 
     if (PROVIDER === "tcn") {
-        var p = this._tcnPopup();
-        if (p) {
-            p.postMessage({ type: "HANGUP" }, "*");
+        var f = this._tcnFrame();
+        if (f && f.contentWindow) {
+            f.contentWindow.postMessage({ type: "HANGUP" }, "*");
         } else if (window.TCN && window.TCN._callActive) {
             window.TCN.endCall();
         }
@@ -815,7 +770,6 @@ _setupPstnIncomingBtns: function () {
 
 _setupNavIntercept: function () {
     if (this._navInterceptBound) return;
-
     this._navInterceptBound = true;
 
     var self = this;

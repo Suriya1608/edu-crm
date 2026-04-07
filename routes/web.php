@@ -663,6 +663,14 @@ Route::middleware('auth')->prefix('tcn')->name('tcn.')->group(function () {
     Route::post('/set-status',     [TcnController::class, 'setAgentStatus'])->name('set-status');
     Route::post('/disconnect',     [TcnController::class, 'disconnect'])->name('disconnect');
 
+    // Outbound call initiation (Manual Dial Operator API flow)
+    Route::post('/dial',           [TcnController::class, 'dial'])->name('dial');
+
+    // In-call Operator API actions
+    Route::post('/hold',           [TcnController::class, 'hold'])->name('hold');
+    Route::post('/resume',         [TcnController::class, 'resume'])->name('resume');
+    Route::post('/dtmf',           [TcnController::class, 'dtmf'])->name('dtmf');
+
     // Call log management
     Route::post('/call-log',       [TcnController::class, 'createCallLog'])->name('call-log.create');
     Route::patch('/call-log/{id}', [TcnController::class, 'updateCallLog'])->whereNumber('id')->name('call-log.update');
