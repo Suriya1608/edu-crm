@@ -52,13 +52,13 @@ window.TcnService = (function () {
                 caller_id: _callerId,
                 token_fetched_at: _tokenFetchedAt,
             }));
-        } catch (_) {}
+        } catch (_) { }
     }
 
     function _clearCache() {
         try {
             sessionStorage.removeItem(CACHE_KEY);
-        } catch (_) {}
+        } catch (_) { }
     }
 
     function _restoreFromCache() {
@@ -176,37 +176,53 @@ window.TcnService = (function () {
         }
     }
 
-    async function call(phone, leadId) {
-        if (!phone) {
-            _log('call() - no phone number provided.');
+   async function call(phone, leadId) {
+
+    if (!phone) {
+        _log('call() - no phone number provided.');
+        return;
+    }
+
+    // ✅ Step 1: Ensure initialized (ONLY if not initialized)
+    if (!_initialized || !window.TCN || !window.TCN._loggedIn) {
+        _log('Not initialized - initializing...');
+        const ok = await init();
+        if (!ok) {
+            _emit('call_failed', { phone: phone, reason: 'not_initialized' });
             return;
         }
+    }
 
-        if (!_initialized || _isTokenExpired() || !window.TCN || !window.TCN._loggedIn) {
-            _log('Token expired or not initialized - re-initializing before call.');
+    // ✅ Step 2: Prevent re-init during active call
+    function isCallActive() {
+        return window.TCN && window.TCN._callActive;
+    }
+
+    if (_isTokenExpired()) {
+        if (isCallActive()) {
+            _log('Token expired but call is active → skipping re-init');
+        } else {
+            _log('Token expired → safe to re-init');
             const ok = await init();
             if (!ok) {
-                _emit('call_failed', { phone: phone, reason: 'not_initialized' });
+                _emit('call_failed', { phone: phone, reason: 'token_refresh_failed' });
                 return;
             }
         }
-
-        if (typeof window.TCN === 'undefined') {
-            _emit('call_failed', { phone: phone, reason: 'softphone_missing' });
-            return;
-        }
-
-        _log('Starting call -> ' + phone);
-        _emit('calling', { phone: phone });
-
-        try {
-            await window.TCN.startCall(phone, leadId || null);
-        } catch (err) {
-            _log('Call error: ' + err.message);
-            _emit('call_failed', { phone: phone, reason: err.message });
-            throw err;
-        }
     }
+
+    // ✅ Continue call normally
+    _log('Starting call -> ' + phone);
+    _emit('calling', { phone: phone });
+
+    try {
+        await window.TCN.startCall(phone, leadId || null);
+    } catch (err) {
+        _log('Call error: ' + err.message);
+        _emit('call_failed', { phone: phone, reason: err.message });
+        throw err;
+    }
+}
 
     function logout() {
         if (typeof window.TCN !== 'undefined' && typeof window.TCN.logout === 'function') {

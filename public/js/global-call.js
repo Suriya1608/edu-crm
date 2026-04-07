@@ -21,6 +21,7 @@ _registered: false,
 _session: null,
 _incomingVoipSession: null,
 _voipConfig: null,
+_tcnPopupWin: null,
 
 _state: null,
 _csrf: null,
@@ -95,9 +96,37 @@ _showTcnFrame: function () {
     }
 },
 
-// Legacy popup shim — no longer opens a window; resolves to null.
-_tcnPopup:     function () { return null; },
-_openTcnPopup: function () { return null; },
+// Return the live popup window if it is still open, otherwise null.
+_tcnPopup: function () {
+    if (this._tcnPopupWin && !this._tcnPopupWin.closed) return this._tcnPopupWin;
+    // After a page navigation _tcnPopupWin is gone — try to reattach by name.
+    try {
+        var w = window.open('', 'tcnSoftphone');
+        if (w && !w.closed) {
+            var href = '';
+            try { href = w.location.href; } catch (e) {}
+            if (href && href.indexOf('softphone') !== -1) {
+                this._tcnPopupWin = w;
+                return w;
+            }
+            // window.open opened a blank window — close it immediately.
+            if (!href || href === 'about:blank') { try { w.close(); } catch (e) {} }
+        }
+    } catch (e) {}
+    return null;
+},
+
+// Open (or focus) the softphone popup and return it.
+_openTcnPopup: function () {
+    var existing = this._tcnPopup();
+    if (existing) { try { existing.focus(); } catch (e) {} return existing; }
+    var w = window.open(
+        '/softphone', 'tcnSoftphone',
+        'width=300,height=500,resizable=no,scrollbars=no,toolbar=no,menubar=no'
+    );
+    if (w) this._tcnPopupWin = w;
+    return w;
+},
 
 _initTcn: async function () {
     var self = this;
@@ -298,11 +327,13 @@ _waitForRegister: function (timeout) {
     });
 },
 
-startCall: function (phone, leadId) {
+startCall: async function (phone, leadId) {
     if (this._state) {
         alert("Call already active");
-        return Promise.resolve();
+        return;
     }
+
+    await this.initDevice();
 
     if (PROVIDER === "tcn") {
         // Return the promise so callers can await it and catch errors.
@@ -1085,10 +1116,6 @@ var metaCsrf = document.querySelector('meta[name="csrf-token"]');
 if (metaCsrf) {
     GC._csrf = metaCsrf.getAttribute("content");
 }
-
-document.addEventListener("DOMContentLoaded", function () {
-    GC.initDevice();
-});
 
 window.GC = GC;
 

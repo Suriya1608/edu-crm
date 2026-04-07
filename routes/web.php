@@ -648,44 +648,24 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
 // TCN Softphone iframe page — embedded in layouts via <iframe src="/softphone">
 Route::middleware('auth')->get('/softphone', [TcnController::class, 'softphonePage'])->name('softphone');
 
-// TCN Test Console (admin only)
-Route::middleware(['auth'])->group(function () {
-    Route::get('/tcn/test',        [TcnController::class, 'testPage'])->name('tcn.test');
-    Route::post('/tcn/test/token', [TcnController::class, 'testToken'])->name('tcn.test.token');
-});
-
 // TCN authenticated proxy routes
 Route::middleware('auth')->prefix('tcn')->name('tcn.')->group(function () {
     // Non-sensitive config for the browser
-    Route::get('/config',           [TcnController::class, 'config'])->name('config');
+    Route::get('/config',          [TcnController::class, 'config'])->name('config');
 
-    // Login flow (5 steps)
-    Route::post('/token',           [TcnController::class, 'token'])->name('token');
-    Route::post('/agent',           [TcnController::class, 'agent'])->name('agent');
-    Route::post('/skills',          [TcnController::class, 'skills'])->name('skills');
-    Route::post('/session',         [TcnController::class, 'session'])->name('session');
+    // Login flow
+    Route::post('/skills',         [TcnController::class, 'skills'])->name('skills');
+    Route::post('/session',        [TcnController::class, 'session'])->name('session');
+
     // Session management
-    Route::post('/keepalive',       [TcnController::class, 'keepalive'])->name('keepalive');
-    Route::post('/status',          [TcnController::class, 'agentStatus'])->name('status');
-    Route::post('/set-status',      [TcnController::class, 'setAgentStatus'])->name('set-status');
-
-    // Outbound call — single manualdial/execute endpoint (preferred)
-    Route::post('/dial',            [TcnController::class, 'dial'])->name('dial');
-
-    // Legacy 3-step manualdial (kept for fallback / debugging)
-    Route::post('/dial-prepare',    [TcnController::class, 'dialPrepare'])->name('dial-prepare');
-    Route::post('/dial-process',    [TcnController::class, 'dialProcess'])->name('dial-process');
-    Route::post('/dial-start',      [TcnController::class, 'dialStart'])->name('dial-start');
-
-    // Endpoint probe — POST /tcn/dial-debug to find correct manualdial path
-    Route::post('/dial-debug',      [TcnController::class, 'dialDebug'])->name('dial-debug');
-
-    // End call
-    Route::post('/disconnect',      [TcnController::class, 'disconnect'])->name('disconnect');
+    Route::post('/keepalive',      [TcnController::class, 'keepalive'])->name('keepalive');
+    Route::post('/status',         [TcnController::class, 'agentStatus'])->name('status');
+    Route::post('/set-status',     [TcnController::class, 'setAgentStatus'])->name('set-status');
+    Route::post('/disconnect',     [TcnController::class, 'disconnect'])->name('disconnect');
 
     // Call log management
-    Route::post('/call-log',        [TcnController::class, 'createCallLog'])->name('call-log.create');
-    Route::patch('/call-log/{id}',  [TcnController::class, 'updateCallLog'])->whereNumber('id')->name('call-log.update');
+    Route::post('/call-log',       [TcnController::class, 'createCallLog'])->name('call-log.create');
+    Route::patch('/call-log/{id}', [TcnController::class, 'updateCallLog'])->whereNumber('id')->name('call-log.update');
 });
 
 /*

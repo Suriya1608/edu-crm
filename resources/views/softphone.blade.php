@@ -235,6 +235,22 @@
     });
     D.dp.appendChild(bk);
 
+    // ── Keyboard input ───────────────────────────────────────────
+    window.addEventListener('keydown', function (e) {
+        if (_state === 'calling' || _state === 'on-call') return;
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+        if (/^[0-9*#]$/.test(e.key)) {
+            _phone += e.key; render();
+        } else if (e.key === '+' && _phone.length === 0) {
+            _phone = '+'; render();
+        } else if (e.key === 'Backspace') {
+            _phone = _phone.slice(0, -1); render();
+        } else if (e.key === 'Enter') {
+            handleCall();
+        }
+    });
+
     // ── Timer ────────────────────────────────────────────────────
     function startTimer() {
         _secs = 0; stopTimer(); tick();
