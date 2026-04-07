@@ -27,6 +27,15 @@
                         value="{{ \App\Models\Setting::get('site_url') }}" required>
                 </div>
 
+                <!-- Employee ID Prefix -->
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Employee ID Prefix *</label>
+                    <input type="text" name="employee_id_prefix" class="form-control"
+                        value="{{ \App\Models\Setting::get('employee_id_prefix', 'EMP') }}"
+                        placeholder="e.g. IHCM" maxlength="10" required>
+                    <small class="text-muted">IDs will be generated as <strong>PREFIX0001</strong>, <strong>PREFIX0002</strong>, …</small>
+                </div>
+
                 <!-- Site Logo -->
                 <div class="col-md-6">
                     <label class="form-label fw-semibold">Site Logo</label>

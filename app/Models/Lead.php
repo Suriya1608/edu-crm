@@ -14,6 +14,7 @@ class Lead extends Model
         'name',
         'phone',
         'email',
+        'email_valid',
         'course_id',
         'source',
         'assigned_by',
@@ -28,6 +29,7 @@ class Lead extends Model
     protected $casts = [
         'sla_escalated_at'    => 'datetime',
         'is_duplicate'        => 'boolean',
+        'email_valid'         => 'boolean',
         'merged_into_lead_id' => 'integer',
         'course_id'           => 'integer',
     ];

@@ -4,7 +4,8 @@
 
 @section('header_actions')
     <a href="{{ route('admin.leads.import.form') }}" class="btn btn-sm btn-outline-secondary">Import Leads</a>
-    <a href="{{ route('admin.leads.export') }}" class="btn btn-sm btn-outline-success">Export Leads</a>
+    <a href="{{ route('admin.leads.export') }}" class="btn btn-sm btn-outline-success">Export Excel</a>
+    <a href="{{ route('admin.leads.export', ['format' => 'pdf']) }}" class="btn btn-sm btn-outline-danger" target="_blank">Export PDF</a>
 @endsection
 
 @section('content')
@@ -94,8 +95,21 @@
                             <td>
                                 <div class="fw-semibold d-flex align-items-center gap-1 flex-wrap">
                                     {{ $lead->name }}
-                                    @if($lead->is_duplicate)
-                                        <span class="badge" style="background:#fff7ed; color:#ea580c; border:1px solid #fed7aa; font-size:10px; font-weight:600; padding:2px 6px; border-radius:5px;">DUPLICATE</span>
+                                    @if($scope === 'duplicates')
+                                        {{-- On duplicates page every row is a duplicate — show reason --}}
+                                        @php
+                                            $isPhoneDup = $duplicatePhones->contains($lead->phone);
+                                            $isEmailDup = $duplicateEmails->contains($lead->email);
+                                        @endphp
+                                        @if($isPhoneDup && $isEmailDup)
+                                            <span class="badge" style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;">DUP PHONE+EMAIL</span>
+                                        @elseif($isPhoneDup)
+                                            <span class="badge" style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;">DUP PHONE</span>
+                                        @elseif($isEmailDup)
+                                            <span class="badge" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;">DUP EMAIL</span>
+                                        @endif
+                                    @elseif($lead->is_duplicate)
+                                        <span class="badge" style="background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;font-size:10px;font-weight:600;padding:2px 6px;border-radius:5px;">DUPLICATE</span>
                                     @endif
                                 </div>
                                 <div class="d-flex align-items-center gap-1 flex-wrap mt-1">
@@ -115,11 +129,15 @@
                                     <a href="{{ route('admin.leads.show', encrypt($lead->id)) }}" class="btn btn-sm btn-outline-primary">View</a>
 
                                     <button class="btn btn-sm btn-outline-secondary assign-manager-btn"
-                                        data-id="{{ encrypt($lead->id) }}" data-bs-toggle="modal"
+                                        data-id="{{ encrypt($lead->id) }}"
+                                        data-manager-id="{{ $lead->assigned_by ?? '' }}"
+                                        data-bs-toggle="modal"
                                         data-bs-target="#assignManagerModal">Manager</button>
 
                                     <button class="btn btn-sm btn-outline-dark assign-telecaller-btn"
-                                        data-id="{{ encrypt($lead->id) }}" data-bs-toggle="modal"
+                                        data-id="{{ encrypt($lead->id) }}"
+                                        data-telecaller-id="{{ $lead->assigned_to ?? '' }}"
+                                        data-bs-toggle="modal"
                                         data-bs-target="#assignTelecallerModal">Telecaller</button>
 
                                     @if($scope === 'duplicates')
@@ -248,6 +266,35 @@
                 btn.addEventListener('click', function() {
                     document.getElementById('assignManagerForm').action =
                         "{{ url('admin/leads') }}/" + this.dataset.id + "/assign-manager";
+
+                    const currentManagerId = this.dataset.managerId;
+                    const select = document.querySelector('#assignManagerModal select[name="manager_id"]');
+
+                    // Reset all options first
+                    Array.from(select.options).forEach(opt => {
+                        opt.disabled = false;
+                        opt.selected = false;
+                    });
+
+                    if (currentManagerId) {
+                        const currentOpt = select.querySelector('option[value="' + currentManagerId + '"]');
+                        if (currentOpt) {
+                            currentOpt.selected = true;
+                            currentOpt.disabled = true;
+                            currentOpt.textContent = currentOpt.textContent.replace(' (current)', '') + ' (current)';
+                        }
+                    } else {
+                        select.value = '';
+                    }
+                });
+            });
+
+            // Clean up label text when modal closes
+            document.getElementById('assignManagerModal').addEventListener('hidden.bs.modal', function() {
+                const select = this.querySelector('select[name="manager_id"]');
+                Array.from(select.options).forEach(opt => {
+                    opt.disabled = false;
+                    opt.textContent = opt.textContent.replace(' (current)', '');
                 });
             });
 
@@ -255,6 +302,36 @@
                 btn.addEventListener('click', function() {
                     document.getElementById('assignTelecallerForm').action =
                         "{{ url('admin/leads') }}/" + this.dataset.id + "/reassign-telecaller";
+
+                    const currentTelecallerId = this.dataset.telecallerId;
+                    const select = document.querySelector('#assignTelecallerModal select[name="telecaller_id"]');
+
+                    // Reset all options first
+                    Array.from(select.options).forEach(opt => {
+                        opt.disabled = false;
+                        opt.selected = false;
+                        opt.textContent = opt.textContent.replace(' (current)', '');
+                    });
+
+                    if (currentTelecallerId) {
+                        const currentOpt = select.querySelector('option[value="' + currentTelecallerId + '"]');
+                        if (currentOpt) {
+                            currentOpt.selected = true;
+                            currentOpt.disabled = true;
+                            currentOpt.textContent = currentOpt.textContent + ' (current)';
+                        }
+                    } else {
+                        select.value = '';
+                    }
+                });
+            });
+
+            // Clean up label text when modal closes
+            document.getElementById('assignTelecallerModal').addEventListener('hidden.bs.modal', function() {
+                const select = this.querySelector('select[name="telecaller_id"]');
+                Array.from(select.options).forEach(opt => {
+                    opt.disabled = false;
+                    opt.textContent = opt.textContent.replace(' (current)', '');
                 });
             });
 

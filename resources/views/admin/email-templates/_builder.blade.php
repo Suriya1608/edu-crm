@@ -981,6 +981,7 @@ body{height:100%!important;margin:0!important;padding:0!important;width:100%!imp
 const templateForm = document.getElementById('templateForm');
 if (templateForm) {
     templateForm.addEventListener('submit', function (e) {
+        if (window.TEMPLATE_EDITOR_MODE === 'simple') return; // simple mode owns the submit
         const rawHtml = editor.getHtml();
         const css     = editor.getCss({ avoidProtected: true });
 

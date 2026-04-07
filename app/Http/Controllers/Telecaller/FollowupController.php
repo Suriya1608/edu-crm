@@ -159,6 +159,36 @@ class FollowupController extends Controller
         return view('telecaller.followups.index', compact('title', 'scope', 'followups'));
     }
 
+    public function calendarData(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $year  = (int) $request->get('year',  now()->year);
+        $month = (int) $request->get('month', now()->month);
+
+        if ($month < 1)  { $month = 12; $year--; }
+        if ($month > 12) { $month = 1;  $year++; }
+
+        $userId = Auth::id();
+
+        $query = Followup::whereHas('lead', fn($q) => $q->where('assigned_to', $userId))
+            ->whereYear('next_followup', $year)
+            ->whereMonth('next_followup', $month);
+
+        if (Schema::hasColumn('followups', 'completed_at')) {
+            $query->whereNull('completed_at');
+        }
+
+        $days = $query
+            ->selectRaw('DATE(next_followup) as day, COUNT(*) as total')
+            ->groupByRaw('DATE(next_followup)')
+            ->pluck('total', 'day');
+
+        return response()->json([
+            'year'  => $year,
+            'month' => $month,
+            'days'  => $days,
+        ]);
+    }
+
     private function editableFollowup($id): Followup
     {
         return Followup::where('id', $id)

@@ -11,6 +11,18 @@
 
 @section('header_actions1')
     <div class="d-flex align-items-center gap-2 flex-wrap mt-2">
+        {{-- View Toggle --}}
+        <div class="btn-group btn-group-sm" role="group">
+            <a href="{{ route('manager.leads') }}" class="btn btn-primary d-flex align-items-center gap-1" title="List View">
+                <span class="material-icons" style="font-size:15px;">view_list</span>
+                List
+            </a>
+            <a href="{{ route('manager.leads.pipeline') }}" class="btn btn-outline-primary d-flex align-items-center gap-1" title="Pipeline View">
+                <span class="material-icons" style="font-size:15px;">view_kanban</span>
+                Pipeline
+            </a>
+        </div>
+
         <a href="{{ route('manager.leads.import') }}" class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
             <span class="material-icons" style="font-size:16px;">upload_file</span>
             Import Excel
@@ -20,6 +32,12 @@
             class="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
             <span class="material-icons" style="font-size:16px;">download</span>
             Export Excel
+        </a>
+
+        <a href="{{ route('manager.leads.export', array_merge(array_filter(request()->only(['search', 'telecaller', 'status', 'date_range'])), ['format' => 'pdf'])) }}"
+            class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1" target="_blank">
+            <span class="material-icons" style="font-size:16px;">picture_as_pdf</span>
+            Export PDF
         </a>
     </div>
 @endsection

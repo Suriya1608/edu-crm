@@ -92,13 +92,13 @@ class DashboardController extends Controller
         }
 
         $courseStats = Lead::join('courses', 'leads.course_id', '=', 'courses.id')
-            ->selectRaw("courses.name as course, COUNT(*) as total, SUM(leads.status = 'converted') as conversions")
+            ->selectRaw("courses.name as course_name, COUNT(*) as total, SUM(leads.status = 'converted') as conversions")
             ->groupBy('courses.id', 'courses.name')
             ->orderByDesc('total')
             ->limit(10)
             ->get()
             ->map(fn($row) => [
-                'course'      => $row->course,
+                'course'      => $row->course_name,
                 'total'       => (int) $row->total,
                 'conversions' => (int) $row->conversions,
                 'rate'        => $row->total > 0 ? round($row->conversions / $row->total * 100, 1) : 0,

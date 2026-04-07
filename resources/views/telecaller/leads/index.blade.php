@@ -4,6 +4,18 @@
 
 @section('header_actions')
     <div class="d-flex align-items-center gap-2 flex-wrap">
+        {{-- View Toggle --}}
+        <div class="btn-group btn-group-sm" role="group">
+            <a href="{{ route('telecaller.leads') }}" class="btn btn-primary d-flex align-items-center gap-1" title="List View">
+                <span class="material-icons" style="font-size:15px;">view_list</span>
+                List
+            </a>
+            <a href="{{ route('telecaller.leads.pipeline') }}" class="btn btn-outline-primary d-flex align-items-center gap-1" title="Pipeline View">
+                <span class="material-icons" style="font-size:15px;">view_kanban</span>
+                Pipeline
+            </a>
+        </div>
+
         <span class="badge rounded-pill text-bg-light border px-3 py-2 d-flex align-items-center gap-1">
             <span class="material-icons" style="font-size: 15px;">call</span>
             <span id="realtimeCallStatus">{{ $activeCallCount > 0 ? 'On Call' : 'Idle' }}</span>
@@ -12,13 +24,6 @@
             id="activeCallBadge">
             Active Calls: <span id="activeCallCount">{{ $activeCallCount }}</span>
         </span>
-        <div class="form-check form-switch m-0 ms-2">
-            <input class="form-check-input" type="checkbox" role="switch" id="availabilityToggle"
-                {{ auth()->user()->is_online ? 'checked' : '' }}>
-            <label class="form-check-label small fw-semibold" for="availabilityToggle" id="availabilityLabel">
-                {{ auth()->user()->is_online ? 'Online' : 'Offline' }}
-            </label>
-        </div>
     </div>
 @endsection
 
@@ -178,71 +183,29 @@
 
     <script>
         (function() {
-            const csrfToken = @json(csrf_token());
-            const availabilityUrl = @json(route('telecaller.status.availability'));
             const snapshotUrl = @json(route('telecaller.panel.snapshot'));
-            const availabilityStorageKey = 'telecaller_availability';
-
-            const availabilityToggle = document.getElementById('availabilityToggle');
-            const availabilityLabel = document.getElementById('availabilityLabel');
             const realtimeCallStatus = document.getElementById('realtimeCallStatus');
             const activeCallBadge = document.getElementById('activeCallBadge');
             const activeCallCount = document.getElementById('activeCallCount');
 
-            function setAvailabilityUI(isOnline) {
-                availabilityToggle.checked = !!isOnline;
-                availabilityLabel.textContent = isOnline ? 'Online' : 'Offline';
-                localStorage.setItem(availabilityStorageKey, isOnline ? 'online' : 'offline');
-            }
-
-            async function postAvailability(isOnline) {
-                await fetch(availabilityUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken
-                    },
-                    body: JSON.stringify({
-                        is_online: !!isOnline
-                    })
-                });
-            }
-
             function renderSnapshot(data) {
                 if (!data || !data.ok) return;
-
-                setAvailabilityUI(!!data.is_online);
-
                 const calls = Number(data.active_call_count || 0);
                 activeCallCount.textContent = calls;
                 realtimeCallStatus.textContent = data.call_status || (calls > 0 ? 'On Call' : 'Idle');
-
                 activeCallBadge.classList.remove('text-bg-danger', 'text-bg-success');
                 activeCallBadge.classList.add(calls > 0 ? 'text-bg-danger' : 'text-bg-success');
-
             }
 
             async function fetchSnapshot() {
                 try {
-                    const res = await fetch(snapshotUrl, {
-                        headers: {
-                            'Accept': 'application/json'
-                        }
-                    });
-                    const data = await res.json();
-                    renderSnapshot(data);
+                    const res = await fetch(snapshotUrl, { headers: { 'Accept': 'application/json' } });
+                    renderSnapshot(await res.json());
                 } catch (e) {}
             }
 
-            availabilityToggle.addEventListener('change', async function() {
-                const isOnline = availabilityToggle.checked;
-                setAvailabilityUI(isOnline);
-                await postAvailability(isOnline);
-                await fetchSnapshot();
-            });
-
             fetchSnapshot();
-            setInterval(fetchSnapshot, 20000);
+            setInterval(fetchSnapshot, 45000);
         })();
     </script>
 @endsection

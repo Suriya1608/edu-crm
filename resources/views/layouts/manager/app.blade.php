@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'twilio') }}">
+    <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
     <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
 
     @php
@@ -21,6 +22,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="{{ asset('css/style.css') }}" rel="stylesheet">
+
+    {{-- Global 419 handler: intercept all fetch() calls and redirect to login on session expiry --}}
+    <script>
+    (function () {
+        var _origFetch = window.fetch;
+        window.fetch = function (input, init) {
+            init = Object.assign({}, init);
+            // Ensure the server can detect AJAX requests (enables JSON 419 response)
+            init.headers = Object.assign({ 'X-Requested-With': 'XMLHttpRequest' }, init.headers);
+            return _origFetch.call(window, input, init).then(function (response) {
+                if (response.status === 419) {
+                    window.location.href = @json(route('login'));
+                }
+                return response;
+            });
+        };
+    })();
+    </script>
+
     @vite(['resources/js/app.js'])
 </head>
 
@@ -194,6 +214,39 @@
     <style>@keyframes gcRing { from { transform:rotate(-15deg); } to { transform:rotate(15deg); } }</style>
     @endif
 
+    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
+    {{-- Softphone iframe for managers (hidden by default; shown via enableCallingMode()) --}}
+    <iframe id="tcnSoftphoneFrame"
+        src="{{ route('softphone') }}"
+        allow="microphone"
+        style="position:fixed;bottom:20px;right:20px;width:300px;height:480px;border:none;z-index:1065;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;transition:height .2s,width .2s;">
+    </iframe>
+    <script>
+    (function () {
+        var _frame = null;
+        function frame() { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
+        document.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-phone]');
+            if (!btn) return;
+            var f = frame(); if (!f) return;
+            var phone = btn.getAttribute('data-phone');
+            if (phone) {
+                f.style.display = 'block'; f.style.height = '480px'; f.style.width = '300px';
+                f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
+            }
+        }, true);
+        window.addEventListener('message', function (ev) {
+            var d = ev.data; if (!d || typeof d !== 'object') return;
+            var f = frame(); if (!f) return;
+            if (d.type === 'SP_MINIMIZE') { f.style.height = '44px'; f.style.width = '170px'; f.style.borderRadius = '22px'; }
+            else if (d.type === 'SP_EXPAND') { f.style.height = '480px'; f.style.width = '300px'; f.style.borderRadius = '14px'; }
+            else if (d.type === 'TCN_READY') { f.style.display = 'block'; }
+            else if (d.type === 'TCN_CALL_STARTED' || d.type === 'TCN_CALL_ANSWERED') { f.style.bottom = '80px'; }
+            else if (d.type === 'TCN_CALL_ENDED' || d.type === 'TCN_LOGGED_OUT') { f.style.bottom = '20px'; }
+        });
+    })();
+    </script>
+    @endif
     <script src="{{ asset('js/global-call.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -304,7 +357,7 @@
                 });
 
                 fetchNotifications();
-                setInterval(fetchNotifications, 20000);
+                setInterval(fetchNotifications, 60000);
             })();
         </script>
 
@@ -460,10 +513,10 @@
                 items.forEach(function(item) { if (item.id) shownIds.add(item.id); });
 
                 if (items.length > 0) {
+                    playWaSound();
                     if (data.is_first) {
                         showLoginSummary(items.length);
                     } else {
-                        playWaSound();
                         items.forEach(function(item) { showToast(item.title, item.message, item.link); });
                     }
                 }
@@ -483,7 +536,7 @@
         }
 
         poll();
-        setInterval(poll, 5000);
+        setInterval(poll, 30000);
     })();
     </script>
     @endauth

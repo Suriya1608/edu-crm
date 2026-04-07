@@ -23,7 +23,7 @@ class FollowupController extends Controller
         Followup::create([
             'lead_id'       => $lead->id,
             'user_id'       => auth()->id(),
-            'remarks'       => $request->remarks,
+            'remarks'       => $request->remarks ?? '',
             'next_followup' => $request->next_followup,
             'followup_time' => $request->followup_time,
         ]);

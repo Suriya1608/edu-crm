@@ -209,6 +209,8 @@ class ReportsController extends Controller
         $leadIds = $leads->pluck('id');
         $firstResponses = LeadActivity::query()
             ->whereIn('lead_id', $leadIds)
+            ->whereNotNull('user_id')
+            ->whereNotIn('type', ['assignment'])
             ->select('lead_id', DB::raw('MIN(created_at) as first_response_at'))
             ->groupBy('lead_id')
             ->pluck('first_response_at', 'lead_id');
@@ -448,7 +450,11 @@ class ReportsController extends Controller
             ->limit(200)
             ->get();
 
+        // Exclude system-generated activities (user_id IS NULL = capture/assignment events).
+        // Only count real telecaller actions: call, note, whatsapp, sms, followup, status_change.
         $firstMap = LeadActivity::whereIn('lead_id', $leads->pluck('id'))
+            ->whereNotNull('user_id')
+            ->whereNotIn('type', ['assignment'])
             ->select('lead_id', DB::raw('MIN(created_at) as first_response_at'))
             ->groupBy('lead_id')
             ->pluck('first_response_at', 'lead_id');

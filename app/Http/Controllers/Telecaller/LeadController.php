@@ -13,6 +13,7 @@ use App\Models\CallLog;
 use App\Models\Setting;
 use App\Models\User;
 use App\Models\WhatsAppMessage;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 class LeadController extends Controller
@@ -24,11 +25,13 @@ class LeadController extends Controller
         $totalAssignedLeads = Lead::whereAssignedTo($userId)->count();
         $newLeads = Lead::whereAssignedTo($userId)->where('status', 'new')->count();
 
+        $hasCompletedAt = Cache::remember('schema_followups_completed_at', 3600, fn() => Schema::hasColumn('followups', 'completed_at'));
+
         $followupsTodayQuery = Followup::whereDate('next_followup', today())
             ->whereHas('lead', fn($q) => $q->whereAssignedTo($userId));
         $overdueFollowupsQuery = Followup::whereDate('next_followup', '<', today())
             ->whereHas('lead', fn($q) => $q->whereAssignedTo($userId));
-        if (Schema::hasColumn('followups', 'completed_at')) {
+        if ($hasCompletedAt) {
             $followupsTodayQuery->whereNull('completed_at');
             $overdueFollowupsQuery->whereNull('completed_at');
         }
@@ -55,6 +58,17 @@ class LeadController extends Controller
             ->limit(5)
             ->get();
 
+        $calQuery = Followup::whereHas('lead', fn($q) => $q->where('assigned_to', $userId))
+            ->whereYear('next_followup', now()->year)
+            ->whereMonth('next_followup', now()->month);
+        if (Schema::hasColumn('followups', 'completed_at')) {
+            $calQuery->whereNull('completed_at');
+        }
+        $followupCalendar = $calQuery
+            ->selectRaw('DATE(next_followup) as day, COUNT(*) as total')
+            ->groupByRaw('DATE(next_followup)')
+            ->pluck('total', 'day');
+
         return view('telecaller.dashboard', compact(
             'totalAssignedLeads',
             'newLeads',
@@ -63,7 +77,8 @@ class LeadController extends Controller
             'totalCallsToday',
             'talkTimeTodaySeconds',
             'activeCallCount',
-            'missedCallbacks'
+            'missedCallbacks',
+            'followupCalendar'
         ));
     }
 
@@ -108,17 +123,18 @@ class LeadController extends Controller
 
         /* ---------- DASHBOARD COUNTS ---------- */
 
-        $totalLeads = Lead::whereAssignedTo(Auth::id())->count();
+        $indexCounts     = Lead::whereAssignedTo(Auth::id())
+            ->selectRaw("COUNT(*) as total, SUM(status='new') as new_count, SUM(status='interested') as interested_count")
+            ->first();
+        $totalLeads      = (int) $indexCounts->total;
+        $newLeads        = (int) $indexCounts->new_count;
+        $interestedLeads = (int) $indexCounts->interested_count;
 
-        $newLeads = Lead::whereAssignedTo(Auth::id())
-            ->where('status', 'new')->count();
-
-        $interestedLeads = Lead::whereAssignedTo(Auth::id())
-            ->where('status', 'interested')->count();
+        $hasCompletedAt = Cache::remember('schema_followups_completed_at', 3600, fn() => Schema::hasColumn('followups', 'completed_at'));
 
         $followupTodayQuery = Followup::whereDate('next_followup', today())
             ->whereHas('lead', fn($q) => $q->whereAssignedTo(Auth::id()));
-        if (Schema::hasColumn('followups', 'completed_at')) {
+        if ($hasCompletedAt) {
             $followupTodayQuery->whereNull('completed_at');
         }
         $followupToday = $followupTodayQuery->count();
@@ -139,7 +155,7 @@ class LeadController extends Controller
             ->whereDate('next_followup', today())
             ->whereHas('lead', fn($q) => $q->whereAssignedTo(Auth::id()))
             ->orderBy('next_followup');
-        if (Schema::hasColumn('followups', 'completed_at')) {
+        if ($hasCompletedAt) {
             $todayFollowupsQuery->whereNull('completed_at');
         }
         $todayFollowups = $todayFollowupsQuery->limit(5)->get();
@@ -182,12 +198,83 @@ class LeadController extends Controller
         $whatsappMessages = Schema::hasTable('whatsapp_messages')
             ? WhatsAppMessage::where('lead_id', $lead->id)->orderBy('created_at')->get()
             : collect();
+        $waTemplateName = Setting::get('meta_whatsapp_template_name', 'welcome_template');
 
-        return view('telecaller.leads.show', compact('lead', 'provider', 'whatsappMessages'));
+        return view('telecaller.leads.show', compact('lead', 'provider', 'whatsappMessages', 'waTemplateName'));
     }
 
 
 
+
+    // ─── Pipeline (Kanban Board) ────────────────────────────────────────────────
+
+    public function pipeline(Request $request)
+    {
+        $userId   = Auth::id();
+        $statuses = ['new', 'assigned', 'contacted', 'interested', 'follow_up', 'not_interested', 'converted'];
+
+        $base = Lead::with(['enrolledCourse', 'followups'])
+            ->where('assigned_to', $userId);
+
+        if ($request->search) {
+            $s = $request->search;
+            $base->where(fn($q) => $q
+                ->where('lead_code', 'like', "%$s%")
+                ->orWhere('name', 'like', "%$s%")
+                ->orWhere('phone', 'like', "%$s%")
+            );
+        }
+
+        if ($request->date_range) {
+            if ($request->date_range === 'today') {
+                $base->whereDate('created_at', today());
+            } else {
+                $base->whereDate('created_at', '>=', now()->subDays((int) $request->date_range));
+            }
+        }
+
+        $columns = [];
+        foreach ($statuses as $status) {
+            $columns[$status] = (clone $base)->where('status', $status)->latest()->limit(60)->get();
+        }
+
+        return view('telecaller.leads.pipeline', compact('columns'));
+    }
+
+    public function updatePipelineStatus(Request $request)
+    {
+        $request->validate([
+            'lead_id' => 'required|string',
+            'status'  => 'required|in:new,assigned,contacted,interested,not_interested,converted,follow_up',
+        ]);
+
+        try {
+            $id = decrypt($request->lead_id);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Invalid lead.'], 422);
+        }
+
+        $lead = Lead::where('assigned_to', Auth::id())->findOrFail($id);
+
+        $oldStatus    = $lead->status;
+        $lead->status = $request->status;
+        $lead->save();
+
+        $lead->activities()->create([
+            'user_id'       => Auth::id(),
+            'type'          => 'status_change',
+            'description'   => 'Status changed to ' . ucfirst(str_replace('_', ' ', $request->status)) . ' via Pipeline',
+            'activity_time' => now(),
+        ]);
+
+        AuditLogService::log(
+            'lead.status_changed', 'Lead', $lead->id,
+            ['status' => $oldStatus],
+            ['status' => $request->status, 'source' => 'pipeline']
+        );
+
+        return response()->json(['success' => true, 'status' => $request->status]);
+    }
 
     /* ======================================================
         STORE FOLLOWUP
@@ -260,7 +347,7 @@ class LeadController extends Controller
             Followup::create([
                 'lead_id'       => $lead->id,
                 'user_id'       => Auth::id(),
-                'remarks'       => $request->remarks,
+                'remarks'       => $request->remarks ?? '',
                 'next_followup' => $request->next_followup,
                 'followup_time' => $request->followup_time,
             ]);
@@ -356,8 +443,7 @@ class LeadController extends Controller
             return response()->json(['ok' => false], 403);
         }
 
-        // Re-fetch from DB to bypass any in-memory model caching in the auth guard.
-        $user = User::find($authUser->id);
+        $user = $authUser;
 
         $isOnline = (bool) ($user->is_online ?? false);
         $lastSeen = $user->last_seen_at ? Carbon::parse($user->last_seen_at) : null;
@@ -388,25 +474,31 @@ class LeadController extends Controller
                 ];
             });
 
+        $hasCompletedAt = Cache::remember('schema_followups_completed_at', 3600, fn() => Schema::hasColumn('followups', 'completed_at'));
+
         $followupCountQuery = Followup::whereDate('next_followup', today())
             ->whereHas('lead', fn($q) => $q->whereAssignedTo($user->id));
         $overdueFollowupCountQuery = Followup::whereDate('next_followup', '<', today())
             ->whereHas('lead', fn($q) => $q->whereAssignedTo($user->id));
-        if (Schema::hasColumn('followups', 'completed_at')) {
+        if ($hasCompletedAt) {
             $followupCountQuery->whereNull('completed_at');
             $overdueFollowupCountQuery->whereNull('completed_at');
         }
-        $followupCount = $followupCountQuery->count();
+        $followupCount        = $followupCountQuery->count();
         $overdueFollowupCount = $overdueFollowupCountQuery->count();
 
-        $totalAssignedLeads = Lead::whereAssignedTo($user->id)->count();
-        $newLeads = Lead::whereAssignedTo($user->id)->where('status', 'new')->count();
-        $totalCallsToday = CallLog::where('user_id', $user->id)
+        $leadCounts = Lead::whereAssignedTo($user->id)
+            ->selectRaw("COUNT(*) as total, SUM(status='new') as new_count")
+            ->first();
+        $totalAssignedLeads = (int) $leadCounts->total;
+        $newLeads           = (int) $leadCounts->new_count;
+
+        $callStats = CallLog::where('user_id', $user->id)
             ->whereDate('created_at', today())
-            ->count();
-        $talkTimeTodaySeconds = (int) CallLog::where('user_id', $user->id)
-            ->whereDate('created_at', today())
-            ->sum('duration');
+            ->selectRaw('COUNT(*) as total_calls, SUM(duration) as talk_time')
+            ->first();
+        $totalCallsToday      = (int) $callStats->total_calls;
+        $talkTimeTodaySeconds = (int) $callStats->talk_time;
 
         return response()->json([
             'ok' => true,

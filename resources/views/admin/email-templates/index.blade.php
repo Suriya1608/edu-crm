@@ -62,10 +62,10 @@
                                         {{-- Toggle status --}}
                                         <form action="{{ route('admin.email-templates.toggle-status', $template) }}" method="POST">
                                             @csrf @method('PATCH')
-                                            <button type="submit" class="btn btn-sm {{ $template->status === 'active' ? 'btn-outline-warning' : 'btn-outline-success' }}"
+                                            <button type="submit" class="btn btn-sm {{ $template->status === 'active' ? 'btn-outline-success' : 'btn-outline-warning' }}"
                                                 title="{{ $template->status === 'active' ? 'Deactivate' : 'Activate' }}">
                                                 <span class="material-icons" style="font-size:15px;">
-                                                    {{ $template->status === 'active' ? 'toggle_off' : 'toggle_on' }}
+                                                    {{ $template->status === 'active' ? 'toggle_on' : 'toggle_off' }}
                                                 </span>
                                             </button>
                                         </form>

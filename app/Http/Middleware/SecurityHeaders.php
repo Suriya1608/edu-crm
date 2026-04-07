@@ -44,7 +44,7 @@ class SecurityHeaders
             "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com",
             "font-src 'self' fonts.gstatic.com fonts.googleapis.com cdnjs.cloudflare.com data:",
             "img-src 'self' data: blob: https://placehold.co https://cdn-icons-png.flaticon.com",
-            "connect-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com fonts.gstatic.com wss:",
+            "connect-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com fonts.gstatic.com wss: https://api.bom.tcn.com https://auth.tcn.com https://api.tcn.com",
             "frame-src 'self' blob:",
             "frame-ancestors 'self'",
             "base-uri 'self'",

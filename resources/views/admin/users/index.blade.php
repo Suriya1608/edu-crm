@@ -89,6 +89,7 @@
                 <thead>
                     <tr>
                         <th>S.No</th>
+                        <th>Employee ID</th>
                         <th>User</th>
                         <th>Role</th>
                         <th>Account</th>
@@ -101,6 +102,15 @@
                     @forelse($users as $index => $user)
                         <tr>
                             <td>{{ ($users->currentPage() - 1) * $users->perPage() + $index + 1 }}</td>
+                            <td>
+                                @if($user->employee_id)
+                                    <span class="badge bg-light text-dark border fw-semibold" style="font-size:12px;letter-spacing:.5px;">
+                                        {{ $user->employee_id }}
+                                    </span>
+                                @else
+                                    <span class="text-muted">—</span>
+                                @endif
+                            </td>
                             <td>
                                 <div class="fw-semibold">{{ $user->name }}</div>
                                 <small class="text-muted">{{ $user->email }} | {{ $user->phone ?: '-' }}</small>
@@ -158,7 +168,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="text-center py-4 text-muted">No users found.</td>
+                            <td colspan="8" class="text-center py-4 text-muted">No users found.</td>
                         </tr>
                     @endforelse
                 </tbody>

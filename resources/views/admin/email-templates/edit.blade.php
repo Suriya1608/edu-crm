@@ -14,9 +14,10 @@
 
 <form id="templateForm" action="{{ route('admin.email-templates.update', $emailTemplate) }}" method="POST">
     @csrf @method('PUT')
-    <input type="hidden" name="body" id="hiddenBody">
-    <input type="hidden" name="blocks_json" id="hiddenBlocksJson">
+    <input type="hidden" name="body"          id="hiddenBody">
+    <input type="hidden" name="template_type" id="hiddenTemplateType" value="simple">
 
+    {{-- ── Meta fields ──────────────────────────────────────────────────────── --}}
     <div class="chart-card mb-3">
         <div class="row g-3 align-items-end">
             <div class="col-md-4">
@@ -36,8 +37,8 @@
             <div class="col-md-3">
                 <label class="form-label fw-semibold mb-1">Status</label>
                 <select name="status" class="form-select">
-                    <option value="active" {{ old('status',$emailTemplate->status)==='active'?'selected':'' }}>Active</option>
-                    <option value="inactive" {{ old('status',$emailTemplate->status)==='inactive'?'selected':'' }}>Inactive</option>
+                    <option value="active"   {{ old('status', $emailTemplate->status) === 'active'   ? 'selected' : '' }}>Active</option>
+                    <option value="inactive" {{ old('status', $emailTemplate->status) === 'inactive' ? 'selected' : '' }}>Inactive</option>
                 </select>
             </div>
         </div>
@@ -52,21 +53,8 @@
         <div class="alert alert-danger py-2 mb-3">{{ $errors->first('body') }}</div>
     @endif
 
-    @php
-        // Load GrapesJS project data if saved via the new builder.
-        // If blocks_json contains a GrapesJS project (has 'pages' key), pass it.
-        // Otherwise, start a fresh canvas (the old body HTML is legacy raw HTML).
-        $initData = null;
-        if (
-            $emailTemplate->blocks_json &&
-            is_array($emailTemplate->blocks_json) &&
-            isset($emailTemplate->blocks_json['pages'])
-        ) {
-            $initData = $emailTemplate->blocks_json;
-        }
-    @endphp
-
-    @include('admin.email-templates._builder', ['initData' => $initData])
+    {{-- ── Email body editor ───────────────────────────────────────────────── --}}
+    @include('admin.email-templates._simple-editor')
 
     <div class="d-flex justify-content-end gap-2 mt-3">
         <a href="{{ route('admin.email-templates.index') }}" class="btn btn-light">Cancel</a>
@@ -77,4 +65,16 @@
 </form>
 
 @include('admin.email-templates._preview-modal')
+
+@push('scripts')
+<script>
+// Pre-fill textarea with saved body content
+(function () {
+    const ta = document.getElementById('simpleBodyTextarea');
+    if (ta && !ta.value.trim()) {
+        ta.value = @json(old('body', $emailTemplate->body ?? ''));
+    }
+})();
+</script>
+@endpush
 @endsection

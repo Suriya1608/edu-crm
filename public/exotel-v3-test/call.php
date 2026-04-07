@@ -208,7 +208,6 @@ try {
     $curlError = curl_error($ch);
     $curlErrno = curl_errno($ch);
     $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
 
     $decodedResponse = json_decode((string) $response, true);
 

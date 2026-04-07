@@ -12,12 +12,6 @@
             id="activeCallBadge">
             Active Calls: <span id="activeCallCount">{{ $activeCallCount }}</span>
         </span>
-        <div class="form-check form-switch m-0 ms-2">
-            <input class="form-check-input" type="checkbox" role="switch" id="availabilityToggle">
-            <label class="form-check-label small fw-semibold" for="availabilityToggle" id="availabilityLabel">
-                Online
-            </label>
-        </div>
     </div>
 @endsection
 
@@ -139,15 +133,25 @@
         </div>
     </div>
 
+    <div class="row g-4 mt-1">
+        <div class="col-12">
+            <x-followup-calendar
+                :calendarData="$followupCalendar"
+                :fetchUrl="route('telecaller.followups.calendar-data')"
+                :todayUrl="route('telecaller.followups.today')"
+                :overdueUrl="route('telecaller.followups.overdue')"
+                :upcomingUrl="route('telecaller.followups.upcoming')"
+                title="My Follow-Up Calendar"
+                uid="tc"
+            />
+        </div>
+    </div>
+
     <script>
         (function() {
             const csrfToken = @json(csrf_token());
-            const availabilityUrl = @json(route('telecaller.status.availability'));
             const snapshotUrl = @json(route('telecaller.panel.snapshot'));
-            const availabilityStorageKey = 'telecaller_availability';
 
-            const availabilityToggle = document.getElementById('availabilityToggle');
-            const availabilityLabel = document.getElementById('availabilityLabel');
             const realtimeCallStatus = document.getElementById('realtimeCallStatus');
             const activeCallBadge = document.getElementById('activeCallBadge');
             const activeCallCount = document.getElementById('activeCallCount');
@@ -165,40 +169,12 @@
             const todayFollowupCount = document.getElementById('todayFollowupCount');
             const overdueFollowupCount = document.getElementById('overdueFollowupCount');
 
-            function setAvailabilityUI(isOnline) {
-                availabilityToggle.checked = !!isOnline;
-                availabilityLabel.textContent = isOnline ? 'Online' : 'Offline';
-                localStorage.setItem(availabilityStorageKey, isOnline ? 'online' : 'offline');
-            }
-
-            // Initialize toggle from localStorage (source of truth for user intent).
-            // localStorage takes precedence over the DB value rendered by Blade,
-            // preventing the page-refresh race condition.
-            (function initToggle() {
-                const stored = localStorage.getItem(availabilityStorageKey);
-                // null means never set — treat as online (default); any explicit value wins.
-                setAvailabilityUI(stored !== 'offline');
-            })();
-
             function toTimeLabel(totalSeconds) {
                 const sec = Number(totalSeconds || 0);
                 const h = Math.floor(sec / 3600);
                 const m = Math.floor((sec % 3600) / 60);
                 const s = sec % 60;
                 return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
-            }
-
-            async function postAvailability(isOnline) {
-                await fetch(availabilityUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken
-                    },
-                    body: JSON.stringify({
-                        is_online: !!isOnline
-                    })
-                });
             }
 
             function renderMissedCallbacks(callbacks) {
@@ -223,12 +199,6 @@
 
             function renderSnapshot(data) {
                 if (!data || !data.ok) return;
-
-                // Do NOT call setAvailabilityUI() here — the toggle follows localStorage
-                // (user intent). Letting the snapshot override it causes a race condition
-                // where a stale is_online:true resets localStorage to 'online', which then
-                // causes the heartbeat on the next page load to mark the user online in DB.
-
                 const calls = Number(data.active_call_count || 0);
                 activeCallCount.textContent = calls;
                 realtimeCallStatus.textContent = data.call_status || (calls > 0 ? 'On Call' : 'Idle');
@@ -263,13 +233,6 @@
                 } catch (e) {}
             }
 
-            availabilityToggle.addEventListener('change', async function() {
-                const isOnline = availabilityToggle.checked;
-                setAvailabilityUI(isOnline);
-                await postAvailability(isOnline);
-                await fetchSnapshot();
-            });
-
             refreshBtn?.addEventListener('click', fetchSnapshot);
             jumpMissedCallbacks?.addEventListener('click', function() {
                 document.getElementById('missedCallbacksPanel')?.scrollIntoView({
@@ -279,7 +242,7 @@
             });
 
             fetchSnapshot();
-            setInterval(fetchSnapshot, 20000);
+            setInterval(fetchSnapshot, 45000);
         })();
     </script>
 @endsection
