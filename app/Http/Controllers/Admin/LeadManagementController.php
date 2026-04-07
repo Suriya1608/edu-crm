@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\ActivityType;
 use App\Exports\LeadsExport;
 use App\Http\Controllers\Controller;
 use App\Models\Course;
@@ -10,6 +11,7 @@ use App\Models\LeadActivity;
 use App\Models\User;
 use App\Notifications\LeadAssignmentNotification;
 use App\Services\AuditLogService;
+use App\Services\LeadCodeGenerator;
 use App\Services\LeadDefaults;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -130,9 +132,9 @@ class LeadManagementController extends Controller
     public function bulkAssign(Request $request)
     {
         $request->validate([
-            'lead_ids' => 'required|array|min:1',
-            'lead_ids.*' => 'required|integer|exists:leads,id',
-            'manager_id' => 'nullable|exists:users,id',
+            'lead_ids'     => 'required|array|min:1|max:500',
+            'lead_ids.*'   => 'required|integer|exists:leads,id',
+            'manager_id'   => 'nullable|exists:users,id',
             'telecaller_id' => 'nullable|exists:users,id',
         ]);
 
@@ -140,55 +142,51 @@ class LeadManagementController extends Controller
             return back()->with('error', 'Please select manager or telecaller for bulk assignment.');
         }
 
-        if ($request->filled('manager_id')) {
-            User::where('role', 'manager')->findOrFail($request->manager_id);
-        }
-        if ($request->filled('telecaller_id')) {
-            User::where('role', 'telecaller')->findOrFail($request->telecaller_id);
-        }
+        // Resolve users ONCE before the loop — prevents N+1 on every iteration
+        $manager = $request->filled('manager_id')
+            ? User::where('role', 'manager')->where('status', 1)->findOrFail($request->manager_id)
+            : null;
+
+        $telecaller = $request->filled('telecaller_id')
+            ? User::where('role', 'telecaller')->where('status', 1)->findOrFail($request->telecaller_id)
+            : null;
 
         $leads = Lead::whereIn('id', $request->lead_ids)->get();
 
         foreach ($leads as $lead) {
-            $updates = [];
+            $updates      = [];
             $descriptions = [];
 
-            if ($request->filled('manager_id')) {
-                $updates['assigned_by'] = (int) $request->manager_id;
-                $manager = User::find($request->manager_id);
-                $descriptions[] = 'manager ' . ($manager->name ?? '#'.$request->manager_id);
-                if ($manager) {
-                    $manager->notify(new LeadAssignmentNotification(
-                        title: 'Lead Assigned (Bulk)',
-                        message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' assigned to you.',
-                        link: route('manager.leads.show', encrypt($lead->id)),
-                        meta: ['type' => 'lead_assignment', 'lead_id' => $lead->id]
-                    ));
-                }
+            if ($manager) {
+                $updates['assigned_by'] = $manager->id;
+                $descriptions[]         = 'manager ' . $manager->name;
+                $manager->notify(new LeadAssignmentNotification(
+                    title:   'Lead Assigned (Bulk)',
+                    message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' assigned to you.',
+                    link:    route('manager.leads.show', encrypt($lead->id)),
+                    meta:    ['type' => 'lead_assignment', 'lead_id' => $lead->id]
+                ));
             }
 
-            if ($request->filled('telecaller_id')) {
-                $updates['assigned_to'] = (int) $request->telecaller_id;
-                $updates['status'] = 'assigned';
-                $telecaller = User::find($request->telecaller_id);
-                $descriptions[] = 'telecaller ' . ($telecaller->name ?? '#'.$request->telecaller_id);
-                if ($telecaller) {
-                    $telecaller->notify(new LeadAssignmentNotification(
-                        title: 'Lead Assigned (Bulk)',
-                        message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' assigned to you.',
-                        link: route('telecaller.leads.show', encrypt($lead->id)),
-                        meta: ['type' => 'lead_assignment', 'lead_id' => $lead->id]
-                    ));
-                }
+            if ($telecaller) {
+                $updates['assigned_to'] = $telecaller->id;
+                $updates['status']      = 'assigned';
+                $descriptions[]         = 'telecaller ' . $telecaller->name;
+                $telecaller->notify(new LeadAssignmentNotification(
+                    title:   'Lead Assigned (Bulk)',
+                    message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' assigned to you.',
+                    link:    route('telecaller.leads.show', encrypt($lead->id)),
+                    meta:    ['type' => 'lead_assignment', 'lead_id' => $lead->id]
+                ));
             }
 
             $lead->update($updates);
 
             LeadActivity::create([
-                'lead_id' => $lead->id,
-                'user_id' => Auth::id(),
-                'type' => 'assignment',
-                'description' => 'Bulk assigned to ' . implode(' and ', $descriptions),
+                'lead_id'       => $lead->id,
+                'user_id'       => Auth::id(),
+                'type'          => ActivityType::Assignment->value,
+                'description'   => 'Bulk assigned to ' . implode(' and ', $descriptions),
                 'activity_time' => now(),
             ]);
         }
@@ -196,7 +194,7 @@ class LeadManagementController extends Controller
         return back()->with('success', 'Bulk assignment completed.');
     }
 
-    public function merge(Request $request, $id, $targetId)
+    public function merge($id, $targetId)
     {
         $sourceId = is_numeric($id) ? (int) $id : decrypt($id);
         $targetLeadId = is_numeric($targetId) ? (int) $targetId : decrypt($targetId);
@@ -281,15 +279,16 @@ class LeadManagementController extends Controller
                 : null;
 
             $lead = Lead::create([
-                'lead_code' => $this->generateLeadCode(),
-                'name' => $row[0],
-                'phone' => $row[1],
-                'email' => $row[2] ?? null,
-                'course_id' => $courseId,
-                'source' => $row[4] ?? 'manual',
-                'status' => LeadDefaults::defaultStatus(),
+                'lead_code'   => LeadCodeGenerator::placeholder(),
+                'name'        => $row[0],
+                'phone'       => $row[1],
+                'email'       => $row[2] ?? null,
+                'course_id'   => $courseId,
+                'source'      => $row[4] ?? 'manual',
+                'status'      => LeadDefaults::defaultStatus(),
                 'assigned_by' => Auth::id(),
             ]);
+            LeadCodeGenerator::assignCode($lead);
 
             LeadActivity::create([
                 'lead_id' => $lead->id,
@@ -304,8 +303,29 @@ class LeadManagementController extends Controller
             ->with('success', 'Leads imported successfully.');
     }
 
-    public function export()
+    public function export(Request $request)
     {
+        if ($request->query('format') === 'pdf') {
+            $leads = Lead::with('enrolledCourse')->orderBy('id', 'desc')->get();
+
+            $headers = ['Lead Code', 'Name', 'Phone', 'Email', 'Course', 'Source', 'Status'];
+            $rows = $leads->map(fn($l) => [
+                $l->lead_code,
+                $l->name,
+                $l->phone,
+                $l->email ?? '',
+                $l->course ?? '',
+                $l->source ?? '',
+                ucfirst(str_replace('_', ' ', $l->status)),
+            ])->all();
+
+            return view('admin.reports.print', [
+                'title'   => 'Leads Export — ' . now()->format('d M Y'),
+                'headers' => $headers,
+                'rows'    => $rows,
+            ]);
+        }
+
         return Excel::download(new LeadsExport(), 'admin-leads.xlsx');
     }
 
@@ -323,6 +343,9 @@ class LeadManagementController extends Controller
             });
         }
 
+        $duplicatePhones = collect();
+        $duplicateEmails = collect();
+
         switch ($scope) {
             case 'unassigned':
                 $query->whereNull('assigned_to');
@@ -337,18 +360,22 @@ class LeadManagementController extends Controller
                 $query->where('status', 'not_interested');
                 break;
             case 'duplicates':
-                $duplicatePhoneIds = Lead::select('phone')
+                $duplicatePhones = Lead::select('phone')
                     ->whereNotNull('phone')
                     ->groupBy('phone')
-                    ->havingRaw('COUNT(*) > 1');
-                $duplicateEmailIds = Lead::select('email')
+                    ->havingRaw('COUNT(*) > 1')
+                    ->pluck('phone');
+
+                $duplicateEmails = Lead::select('email')
                     ->whereNotNull('email')
                     ->where('email', '!=', '')
                     ->groupBy('email')
-                    ->havingRaw('COUNT(*) > 1');
-                $query->where(function ($q) use ($duplicatePhoneIds, $duplicateEmailIds) {
-                    $q->whereIn('phone', $duplicatePhoneIds)
-                        ->orWhereIn('email', $duplicateEmailIds);
+                    ->havingRaw('COUNT(*) > 1')
+                    ->pluck('email');
+
+                $query->where(function ($q) use ($duplicatePhones, $duplicateEmails) {
+                    $q->whereIn('phone', $duplicatePhones)
+                        ->orWhereIn('email', $duplicateEmails);
                 });
                 break;
             case 'all':
@@ -361,15 +388,7 @@ class LeadManagementController extends Controller
         $managers = User::where('role', 'manager')->where('status', 1)->orderBy('name')->get(['id', 'name']);
         $telecallers = User::where('role', 'telecaller')->where('status', 1)->orderBy('name')->get(['id', 'name']);
 
-        return view('admin.leads.index', compact('leads', 'scope', 'title', 'managers', 'telecallers'));
+        return view('admin.leads.index', compact('leads', 'scope', 'title', 'managers', 'telecallers', 'duplicatePhones', 'duplicateEmails'));
     }
 
-    private function generateLeadCode(): string
-    {
-        $prefix = 'SMIT';
-        $lastLead = Lead::latest('id')->first();
-        $nextNumber = $lastLead ? $lastLead->id + 1 : 1;
-        $formattedNumber = str_pad((string) $nextNumber, 5, '0', STR_PAD_LEFT);
-        return $prefix . '-' . $formattedNumber;
-    }
 }

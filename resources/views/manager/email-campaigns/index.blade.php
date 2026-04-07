@@ -56,7 +56,7 @@
                             @endphp
                             <tr>
                                 <td>
-                                    <a href="{{ route('manager.email-campaigns.show', $ec->id) }}"
+                                    <a href="{{ route('manager.email-campaigns.show', $ec) }}"
                                         class="fw-semibold text-decoration-none">{{ $ec->name }}</a>
                                     @if ($ec->description)
                                         <div class="text-muted" style="font-size:12px;">{{ Str::limit($ec->description, 60) }}</div>
@@ -95,11 +95,11 @@
                                 </td>
                                 <td>
                                     <div class="d-flex gap-1">
-                                        <a href="{{ route('manager.email-campaigns.show', $ec->id) }}"
+                                        <a href="{{ route('manager.email-campaigns.show', $ec) }}"
                                             class="btn btn-sm btn-outline-primary">
                                             <span class="material-icons" style="font-size:15px;">bar_chart</span>
                                         </a>
-                                        <form action="{{ route('manager.email-campaigns.destroy', $ec->id) }}"
+                                        <form action="{{ route('manager.email-campaigns.destroy', $ec) }}"
                                             method="POST"
                                             onsubmit="return confirm('Delete this campaign?')">
                                             @csrf @method('DELETE')

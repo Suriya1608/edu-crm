@@ -321,6 +321,20 @@
         </div>
     </div>
     @endif
+
+    <div class="row g-4 mt-1">
+        <div class="col-12">
+            <x-followup-calendar
+                :calendarData="$followupCalendar"
+                :fetchUrl="route('manager.followups.calendar-data')"
+                :todayUrl="route('manager.followups.today')"
+                :overdueUrl="route('manager.followups.overdue')"
+                :upcomingUrl="route('manager.followups.upcoming')"
+                title="Team Follow-Up Calendar"
+                uid="mgr"
+            />
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -381,6 +395,7 @@
                 } catch (e) {}
             }
 
+            refreshPresence();
             setInterval(refreshPresence, 30000);
         })();
     </script>

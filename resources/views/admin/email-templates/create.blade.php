@@ -8,15 +8,16 @@
     </a>
     <div>
         <h2 class="page-header-title mb-0">Create Email Template</h2>
-        <p class="page-header-subtitle mb-0">Build a reusable email with the drag-and-drop editor</p>
+        <p class="page-header-subtitle mb-0">Build a reusable email template</p>
     </div>
 </div>
 
 <form id="templateForm" action="{{ route('admin.email-templates.store') }}" method="POST">
     @csrf
-    <input type="hidden" name="body" id="hiddenBody">
-    <input type="hidden" name="blocks_json" id="hiddenBlocksJson">
+    <input type="hidden" name="body"          id="hiddenBody">
+    <input type="hidden" name="template_type" id="hiddenTemplateType" value="simple">
 
+    {{-- ── Meta fields ──────────────────────────────────────────────────────── --}}
     <div class="chart-card mb-3">
         <div class="row g-3 align-items-end">
             <div class="col-md-4">
@@ -36,8 +37,8 @@
             <div class="col-md-3">
                 <label class="form-label fw-semibold mb-1">Status</label>
                 <select name="status" class="form-select">
-                    <option value="active" {{ old('status','active')==='active'?'selected':'' }}>Active</option>
-                    <option value="inactive" {{ old('status')==='inactive'?'selected':'' }}>Inactive</option>
+                    <option value="active"   {{ old('status','active')==='active'   ? 'selected' : '' }}>Active</option>
+                    <option value="inactive" {{ old('status')==='inactive'          ? 'selected' : '' }}>Inactive</option>
                 </select>
             </div>
         </div>
@@ -47,7 +48,8 @@
         <div class="alert alert-danger py-2 mb-3">{{ $errors->first('body') }}</div>
     @endif
 
-    @include('admin.email-templates._builder', ['initData' => null])
+    {{-- ── Email body editor ───────────────────────────────────────────────── --}}
+    @include('admin.email-templates._simple-editor')
 
     <div class="d-flex justify-content-end gap-2 mt-3">
         <a href="{{ route('admin.email-templates.index') }}" class="btn btn-light">Cancel</a>
@@ -58,4 +60,17 @@
 </form>
 
 @include('admin.email-templates._preview-modal')
+
+@push('scripts')
+<script>
+// Restore body content if validation failed and page was re-rendered
+(function () {
+    const ta = document.getElementById('simpleBodyTextarea');
+    const savedBody = @json(old('body', ''));
+    if (ta && savedBody && !ta.value.trim()) {
+        ta.value = savedBody;
+    }
+})();
+</script>
+@endpush
 @endsection

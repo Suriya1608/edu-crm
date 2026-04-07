@@ -97,15 +97,15 @@ $callSid = trim((string)(
 //     'sip_user'    => $SIP_USERNAME,
 //     'handled_at'  => $requestData['timestamp'],
 // ];
-// $response = [
-//     "connect" => [
-//         "to" => $sipTarget
-//     ]
-// ];
 $response = [
-    "type" => "sip",
-    "to"   => $sipTarget
+    "connect" => [
+        "to" => "sip:jayasurr9179f2a0@insighthcm5m.voip.exotel.com"
+    ]
 ];
+// $response = [
+//     "type" => "sip",
+//     "to"   => $sipTarget
+// ];
 // ── Send JSON response ──────────────────────────────────────────────
 http_response_code(200);
 header('Content-Type: application/json; charset=utf-8');
@@ -117,4 +117,13 @@ if (ob_get_length()) {
     ob_clean();
 }
 
-echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+// echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+header("Content-Type: text/xml");
+
+echo '<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Dial>
+        <Sip>sip:jayasurr9179f2a0@insighthcm5m.voip.exotel.com</Sip>
+    </Dial>
+</Response>';
+exit;

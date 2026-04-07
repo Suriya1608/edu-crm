@@ -9,6 +9,7 @@ use App\Http\Controllers\LeadImportController;
 use App\Http\Controllers\TelecallerStatusController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\ExotelController;
+use App\Http\Controllers\TcnController;
 use App\Http\Controllers\TwilioController;
 use App\Http\Controllers\CallController;
 use App\Http\Controllers\MetaWhatsAppController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\Api\LeadCaptureController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SystemSettingsController;
+use App\Http\Controllers\Admin\TcnSettingsController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\LeadManagementController as AdminLeadManagementController;
 use App\Http\Controllers\Admin\ReportsController as AdminReportsController;
@@ -195,6 +197,10 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::post('/instagram', [SystemSettingsController::class, 'updateInstagram'])->name('instagram.update');
             Route::get('/voip', [SystemSettingsController::class, 'voipSettings'])->name('voip');
             Route::post('/voip', [SystemSettingsController::class, 'updateVoipSettings'])->name('voip.update');
+
+            // TCN global settings
+            Route::get('/tcn',  [TcnSettingsController::class, 'index'])->name('tcn');
+            Route::post('/tcn', [TcnSettingsController::class, 'update'])->name('tcn.update');
         });
 
         /*
@@ -284,6 +290,9 @@ Route::middleware(['auth'])
         Route::post('/leads/store', [ManagerLeadController::class, 'store'])->name('leads.store');
 
         // IMPORTANT: Import & Export & specific paths MUST be above /{id}
+        Route::get('/leads/pipeline', [ManagerLeadController::class, 'pipeline'])->name('leads.pipeline');
+        Route::get('/leads/pipeline/more', [ManagerLeadController::class, 'pipelineMore'])->name('leads.pipeline.more');
+        Route::post('/leads/pipeline-status', [ManagerLeadController::class, 'updatePipelineStatus'])->name('leads.pipeline.status');
         Route::get('/leads/import', [LeadImportController::class, 'index'])->name('leads.import');
         Route::post('/leads/import/preview', [LeadImportController::class, 'preview'])->name('leads.import.preview');
         Route::post('/leads/import/store', [LeadImportController::class, 'store'])->name('leads.import.store');
@@ -297,6 +306,7 @@ Route::middleware(['auth'])
         Route::post('/leads/{id}/change-status', [ManagerLeadController::class, 'changeStatus'])->name('leads.changeStatus');
         Route::post('/leads/{id}/add-note', [ManagerLeadController::class, 'addNote'])->name('leads.addNote');
         Route::post('/leads/{id}/whatsapp', [MetaWhatsAppController::class, 'sendLeadMessage'])->name('leads.whatsapp.store');
+        Route::post('/leads/{id}/whatsapp/template', [MetaWhatsAppController::class, 'sendLeadTemplate'])->name('leads.whatsapp.template');
         Route::post('/leads/{id}/whatsapp/media', [MetaWhatsAppController::class, 'sendMedia'])->name('leads.whatsapp.media');
         Route::get('/leads/{id}/whatsapp/messages', [MetaWhatsAppController::class, 'fetchMessages'])->name('leads.whatsapp.fetch');
 
@@ -326,6 +336,7 @@ Route::middleware(['auth'])
             Route::get('/overdue', [FollowupManagementController::class, 'overdue'])->name('overdue');
             Route::get('/upcoming', [FollowupManagementController::class, 'upcoming'])->name('upcoming');
             Route::get('/missed-by-telecaller', [FollowupManagementController::class, 'missedByTelecaller'])->name('missed');
+            Route::get('/calendar-data', [FollowupManagementController::class, 'calendarData'])->name('calendar-data');
         });
 
         /*
@@ -435,10 +446,13 @@ Route::middleware(['auth'])
         |------------------------------------------------------------------
         */
         Route::get('/leads', [TeleLeadController::class, 'index'])->name('leads');
+        Route::get('/leads/pipeline', [TeleLeadController::class, 'pipeline'])->name('leads.pipeline');
+        Route::post('/leads/pipeline-status', [TeleLeadController::class, 'updatePipelineStatus'])->name('leads.pipeline.status');
         Route::get('/leads/{id}', [TeleLeadController::class, 'show'])->name('leads.show');
         Route::post('/leads/status/{id}', [TeleLeadController::class, 'changeStatus'])->name('leads.changeStatus');
         Route::post('/leads/note/{id}', [TeleLeadController::class, 'addNote'])->name('leads.addNote');
         Route::post('/leads/{id}/whatsapp', [MetaWhatsAppController::class, 'sendLeadMessage'])->name('leads.whatsapp.store');
+        Route::post('/leads/{id}/whatsapp/template', [MetaWhatsAppController::class, 'sendLeadTemplate'])->name('leads.whatsapp.template');
         Route::post('/leads/{id}/whatsapp/media', [MetaWhatsAppController::class, 'sendMedia'])->name('leads.whatsapp.media');
         Route::get('/leads/{id}/whatsapp/messages', [MetaWhatsAppController::class, 'fetchMessages'])->name('leads.whatsapp.fetch');
 
@@ -455,6 +469,7 @@ Route::middleware(['auth'])
             Route::get('/overdue', [TeleFollowupController::class, 'overdue'])->name('overdue');
             Route::get('/upcoming', [TeleFollowupController::class, 'upcoming'])->name('upcoming');
             Route::get('/completed', [TeleFollowupController::class, 'completed'])->name('completed');
+            Route::get('/calendar-data', [TeleFollowupController::class, 'calendarData'])->name('calendar-data');
             Route::post('/{id}/reschedule', [TeleFollowupController::class, 'reschedule'])->name('reschedule');
             Route::post('/{id}/complete', [TeleFollowupController::class, 'markCompleted'])->name('mark-complete');
         });
@@ -611,14 +626,58 @@ Route::post('/email/webhook/bounce', [EmailWebhookController::class, 'bounce'])
 
 /*
 |--------------------------------------------------------------------------
+| TCN SOFTPHONE
+|--------------------------------------------------------------------------
+*/
+
+// Per-user TCN config API — returns access_token for logged-in user, never exposes secrets
+Route::middleware('auth')->get('/api/tcn/config', [TcnController::class, 'userConfig'])->name('api.tcn.config');
+
+// TCN OAuth — connect redirect and callback (no auth middleware needed)
+Route::get('/tcn/auth/connect',  [TcnController::class, 'authRedirect'])->name('tcn.auth.connect')->middleware('auth');
+Route::get('/tcn/auth/callback', [TcnController::class, 'authCallback'])->name('tcn.auth.callback');
+
+// TCN per-user OAuth — admin connects individual user accounts.
+// The static /tcn/auth/callback URI is reused for the callback so that the
+// redirect_uri sent to TCN exactly matches the one registered in their OAuth app.
+// user_id is passed via session (set in userConnectRedirect) — NOT via the URL.
+Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'])
+    ->get('/tcn/connect/{encryptedId}', [TcnController::class, 'userConnectRedirect'])
+    ->name('tcn.user.connect');
+
+// TCN Softphone iframe page — embedded in layouts via <iframe src="/softphone">
+Route::middleware('auth')->get('/softphone', [TcnController::class, 'softphonePage'])->name('softphone');
+
+// TCN authenticated proxy routes
+Route::middleware('auth')->prefix('tcn')->name('tcn.')->group(function () {
+    // Non-sensitive config for the browser
+    Route::get('/config',          [TcnController::class, 'config'])->name('config');
+
+    // Login flow
+    Route::post('/skills',         [TcnController::class, 'skills'])->name('skills');
+    Route::post('/session',        [TcnController::class, 'session'])->name('session');
+
+    // Session management
+    Route::post('/keepalive',      [TcnController::class, 'keepalive'])->name('keepalive');
+    Route::post('/status',         [TcnController::class, 'agentStatus'])->name('status');
+    Route::post('/set-status',     [TcnController::class, 'setAgentStatus'])->name('set-status');
+    Route::post('/disconnect',     [TcnController::class, 'disconnect'])->name('disconnect');
+
+    // Call log management
+    Route::post('/call-log',       [TcnController::class, 'createCallLog'])->name('call-log.create');
+    Route::patch('/call-log/{id}', [TcnController::class, 'updateCallLog'])->whereNumber('id')->name('call-log.update');
+});
+
+/*
+|--------------------------------------------------------------------------
 | EXOTEL
 |--------------------------------------------------------------------------
 */
 
 // Exotel webhooks (public, no CSRF)
-Route::post('/exotel/incoming', [ExotelController::class, 'incomingConnect'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('exotel.incoming');
+// Route::post('/exotel/incoming', [ExotelController::class, 'incomingConnect'])
+//     ->withoutMiddleware([VerifyCsrfToken::class])
+//     ->name('exotel.incoming');
 
 Route::post('/exotel/outgoing', [ExotelController::class, 'outgoing'])
     ->withoutMiddleware([VerifyCsrfToken::class]);

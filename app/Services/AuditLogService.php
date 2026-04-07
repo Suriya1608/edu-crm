@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AuditLog;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
@@ -52,8 +53,12 @@ class AuditLogService
                 'new_values' => $new ?: null,
                 'ip_address' => Request::ip(),
             ]);
-        } catch (Throwable) {
-            // Silently swallow — audit failures must never break the application
+        } catch (Throwable $e) {
+            // Audit failures must never break the application, but log them so they're visible
+            Log::error('AuditLogService::log failed', [
+                'action' => $action,
+                'error'  => $e->getMessage(),
+            ]);
         }
     }
 }

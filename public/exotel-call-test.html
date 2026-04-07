@@ -1248,15 +1248,40 @@
 
             try {
                 const socket = new JsSIP.WebSocketInterface(proxyUrl);
+                // Get your ngrok hostname from the page URL
+                const ngrokHost = window.location.hostname;
+                // = "smashable-pricilla-sacramentally.ngrok-free.dev"
 
+                ua = new JsSIP.UA({
+                    sockets: [socket],
+                    uri: uri,
+                    password: pass,
+                    authorization_user: user,
+                    realm: domain,
+                    register: true,
+                    register_expires: 60,
+                    session_timers: false,
+                    instance_id: "7c0f3e2d-1a4b-4c5e-8f6a-9b0c2d3e4f5a",
+
+                    contact_uri: "sip:" + user + "@voip.in1.exotel.com;transport=ws",
+
+                    pcConfig: {
+                        iceServers: [
+                            { urls: "stun:stun.l.google.com:19302" },
+                            { urls: "stun:stun1.l.google.com:19302" },
+                        ]
+                    }
+                });
                 // ua = new JsSIP.UA({
-                //     sockets:         [socket],
-                //     uri:             uri,
-                //     password:        pass,
-                //     realm:           domain,
-                //     register:        true,
-                //     session_timers:  false,
-                //     log:             { builtinEnabled: false },
+                //     sockets: [socket],
+                //     uri: uri,
+                //     password: pass,
+                //     authorization_user: user,
+                //     realm: domain,
+                //     register: true,
+                //     register_expires: 600,
+                //     session_timers: false,
+                //     contact_uri: "sip:" + user + "@" + domain + ";transport=ws",
                 //     pcConfig: {
                 //         iceServers: [
                 //             { urls: "stun:stun.l.google.com:19302" },
@@ -1264,48 +1289,66 @@
                 //         ]
                 //     }
                 // });
-                ua = new JsSIP.UA({
-                    sockets: [socket],
 
-                    uri: uri,
-                    password: pass,
-                    authorization_user: user,
-                    realm: domain,
-
-                    register: true,
-                    register_expires: 600,
-                    session_timers: false,
-
-                    contact_uri: uri + ";transport=ws",
-                    via_host: domain,
-
-                    hack_via_tcp: true,
-                    hack_ip_in_contact: true,
-
-                    pcConfig: {
-                        iceServers: [
-                            { urls: "stun:stun.l.google.com:19302" }
-                        ]
-                    }
+                ua.on("connecting", e => {
+                    setBadge(wsBadge, "WS: Connecting", "warn");
+                    log("info", "WebSocket connecting");
                 });
 
-                ua.on("connecting", e => { setBadge(wsBadge, "WS: Connecting", "warn"); log("info", "WebSocket connecting"); });
-                ua.on("connected", e => { setBadge(wsBadge, "WS: Connected", "ok"); log("ok", "WebSocket connected"); });
+                ua.on("connected", e => {
+                    setBadge(wsBadge, "WS: Connected", "ok");
+                    log("ok", "WebSocket connected");
+                });
+
                 ua.on("disconnected", e => {
                     setBadge(wsBadge, "WS: Disconnected", "bad");
                     setBadge(regBadge, "SIP: Offline", "bad");
                     log("err", "WebSocket disconnected", { cause: e.cause, error: e.error });
+                    // Auto reconnect
+                    setTimeout(() => {
+                        if (ua) {
+                            log("warn", "Attempting reconnect...");
+                            ua.start();
+                        }
+                    }, 3000);
                 });
 
-                ua.on("registered", e => { isRegistered = true; setBadge(regBadge, "SIP: Registered", "ok"); log("ok", "SIP registered"); });
-                ua.on("unregistered", e => { isRegistered = false; setBadge(regBadge, "SIP: Unregistered", "idle"); log("warn", "SIP unregistered"); });
+                ua.on("registered", e => {
+                    isRegistered = true;
+                    setBadge(regBadge, "SIP: Registered", "ok");
+                    log("ok", "SIP registered");
+                });
+
+                ua.on("unregistered", e => {
+                    isRegistered = false;
+                    setBadge(regBadge, "SIP: Unregistered", "idle");
+                    log("warn", "SIP unregistered");
+                });
+
                 ua.on("registrationFailed", e => {
                     isRegistered = false;
                     setBadge(regBadge, "SIP: Reg Failed", "bad");
-                    log("err", "SIP registration FAILED", { cause: e.cause, status: e.response?.status_code, reason: e.response?.reason_phrase });
+                    log("err", "SIP registration FAILED", {
+                        cause: e.cause,
+                        status: e.response?.status_code,
+                        reason: e.response?.reason_phrase
+                    });
                 });
 
+                // ✅ ONLY ONE newRTCSession handler
                 ua.on("newRTCSession", handleNewSession);
+
+                // ✅ Keep-alive check every 15 seconds
+                setInterval(() => {
+                    if (!ua) return;
+                    if (!ua.isConnected()) {
+                        log("warn", "WS dropped — reconnecting...");
+                        ua.start();
+                    } else if (!ua.isRegistered()) {
+                        log("warn", "Not registered — re-registering...");
+                        ua.register();
+                    }
+                }, 15000);
 
                 ua.start();
                 log("ok", "JsSIP UA started");
@@ -1321,7 +1364,6 @@
                 connectBtn.disabled = false;
             }
         }
-
         function stopUA() {
             if (!ua) return;
             ua.stop();

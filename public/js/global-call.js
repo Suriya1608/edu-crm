@@ -8,16 +8,20 @@
 var metaProvider = document.querySelector('meta[name="call-provider"]');
 var PROVIDER = metaProvider ? metaProvider.getAttribute("content") : "twilio";
 
+
 var GC = {
 
 _device: null,
 _call: null,
+_deviceInitPromise: null,
+_deviceInitialized: false,
 
 _ua: null,
 _registered: false,
 _session: null,
 _incomingVoipSession: null,
 _voipConfig: null,
+_tcnPopupWin: null,
 
 _state: null,
 _csrf: null,
@@ -39,17 +43,188 @@ isActive: function () {
 },
 
 initDevice: async function () {
-    if (PROVIDER === "exotel") {
-        await this._initExotel();
-        this._startPstnIncomingPoll();
-    } else {
-        await this._initTwilio();
+    if (this._deviceInitialized) {
+        return;
+    }
+    if (this._deviceInitPromise) {
+        return this._deviceInitPromise;
     }
 
-    this._setupNavIntercept();
-    this._setupBarEndBtn();
-    this._setupPstnIncomingBtns();
+    var self = this;
+    this._deviceInitPromise = (async function () {
+    if (PROVIDER === "exotel") {
+        await self._initExotel();
+        self._startPstnIncomingPoll();
+    } else if (PROVIDER === "tcn") {
+        await self._initTcn();
+    } else {
+        await self._initTwilio();
+    }
+
+    self._setupNavIntercept();
+    self._setupBarEndBtn();
+    self._setupPstnIncomingBtns();
+    self._deviceInitialized = true;
+    })().finally(function () {
+        self._deviceInitPromise = null;
+    });
+
+    return this._deviceInitPromise;
 },
+
+// ── TCN ───────────────────────────────────────────────────────────────────
+// TCN calls are driven by a named popup window (/softphone).
+// Using a popup (not an iframe) ensures the SIP session and WebRTC audio
+// survive parent-page navigations — the popup is never reloaded.
+// Parent ↔ popup communication uses window.postMessage.
+// ─────────────────────────────────────────────────────────────────────────
+
+_tcnEventsWired: false,
+_pendingLeadId:  null,
+
+// Return the embedded softphone iframe element (present in both layouts).
+_tcnFrame: function () {
+    return document.getElementById('tcnSoftphoneFrame');
+},
+
+// Show the iframe and the toggle button (if hidden).
+_showTcnFrame: function () {
+    var f = this._tcnFrame();
+    if (f && f.style.display === 'none') {
+        f.style.display = 'block';
+        f.style.bottom  = '80px';
+    }
+},
+
+// Return the live popup window if it is still open, otherwise null.
+_tcnPopup: function () {
+    if (this._tcnPopupWin && !this._tcnPopupWin.closed) return this._tcnPopupWin;
+    // After a page navigation _tcnPopupWin is gone — try to reattach by name.
+    try {
+        var w = window.open('', 'tcnSoftphone');
+        if (w && !w.closed) {
+            var href = '';
+            try { href = w.location.href; } catch (e) {}
+            if (href && href.indexOf('softphone') !== -1) {
+                this._tcnPopupWin = w;
+                return w;
+            }
+            // window.open opened a blank window — close it immediately.
+            if (!href || href === 'about:blank') { try { w.close(); } catch (e) {} }
+        }
+    } catch (e) {}
+    return null;
+},
+
+// Open (or focus) the softphone popup and return it.
+_openTcnPopup: function () {
+    var existing = this._tcnPopup();
+    if (existing) { try { existing.focus(); } catch (e) {} return existing; }
+    var w = window.open(
+        '/softphone', 'tcnSoftphone',
+        'width=300,height=500,resizable=no,scrollbars=no,toolbar=no,menubar=no'
+    );
+    if (w) this._tcnPopupWin = w;
+    return w;
+},
+
+_initTcn: async function () {
+    var self = this;
+
+    // Singleton guard
+    if (window.tcnInitialized) {
+        console.log('[GC-TCN] Already initialized.');
+        return;
+    }
+    window.tcnInitialized = true;
+
+    if (self._tcnEventsWired) return;
+    self._tcnEventsWired = true;
+
+    // Receive status messages from the softphone iframe
+    window.addEventListener("message", function (ev) {
+        var d = ev.data;
+        if (!d || typeof d !== "object") return;
+
+        switch (d.type) {
+
+            case "TCN_CALL_STARTED":
+                self._endReported = false;
+                self._state = {
+                    callLogId:  d.callLogId  || null,
+                    phone:      d.phone      || "",
+                    leadId:     self._pendingLeadId || null,
+                    leadName:   null,
+                    leadUrl:    null,
+                    answeredAt: null,
+                };
+                self._pendingLeadId = null;
+                self._showBar("Connecting\u2026");
+                self._startTimer(Date.now());
+                document.dispatchEvent(new CustomEvent("gc:callAccepted"));
+                break;
+
+            case "TCN_CALL_ANSWERED":
+                if (self._state) {
+                    self._state.answeredAt = Date.now();
+                    self._showBar(self._state.phone || d.phone || "");
+                    self._startTimer(self._state.answeredAt);
+                }
+                break;
+
+            case "TCN_CALL_ENDED":
+                self._finalize(d.status || "completed");
+                break;
+
+            case "TCN_ERROR":
+                console.error("[GC-TCN]", d.message);
+                if (self._state && !self._endReported) {
+                    self._finalize("failed");
+                }
+                break;
+        }
+    });
+},
+
+// Manager: turn ON calling mode — show the iframe
+enableCallingMode: async function () {
+    if (PROVIDER !== "tcn") return;
+    this._showTcnFrame();
+    console.log("[GC-TCN] Calling mode enabled.");
+},
+
+// Manager: turn OFF calling mode — tell softphone to logout
+disableCallingMode: function () {
+    var f = this._tcnFrame();
+    if (f && f.contentWindow) {
+        f.contentWindow.postMessage({ type: "LOGOUT" }, "*");
+    }
+    console.log("[GC-TCN] Calling mode disabled.");
+},
+
+_startTcnCall: function (phone, leadId) {
+    var self = this;
+    var f = self._tcnFrame();
+
+    if (!f) {
+        // Iframe not in DOM — fall back to in-page TcnService if available
+        if (window.TcnService) {
+            window.TcnService.call(phone, leadId).catch(function (e) {
+                console.error("[GC-TCN] TcnService.call failed:", e.message);
+            });
+        } else {
+            console.error("[GC-TCN] Softphone iframe not found.");
+        }
+        return Promise.resolve();
+    }
+
+    self._pendingLeadId = leadId || null;
+    self._showTcnFrame();
+    f.contentWindow.postMessage({ type: "CALL", phone: phone }, "*");
+    return Promise.resolve();
+},
+
+// ─────────────────────────────────────────────────────────────────────────
 
 _initTwilio: async function () {
     if (this._device) return;
@@ -152,13 +327,20 @@ _waitForRegister: function (timeout) {
     });
 },
 
-startCall: function (phone, leadId) {
+startCall: async function (phone, leadId) {
     if (this._state) {
         alert("Call already active");
         return;
     }
 
-    if (PROVIDER === "exotel") {
+    await this.initDevice();
+
+    if (PROVIDER === "tcn") {
+        // Return the promise so callers can await it and catch errors.
+        // Without this return the button click handler's catch() never fires,
+        // leaving the button stuck on "Connecting..." after a failed dial.
+        return this._startTcnCall(phone, leadId);
+    } else if (PROVIDER === "exotel") {
         this._startExotelCall(phone, leadId);
     } else {
         this._startTwilioCall(phone, leadId);
@@ -301,6 +483,16 @@ _startExotelCall: async function (phone, leadId) {
 
 endCall: function () {
     this._manualHangup = true;
+
+    if (PROVIDER === "tcn") {
+        var p = this._tcnPopup();
+        if (p) {
+            p.postMessage({ type: "HANGUP" }, "*");
+        } else if (window.TCN && window.TCN._callActive) {
+            window.TCN.endCall();
+        }
+        return;
+    }
 
     if (this._call) {
         this._call.disconnect();
@@ -924,10 +1116,6 @@ var metaCsrf = document.querySelector('meta[name="csrf-token"]');
 if (metaCsrf) {
     GC._csrf = metaCsrf.getAttribute("content");
 }
-
-document.addEventListener("DOMContentLoaded", function () {
-    GC.initDevice();
-});
 
 window.GC = GC;
 

@@ -8,7 +8,6 @@ use App\Mail\CampaignMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 
 class EmailTemplateController extends Controller
 {
@@ -35,17 +34,18 @@ class EmailTemplateController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'name'        => 'required|string|max:255',
-            'subject'     => 'required|string|max:255',
-            'body'        => 'required|string',
-            'blocks_json' => 'nullable|string',
-            'status'      => 'required|in:active,inactive',
+            'name'          => 'required|string|max:255',
+            'subject'       => 'required|string|max:255',
+            'body'          => 'required|string',
+            'blocks_json'   => 'nullable|string',
+            'template_type' => 'nullable|in:builder,simple',
+            'status'        => 'required|in:active,inactive',
         ]);
 
-        $data['created_by']  = Auth::id();
-        $data['blocks_json'] = $request->input('blocks_json')
-            ? json_decode($request->input('blocks_json'), true)
-            : null;
+        $data['body']          = $this->sanitizeBody($data['body']);
+        $data['created_by']    = Auth::id();
+        $data['template_type'] = 'simple';
+        $data['blocks_json']   = null;
 
         EmailTemplate::create($data);
 
@@ -65,21 +65,33 @@ class EmailTemplateController extends Controller
     public function update(Request $request, EmailTemplate $emailTemplate)
     {
         $data = $request->validate([
-            'name'        => 'required|string|max:255',
-            'subject'     => 'required|string|max:255',
-            'body'        => 'required|string',
-            'blocks_json' => 'nullable|string',
-            'status'      => 'required|in:active,inactive',
+            'name'          => 'required|string|max:255',
+            'subject'       => 'required|string|max:255',
+            'body'          => 'required|string',
+            'blocks_json'   => 'nullable|string',
+            'template_type' => 'nullable|in:builder,simple',
+            'status'        => 'required|in:active,inactive',
         ]);
 
-        $data['blocks_json'] = $request->input('blocks_json')
-            ? json_decode($request->input('blocks_json'), true)
-            : null;
+        $data['body']          = $this->sanitizeBody($data['body']);
+        $data['template_type'] = 'simple';
+        $data['blocks_json']   = null;
 
         $emailTemplate->update($data);
 
         return redirect()->route('admin.email-templates.index')
             ->with('success', 'Email template updated successfully.');
+    }
+
+    // ── Body Sanitisation ─────────────────────────────────────────────────────
+
+    private function sanitizeBody(string $body): string
+    {
+        // Strip PHP open/close tags so no server-side code can be injected
+        $body = preg_replace('/<\?(?:php|=)?.*?\?>/is', '', $body);
+        // Strip Laravel raw-output directives {!! ... !!}
+        $body = preg_replace('/\{!!.*?!!\}/s', '', $body);
+        return $body;
     }
 
     // ── Image Upload (AJAX) ───────────────────────────────────────────────────

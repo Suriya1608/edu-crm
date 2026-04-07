@@ -9,12 +9,75 @@ use App\Models\LeadActivity;
 use App\Notifications\LeadAssignmentNotification;
 use App\Services\ManagerLeadAllocator;
 use App\Services\LeadDefaults;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class LeadApiController extends Controller
 {
     public function __construct(private ManagerLeadAllocator $managerLeadAllocator)
     {
+    }
+
+    /**
+     * GET /api/leads
+     * Returns leads scoped to the authenticated user's role.
+     * Supports ?status=, ?search=, ?per_page= (max 100).
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $user  = $request->user();
+        $query = Lead::with(['assignedUser:id,name', 'followups' => fn($q) => $q->latest()->limit(1)])
+            ->select('id', 'lead_code', 'name', 'phone', 'email', 'course_id', 'source', 'status',
+                     'assigned_to', 'assigned_by', 'is_duplicate', 'created_at');
+
+        match ($user->role) {
+            'admin'      => null, // no scope — sees all
+            'manager'    => $query->where('assigned_by', $user->id),
+            'telecaller' => $query->where('assigned_to', $user->id),
+            default      => $query->whereRaw('0 = 1'), // unknown role sees nothing
+        };
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(fn($q) => $q
+                ->where('lead_code', 'like', "%$s%")
+                ->orWhere('name', 'like', "%$s%")
+                ->orWhere('phone', 'like', "%$s%")
+            );
+        }
+
+        $perPage = min((int) $request->input('per_page', 20), 100);
+        $leads   = $query->latest()->paginate($perPage);
+
+        return response()->json($leads);
+    }
+
+    /**
+     * GET /api/leads/{id}
+     * Returns a single lead. Enforces role-based ownership.
+     */
+    public function show(Request $request, int $id): JsonResponse
+    {
+        $user = $request->user();
+        $lead = Lead::with(['assignedUser:id,name', 'followups'])->findOrFail($id);
+
+        $allowed = match ($user->role) {
+            'admin'      => true,
+            'manager'    => $lead->assigned_by === $user->id,
+            'telecaller' => $lead->assigned_to === $user->id,
+            default      => false,
+        };
+
+        if (! $allowed) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        return response()->json($lead);
     }
 
     public function store(Request $request)
