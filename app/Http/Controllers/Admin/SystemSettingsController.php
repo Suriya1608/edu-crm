@@ -69,7 +69,7 @@ class SystemSettingsController extends Controller
     {
         $data = $request->validate([
             'sms_enabled' => 'nullable|boolean',
-            'sms_provider' => 'required|in:twilio,msg91,textlocal,custom',
+            'sms_provider' => 'required|in:msg91,textlocal,custom',
             'sms_sender_id' => 'nullable|string|max:50',
             'sms_api_key' => 'nullable|string|max:255',
             'sms_api_secret' => 'nullable|string|max:255',
@@ -117,18 +117,7 @@ class SystemSettingsController extends Controller
 
         return back()->with('success', 'WhatsApp settings saved successfully.');
     }
-
-    public function twilio()
-    {
-        return redirect()->route('admin.settings.call');
-    }
-
-    public function updateTwilio()
-    {
-        return redirect()->route('admin.settings.call');
-    }
-
-    // ── Call Settings (unified: provider + Twilio + Exotel + VOIP) ───────────
+    // Call settings (TCN only)
 
     public function callSettings()
     {
@@ -138,63 +127,15 @@ class SystemSettingsController extends Controller
     public function updateCallSettings(Request $request)
     {
         $data = $request->validate([
-            'primary_call_provider' => 'required|in:twilio,exotel,tcn',
-            // Twilio
-            'twilio_account_sid' => 'nullable|string|max:255',
-            'twilio_auth_token'  => 'nullable|string|max:255',
-            'twilio_api_key'     => 'nullable|string|max:255',
-            'twilio_api_secret'  => 'nullable|string|max:255',
-            'twilio_app_sid'     => 'nullable|string|max:255',
-            'twilio_from_number' => 'nullable|string|max:50',
-            // Exotel
-            'exotel_api_key'   => 'nullable|string|max:255',
-            'exotel_api_token' => 'nullable|string|max:255',
-            'exotel_sid'       => 'nullable|string|max:255',
-            'exotel_caller_id' => 'nullable|string|max:50',
-            'exotel_subdomain' => 'nullable|string|max:100',
-            // TCN
             'tcn_client_id'     => 'nullable|string|max:255',
             'tcn_client_secret' => 'nullable|string|max:255',
             'tcn_refresh_token' => 'nullable|string|max:500',
             'tcn_redirect_uri'  => 'nullable|url|max:500',
             'tcn_caller_id'     => 'nullable|string|max:20',
-            // Browser VOIP
-            'voip_domain'   => 'nullable|string|max:255',
-            'voip_proxy'    => 'nullable|string|max:255',
-            'voip_username' => 'nullable|string|max:255',
-            'voip_password' => 'nullable|string|max:255',
         ]);
 
-        Setting::set('primary_call_provider', $data['primary_call_provider']);
+        Setting::set('primary_call_provider', 'tcn');
 
-        // Twilio — blank means "keep existing secret"
-        if (!empty($data['twilio_account_sid'])) {
-            Setting::setSecure('twilio_account_sid', $data['twilio_account_sid']);
-        }
-        if (!empty($data['twilio_auth_token'])) {
-            Setting::setSecure('twilio_auth_token', $data['twilio_auth_token']);
-        }
-        if (!empty($data['twilio_api_key'])) {
-            Setting::setSecure('twilio_api_key', $data['twilio_api_key']);
-        }
-        if (!empty($data['twilio_api_secret'])) {
-            Setting::setSecure('twilio_api_secret', $data['twilio_api_secret']);
-        }
-        Setting::set('twilio_app_sid',     $data['twilio_app_sid']     ?? '');
-        Setting::set('twilio_from_number', $data['twilio_from_number'] ?? '');
-
-        // Exotel — blank means "keep existing secret"
-        if (!empty($data['exotel_api_key'])) {
-            Setting::setSecure('exotel_api_key', $data['exotel_api_key']);
-        }
-        if (!empty($data['exotel_api_token'])) {
-            Setting::setSecure('exotel_api_token', $data['exotel_api_token']);
-        }
-        Setting::set('exotel_sid',       $data['exotel_sid']       ?? '');
-        Setting::set('exotel_caller_id', $data['exotel_caller_id'] ?? '');
-        Setting::set('exotel_subdomain', $data['exotel_subdomain'] ?? 'api.in.exotel.com');
-
-        // TCN — blank means "keep existing secret"
         if (!empty($data['tcn_client_id'])) {
             Setting::setSecure('tcn_client_id', $data['tcn_client_id']);
         }
@@ -207,30 +148,8 @@ class SystemSettingsController extends Controller
         Setting::set('tcn_redirect_uri', $data['tcn_redirect_uri'] ?? '');
         Setting::set('tcn_caller_id',   $data['tcn_caller_id']   ?? '');
 
-        // Browser VOIP
-        Setting::set('voip_enabled',  $request->boolean('voip_enabled') ? '1' : '0');
-        Setting::set('voip_domain',   $data['voip_domain']   ?? '');
-        Setting::set('voip_proxy',    $data['voip_proxy']    ?? '');
-        Setting::set('voip_username', $data['voip_username'] ?? '');
-        if (!empty($data['voip_password'])) {
-            Setting::setSecure('voip_password', $data['voip_password']);
-        }
-
         return back()->with('success', 'Call settings saved.');
     }
-
-    // ── Legacy redirects (keep old URLs working) ──────────────────────────────
-
-    public function voipSettings()
-    {
-        return redirect()->route('admin.settings.call');
-    }
-
-    public function updateVoipSettings()
-    {
-        return redirect()->route('admin.settings.call');
-    }
-
     public function businessHours()
     {
         return view('admin.settings.business-hours');
@@ -375,3 +294,5 @@ class SystemSettingsController extends Controller
         return back()->with('success', 'Notification settings updated successfully.');
     }
 }
+
+

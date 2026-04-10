@@ -2,16 +2,14 @@
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
+use App\Http\Middleware\VerifyInboundLeadToken;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ChangePasswordController;
 use App\Http\Controllers\FollowupController;
 use App\Http\Controllers\LeadImportController;
 use App\Http\Controllers\TelecallerStatusController;
 use App\Http\Controllers\PageController;
-use App\Http\Controllers\ExotelController;
 use App\Http\Controllers\TcnController;
-use App\Http\Controllers\TwilioController;
-use App\Http\Controllers\CallController;
 use App\Http\Controllers\MetaWhatsAppController;
 use App\Http\Controllers\InstagramController;
 use App\Http\Controllers\EmailTrackingController;
@@ -173,8 +171,6 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::post('/whatsapp', [SystemSettingsController::class, 'updateWhatsapp'])->name('whatsapp.update');
             Route::get('/call', [SystemSettingsController::class, 'callSettings'])->name('call');
             Route::post('/call', [SystemSettingsController::class, 'updateCallSettings'])->name('call.update');
-            Route::get('/twilio', [SystemSettingsController::class, 'twilio'])->name('twilio');
-            Route::post('/twilio', [SystemSettingsController::class, 'updateTwilio'])->name('twilio.update');
             Route::get('/business-hours', [SystemSettingsController::class, 'businessHours'])->name('business-hours');
             Route::post('/business-hours', [SystemSettingsController::class, 'updateBusinessHours'])->name('business-hours.update');
             Route::get('/working-days', [SystemSettingsController::class, 'workingDays'])->name('working-days');
@@ -195,8 +191,6 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::post('/security', [SettingsController::class, 'updateSecurity'])->name('security.update');
             Route::get('/instagram', [SystemSettingsController::class, 'instagram'])->name('instagram');
             Route::post('/instagram', [SystemSettingsController::class, 'updateInstagram'])->name('instagram.update');
-            Route::get('/voip', [SystemSettingsController::class, 'voipSettings'])->name('voip');
-            Route::post('/voip', [SystemSettingsController::class, 'updateVoipSettings'])->name('voip.update');
 
             // TCN global settings
             Route::get('/tcn',  [TcnSettingsController::class, 'index'])->name('tcn');
@@ -356,6 +350,7 @@ Route::middleware(['auth'])
         Route::post('/status/heartbeat', [TelecallerStatusController::class, 'managerHeartbeat'])->name('status.heartbeat');
         Route::post('/notifications/read-all', [FollowupManagementController::class, 'markAllNotificationsRead'])->name('notifications.read-all');
         Route::get('/notifications/snapshot', [FollowupManagementController::class, 'notificationsSnapshot'])->name('notifications.snapshot');
+        Route::get('/notifications/stream', [FollowupManagementController::class, 'notificationsStream'])->name('notifications.stream');
 
         /*
         |------------------------------------------------------------------
@@ -420,12 +415,6 @@ Route::middleware(['auth'])
             Route::post('/conversations/{id}/read', [InstagramController::class, 'markRead'])->name('read');
         });
 
-        /*
-        |------------------------------------------------------------------
-        | Exotel (Manager)
-        |------------------------------------------------------------------
-        */
-        Route::post('/exotel-call', [ManagerLeadController::class, 'makeCall'])->name('exotel.call');
     });
 
 /*
@@ -546,6 +535,7 @@ Route::middleware(['auth'])
         Route::post('/status/availability', [TelecallerStatusController::class, 'setAvailability'])->name('status.availability');
         Route::get('/panel/snapshot', [TeleLeadController::class, 'panelSnapshot'])->name('panel.snapshot');
         Route::get('/notifications/snapshot', [TelecallerStatusController::class, 'notificationsSnapshot'])->name('notifications.snapshot');
+        Route::get('/notifications/stream', [TelecallerStatusController::class, 'notificationsStream'])->name('notifications.stream');
         Route::post('/notifications/read-all', [TelecallerStatusController::class, 'markNotificationsRead'])->name('notifications.read-all');
         Route::get('/whatsapp/inbox-poll', [TelecallerStatusController::class, 'whatsappInboxPoll'])->name('whatsapp.inbox-poll');
     });
@@ -580,19 +570,12 @@ Route::middleware(['auth'])->group(function () {
 
 // Lead Capture (external landing pages / WordPress)
 Route::post('/lead-capture', [LeadCaptureController::class, 'store'])
+    ->middleware([VerifyInboundLeadToken::class, 'throttle:30,1'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 Route::post('/crm-store-lead', [LeadCaptureController::class, 'store'])
+    ->middleware([VerifyInboundLeadToken::class, 'throttle:30,1'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
-
-Route::options('/crm-store-lead', function () {
-    return response('', 204, [
-        'Access-Control-Allow-Origin'  => '*',
-        'Access-Control-Allow-Methods' => 'POST, OPTIONS',
-        'Access-Control-Allow-Headers' => 'Content-Type, X-Requested-With',
-        'Access-Control-Max-Age'       => '86400',
-    ]);
-})->withoutMiddleware([VerifyCsrfToken::class]);
 
 // Meta WhatsApp Cloud API webhooks (GET = verification, POST = events)
 Route::match(['get', 'post'], '/webhooks/meta/whatsapp', [MetaWhatsAppController::class, 'webhook'])
@@ -645,8 +628,15 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
     ->get('/tcn/connect/{encryptedId}', [TcnController::class, 'userConnectRedirect'])
     ->name('tcn.user.connect');
 
-// TCN Softphone iframe page — embedded in layouts via <iframe src="/softphone">
+// TCN Softphone host window — keeps a persistent iframe alive across CRM page navigation.
+Route::middleware('auth')->get('/softphone/host', [TcnController::class, 'softphoneHostPage'])->name('softphone.host');
+
+// TCN Softphone iframe page — embedded inside the host window via <iframe src="/softphone">
 Route::middleware('auth')->get('/softphone', [TcnController::class, 'softphonePage'])->name('softphone');
+
+// SIP Client — persistent softphone iframe loaded in every CRM layout page.
+// tcn-softphone.js initializes ONLY here; state persists across navigations via localStorage.
+Route::middleware('auth')->get('/sip-client', [TcnController::class, 'sipClientPage'])->name('sip.client');
 
 // TCN authenticated proxy routes
 Route::middleware('auth')->prefix('tcn')->name('tcn.')->group(function () {
@@ -674,71 +664,6 @@ Route::middleware('auth')->prefix('tcn')->name('tcn.')->group(function () {
     // Call log management
     Route::post('/call-log',       [TcnController::class, 'createCallLog'])->name('call-log.create');
     Route::patch('/call-log/{id}', [TcnController::class, 'updateCallLog'])->whereNumber('id')->name('call-log.update');
-});
-
-/*
-|--------------------------------------------------------------------------
-| EXOTEL
-|--------------------------------------------------------------------------
-*/
-
-// Exotel webhooks (public, no CSRF)
-// Route::post('/exotel/incoming', [ExotelController::class, 'incomingConnect'])
-//     ->withoutMiddleware([VerifyCsrfToken::class])
-//     ->name('exotel.incoming');
-
-Route::post('/exotel/outgoing', [ExotelController::class, 'outgoing'])
-    ->withoutMiddleware([VerifyCsrfToken::class]);
-
-Route::post('/exotel/webhook', [ExotelController::class, 'webhook'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('exotel.webhook');
-
-// Exotel authenticated endpoints
-Route::middleware('auth')->group(function () {
-    Route::post('/exotel/token', [ExotelController::class, 'generateToken'])->name('exotel.token');
-    Route::post('/exotel/call', [ExotelController::class, 'call'])->name('exotel.call');
-    Route::get('/exotel/status/{callLogId}', [ExotelController::class, 'status'])->whereNumber('callLogId')->name('exotel.status');
-    Route::get('/settings/voip', [ExotelController::class, 'voipConfig'])->name('settings.voip');
-    Route::get('/exotel/incoming-poll', [ExotelController::class, 'incomingPoll'])->name('exotel.incoming-poll');
-    Route::post('/exotel/voip-call', [ExotelController::class, 'voipCall'])->name('exotel.voip-call');
-    Route::post('/exotel/browser-incoming', [ExotelController::class, 'registerBrowserIncoming'])->name('exotel.browser-incoming');
-});
-
-/*
-|--------------------------------------------------------------------------
-| TWILIO (Legacy)
-|--------------------------------------------------------------------------
-*/
-
-// Twilio webhooks (public, no CSRF)
-Route::post('/twilio/voice', [TwilioController::class, 'voice'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('twilio.voice');
-
-Route::post('/twilio/status', [TwilioController::class, 'status'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('twilio.status');
-
-Route::post('/twilio/recording', [TwilioController::class, 'recording'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('twilio.recording');
-
-Route::post('/webhook/incoming-call', [CallController::class, 'incomingCall'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('webhook.incoming-call');
-
-Route::post('/webhook/call-status', [CallController::class, 'callStatusWebhook'])
-    ->withoutMiddleware([VerifyCsrfToken::class])
-    ->name('webhook.call-status');
-
-// Twilio authenticated endpoints
-Route::middleware('auth')->group(function () {
-    Route::get('/twilio/token', [TwilioController::class, 'generateToken']);
-    Route::post('/call/start', [CallController::class, 'startCall']);
-    Route::post('/call/end', [CallController::class, 'endCall']);
-    Route::post('/call/outcome', [CallController::class, 'recordOutcome'])->name('call.outcome');
-    Route::post('/call/update-sid', [CallController::class, 'updateCallSid']);
 });
 
 require __DIR__ . '/auth.php';

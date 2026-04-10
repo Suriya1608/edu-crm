@@ -10,7 +10,6 @@ use App\Models\LeadActivity;
 use Illuminate\Support\Facades\Crypt;
 use App\Models\Followup;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Auth;
@@ -278,7 +277,7 @@ class LeadController extends Controller
         ])->findOrFail($id);
 
         $telecallers = User::where('role', 'telecaller')->get();
-        $provider = Setting::get('primary_call_provider', 'twilio');
+        $provider = Setting::get('primary_call_provider', 'tcn');
         $whatsappMessages = Schema::hasTable('whatsapp_messages')
             ? WhatsAppMessage::where('lead_id', $lead->id)->orderBy('created_at')->get()
             : collect();
@@ -367,57 +366,6 @@ class LeadController extends Controller
         return back()->with('success', 'Note added successfully');
     }
 
-    // public function callLead($encryptedId)
-    // {
-    //     $id = decrypt($encryptedId);
-    //     $lead = Lead::findOrFail($id);
-
-    //     if (!$lead->assignedUser) {
-    //         return back()->with('error', 'Lead not assigned to telecaller');
-    //     }
-
-    //     $telecallerNumber = $lead->assignedUser->phone;
-    //     $leadNumber = $lead->phone;
-
-    //     $response = Http::withBasicAuth(
-    //         env('EXOTEL_SID'),
-    //         env('EXOTEL_TOKEN')
-    //     )->asForm()->post(
-    //         "https://{$this->getExotelSubdomain()}/v1/Accounts/" . env('EXOTEL_SID') . "/Calls/connect.json",
-    //         [
-    //             'From' => env('EXOTEL_FROM_NUMBER'),
-    //             'To'   => $telecallerNumber,
-    //             'CallerId' => env('EXOTEL_FROM_NUMBER'),
-    //             'CallType' => 'trans',
-    //             'TimeLimit' => 3600,
-    //             'Url' => route('exotel.connect.callback', [
-    //                 'lead' => $leadNumber
-    //             ])
-    //         ]
-    //     );
-
-    //     if ($response->successful()) {
-
-    //         // Store activity
-    //         $lead->activities()->create([
-    //             'user_id' => auth()->id(),
-    //             'type' => 'call',
-    //             'description' => "Outbound call initiated to {$leadNumber}",
-    //             'activity_time' => now(),
-    //         ]);
-
-    //         return back()->with('success', 'Call initiated successfully');
-    //     }
-
-    //     return back()->with('error', 'Exotel call failed');
-    // }
-
-    // private function getExotelSubdomain()
-    // {
-    //     return 'api.exotel.com';
-    // }
-
-
     public function makeCall(Request $request)
     {
         try {
@@ -425,14 +373,14 @@ class LeadController extends Controller
             $leadId = decrypt($request->lead_id);
             $lead = Lead::findOrFail($leadId);
 
-            // TODO: Add Exotel API logic here
+            // Kept as a lightweight placeholder endpoint.
 
             return response()->json([
                 'success' => true
             ]);
         } catch (\Exception $e) {
 
-            Log::error('Exotel Call Error: ' . $e->getMessage());
+            Log::error('Manager makeCall error: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
@@ -677,3 +625,4 @@ class LeadController extends Controller
         ]);
     }
 }
+

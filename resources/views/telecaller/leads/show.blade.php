@@ -323,7 +323,7 @@
     <script>
         // Initialize call device on page load
         window.addEventListener('load', function () {
-            GC.initDevice();
+            window.GC.initDevice();
         });
 
         // Handle call button click — delegate to GC
@@ -331,8 +331,8 @@
             var btn = e.target.closest('.call-btn');
             if (!btn) return;
 
-            if (GC.isActive()) {
-                GC.endCall();
+            if (window.GC.isActive()) {
+                window.GC.endCall();
                 return;
             }
 
@@ -340,7 +340,7 @@
             btn.querySelector('.call-text').textContent = 'Connecting...';
 
             try {
-                await GC.startCall(btn.dataset.phone, btn.dataset.lead);
+                await window.GC.startCall(btn.dataset.phone, btn.dataset.lead);
             } catch (err) {
                 btn.disabled = false;
                 btn.querySelector('.call-text').textContent = 'Call Now';

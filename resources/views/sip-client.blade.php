@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -49,7 +49,6 @@
         .sp-ibtn.danger{background:#ef4444;border-color:#ef4444;color:#fff;}
         .sp-ibtn.muted{background:#fee2e2;border-color:#ef4444;color:#ef4444;}
         .sp-ibtn.held{background:#fef3c7;border-color:#f59e0b;color:#b45309;}
-        /* DTMF in-call keypad */
         .sp-dtmf-toggle{width:100%;background:none;border:none;color:#64748b;font-family:'Manrope',sans-serif;font-size:11px;font-weight:600;cursor:pointer;padding:2px 0;display:flex;align-items:center;justify-content:center;gap:4px;}
         .sp-dtmf-pad{display:none;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px 0;}
         .sp-dtmf-pad.open{display:grid;}
@@ -118,7 +117,6 @@
             <span class="material-icons" style="font-size:21px;">call_end</span>End
         </button>
     </div>
-    {{-- DTMF keypad (shown during call) --}}
     <button class="sp-dtmf-toggle" id="spDtmfToggle">
         <span class="material-icons" style="font-size:14px;">dialpad</span> Keypad
     </button>
@@ -142,100 +140,114 @@
     <p>TCN not configured.<br>Contact your admin.</p>
 </div>
 
-{{-- 419 handler (same-origin fetch interceptor) --}}
+{{-- Hidden audio output â€” SIP.js attaches remote WebRTC stream here --}}
+<audio id="tcn-remote-audio" autoplay style="display:none"></audio>
+
+{{-- Global 419 handler: redirect to login on session expiry --}}
 <script>
 (function () {
     var _orig = window.fetch;
     window.fetch = function (input, init) {
         init = Object.assign({}, init);
         init.headers = Object.assign({ 'X-Requested-With': 'XMLHttpRequest' }, init.headers);
-        return _orig.call(window, input, init);
+        return _orig.call(window, input, init).then(function (res) {
+            if (res.status === 419) { window.location.href = '/login'; }
+            return res;
+        });
     };
 })();
 </script>
 
-{{-- TCN Service singleton --}}
+{{-- tcn-service.js bootstraps the token + dynamically loads tcn-softphone.js --}}
 <script src="{{ asset('js/tcn-service.js') }}"></script>
 
-{{-- Softphone UI + logic --}}
+{{--
+    Softphone UI controller
+    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    Architecture:
+      â€¢ This page runs inside <iframe id="sipClientFrame"> in the CRM layout.
+      â€¢ tcn-softphone.js (loaded by TcnService.init()) holds the SIP session.
+      â€¢ The SIP session lives only in runtime memory for this page/iframe.
+      â€¢ On reload, the softphone starts a fresh secure session.
+      â€¢ postMessage bridge:
+          Parent â†’ iframe : CALL | HANGUP | MUTE | HOLD | DTMF | SET_PHONE | LOGOUT | PING
+          Iframe â†’ parent : TCN_READY | TCN_CALL_STARTED | TCN_CALL_ANSWERED |
+                            TCN_CALL_ENDED | TCN_STATE_SYNC | TCN_SIP_DROPPED |
+                            TCN_LOGGED_OUT | TCN_ERROR | SP_MINIMIZE | SP_EXPAND
+    â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+--}}
 <script>
 (function () {
     'use strict';
 
-    // ── Singleton guard ──────────────────────────────────────────
-    if (window.__spInit) return;
-    window.__spInit = true;
+    // â”€â”€ Singleton guard â€” prevent double-execution if script runs twice â”€â”€â”€â”€
+    if (window.__sipClientInit) return;
+    window.__sipClientInit = true;
 
-    // ── State ────────────────────────────────────────────────────
+    // â”€â”€ State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     var _state     = 'connecting';
-    var _tcnStatus = '';    // raw TCN statusDesc: OUTBOUND_LOCKED | PEERED | INCALL | WRAPUP …
+    var _tcnStatus = '';
     var _phone     = '';
     var _muted     = false;
     var _onHold    = false;
     var _paused    = false;
     var _secs      = 0;
     var _timer     = null;
-    var _min       = false;   // minimized?
+    var _min       = false;
     var _dtmfOpen  = false;
 
-    // ── DOM ──────────────────────────────────────────────────────
+    // â”€â”€ DOM helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function g(id) { return document.getElementById(id); }
     var D = {
-        dot:     g('spDot'),     status: g('spStatusTxt'),
-        phone:   g('spPhone'),   dialSec: g('spDialSec'),
-        dp:      g('spDp'),      callBtn: g('spCallBtn'),
-        inCall:  g('spInCall'),  timer:   g('spTimer'),
-        callLbl: g('spCallLbl'),
-        muteBtn: g('spMuteBtn'),
-        holdBtn: g('spHoldBtn'), holdIco: g('spHoldIco'), holdLbl: g('spHoldLbl'),
-        hangupBtn: g('spHangupBtn'),
-        dtmfToggle: g('spDtmfToggle'), dtmfPad: g('spDtmfPad'),
-        agent:   g('spAgent'),
-        pauseBtn: g('spPauseBtn'), pauseIco: g('spPauseIco'), pauseLbl: g('spPauseLbl'),
-        logoutBtn: g('spLogoutBtn'),
-        minBtn:  g('spMinBtn'), minIco: g('spMinIcon'),
-        uncfg:   g('spUncfg'),
+        dot:      g('spDot'),      status:  g('spStatusTxt'),
+        phone:    g('spPhone'),    dialSec: g('spDialSec'),
+        dp:       g('spDp'),       callBtn: g('spCallBtn'),
+        inCall:   g('spInCall'),   timer:   g('spTimer'),
+        callLbl:  g('spCallLbl'),
+        muteBtn:  g('spMuteBtn'),
+        holdBtn:  g('spHoldBtn'),  holdIco: g('spHoldIco'), holdLbl: g('spHoldLbl'),
+        hangupBtn:g('spHangupBtn'),
+        dtmfToggle:g('spDtmfToggle'), dtmfPad:g('spDtmfPad'),
+        agent:    g('spAgent'),
+        pauseBtn: g('spPauseBtn'), pauseIco:g('spPauseIco'), pauseLbl:g('spPauseLbl'),
+        logoutBtn:g('spLogoutBtn'),
+        minBtn:   g('spMinBtn'),   minIco:  g('spMinIcon'),
+        uncfg:    g('spUncfg'),
     };
 
     var COLORS = {
-        connecting: '#64748b', ready: '#10b981', paused: '#f59e0b',
-        calling:    '#137fec', 'on-call': '#ef4444',
-        ending:     '#f59e0b', error: '#ef4444',
+        connecting:'#64748b', ready:'#10b981', paused:'#f59e0b',
+        calling:'#137fec', 'on-call':'#ef4444', ending:'#f59e0b', error:'#ef4444',
     };
     var LABELS = {
-        connecting: 'Connecting\u2026', ready: 'Ready', paused: 'Paused',
-        calling:    'Ringing\u2026',    'on-call': 'On Call',
-        ending:     'Ending\u2026',     error: 'Error',
+        connecting:'Connecting\u2026', ready:'Ready', paused:'Paused',
+        calling:'Ringing\u2026', 'on-call':'On Call', ending:'Ending\u2026', error:'Error',
     };
 
-    // ── Render ───────────────────────────────────────────────────
+    // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function render() {
-        var c = COLORS[_state] || '#64748b';
-        D.dot.style.background   = c;
-        D.status.style.color     = c;
-        D.status.textContent     = LABELS[_state] || _state;
+        var c    = COLORS[_state] || '#64748b';
+        D.dot.style.background  = c;
+        D.status.style.color    = c;
+        D.status.textContent    = LABELS[_state] || _state;
 
         var inCall = (_state === 'calling' || _state === 'on-call' || _state === 'ending');
-        D.dialSec.style.display  = inCall ? 'none'  : 'block';
-        D.inCall.style.display   = inCall ? 'flex'  : 'none';
-        D.agent.style.display    = inCall ? 'none'  : 'flex';
+        D.dialSec.style.display = inCall ? 'none'  : 'block';
+        D.inCall.style.display  = inCall ? 'flex'  : 'none';
+        D.agent.style.display   = inCall ? 'none'  : 'flex';
 
         var canCall = (_state === 'ready' && _phone.length >= 5);
         D.callBtn.disabled      = !canCall;
         D.callBtn.style.opacity = canCall ? '1' : '0.45';
         if (inCall) D.callLbl.textContent = _phone || '';
 
-        // Timer text: show static label during ringing/ending, count only when answered.
-        // PEERED = TCN is bridging to PSTN (phone dialling on customer side) → "Connecting…"
-        // OUTBOUND_LOCKED or unknown = still waiting → "Ringing…"
         if (_state === 'calling') {
-            D.timer.textContent = (_tcnStatus === 'PEERED') ? 'Connecting\u2026' : 'Ringing\u2026';
+            D.timer.textContent  = (_tcnStatus === 'PEERED') ? 'Connecting\u2026' : 'Ringing\u2026';
             D.status.textContent = (_tcnStatus === 'PEERED') ? 'Connecting\u2026' : (LABELS['calling'] || 'Ringing\u2026');
         } else if (_state === 'ending') {
             D.timer.textContent = 'Ending\u2026';
         }
 
-        // Disable all in-call action buttons while ending (prevents a second end-call)
         var ending = (_state === 'ending');
         D.hangupBtn.disabled = ending;
         D.muteBtn.disabled   = ending;
@@ -245,18 +257,16 @@
         D.phone.textContent = _phone || '\u2014';
         D.phone.className   = 'sp-phone' + (_phone ? '' : ' empty');
 
-        // Hold button appearance
         if (_onHold) {
-            D.holdIco.textContent  = 'play_circle';
-            D.holdLbl.textContent  = 'Resume';
-            D.holdBtn.className    = 'sp-ibtn held';
+            D.holdIco.textContent = 'play_circle';
+            D.holdLbl.textContent = 'Resume';
+            D.holdBtn.className   = 'sp-ibtn held';
         } else {
-            D.holdIco.textContent  = 'pause_circle';
-            D.holdLbl.textContent  = 'Hold';
-            D.holdBtn.className    = 'sp-ibtn';
+            D.holdIco.textContent = 'pause_circle';
+            D.holdLbl.textContent = 'Hold';
+            D.holdBtn.className   = 'sp-ibtn';
         }
 
-        // Pause button appearance
         if (_paused) {
             D.pauseIco.textContent = 'play_arrow';
             D.pauseLbl.textContent = 'Resume';
@@ -267,34 +277,40 @@
             D.pauseBtn.style.cssText = '';
         }
 
-        // Pulsing tab icon while calling
         D.dot.style.animation = (_state === 'calling') ? 'sp-pulse 1s ease-in-out infinite' : '';
     }
 
     function setState(s) { _state = s; render(); }
     function setPhone(p) { _phone = String(p || '').replace(/\s+/g, ''); render(); }
 
+    // â”€â”€ Snapshot & parent sync â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function buildSnapshot() {
         return {
-            type: 'TCN_STATE_SYNC',
-            state: _state,
-            phone: _phone,
-            paused: _paused,
-            muted: _muted,
-            onHold: _onHold,
-            minimized: _min,
-            tcnStatus: _tcnStatus,
-            callActive: !!(window.TCN && window.TCN._callActive),
-            callLogId: window.TCN ? (window.TCN._activeLogId || null) : null,
-            callEstablishedAt: window.TCN ? (window.TCN._callEstablishedAt || null) : null
+            type:              'TCN_STATE_SYNC',
+            state:             _state,
+            phone:             _phone,
+            paused:            _paused,
+            muted:             _muted,
+            onHold:            _onHold,
+            minimized:         _min,
+            tcnStatus:         _tcnStatus,
+            callActive:        !!(window.TCN && window.TCN._callActive),
+            callLogId:         window.TCN ? (window.TCN._activeLogId || null) : null,
+            callEstablishedAt: window.TCN ? (window.TCN._callEstablishedAt || null) : null,
         };
     }
 
-    function syncParent() {
-        toParent(buildSnapshot());
+    // postMessage to parent (works from both iframe and popup contexts).
+    function toParent(msg) {
+        try {
+            var target = (window.parent && window.parent !== window) ? window.parent : (window.opener || null);
+            if (target) target.postMessage(msg, '*');
+        } catch (_) {}
     }
 
-    // ── Build dial pad ───────────────────────────────────────────
+    function syncParent() { toParent(buildSnapshot()); }
+
+    // â”€â”€ Build dial pad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ['1','2','3','4','5','6','7','8','9','*','0','#'].forEach(function (k) {
         var b = document.createElement('button');
         b.className = 'sp-key';
@@ -314,7 +330,7 @@
     });
     D.dp.appendChild(bk);
 
-    // ── Build DTMF in-call keypad ─────────────────────────────────
+    // â”€â”€ Build DTMF in-call keypad â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     ['1','2','3','4','5','6','7','8','9','*','0','#'].forEach(function (k) {
         var b = document.createElement('button');
         b.className = 'sp-dkey';
@@ -325,32 +341,23 @@
         D.dtmfPad.appendChild(b);
     });
 
-    // ── DTMF keypad toggle ────────────────────────────────────────
     D.dtmfToggle.addEventListener('click', function () {
         _dtmfOpen = !_dtmfOpen;
         D.dtmfPad.className = 'sp-dtmf-pad' + (_dtmfOpen ? ' open' : '');
         D.dtmfToggle.innerHTML = '<span class="material-icons" style="font-size:14px;">dialpad</span> ' + (_dtmfOpen ? 'Hide Keypad' : 'Keypad');
     });
 
-    // ── Keyboard input ───────────────────────────────────────────
+    // â”€â”€ Keyboard input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window.addEventListener('keydown', function (e) {
         if (_state === 'calling' || _state === 'on-call') return;
         if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-        if (/^[0-9*#]$/.test(e.key)) {
-            _phone += e.key; render();
-        } else if (e.key === '+' && _phone.length === 0) {
-            _phone = '+'; render();
-        } else if (e.key === 'Backspace') {
-            _phone = _phone.slice(0, -1); render();
-        } else if (e.key === 'Enter') {
-            handleCall();
-        }
+        if (/^[0-9*#]$/.test(e.key))      { _phone += e.key; render(); }
+        else if (e.key === '+' && _phone.length === 0) { _phone = '+'; render(); }
+        else if (e.key === 'Backspace')    { _phone = _phone.slice(0, -1); render(); }
+        else if (e.key === 'Enter')        { handleCall(); }
     });
 
-    // ── Timer ────────────────────────────────────────────────────
-    // startTimerFrom(offset) lets us resume an accurate timer after a
-    // page reload: offset = seconds already elapsed while call was active.
+    // â”€â”€ Timer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function startTimerFrom(offsetSecs) {
         _secs = offsetSecs || 0;
         stopTimer();
@@ -368,21 +375,7 @@
         D.timer.textContent = m + ':' + (s < 10 ? '0' : '') + s;
     }
 
-    // ── postMessage to parent ────────────────────────────────────
-    // Works in both modes:
-    //   popup → use window.opener (parent page that called window.open)
-    //   iframe → use window.parent (legacy / fallback)
-    function toParent(msg) {
-        try {
-            if (window.opener && !window.opener.closed) {
-                window.opener.postMessage(msg, '*');
-            } else {
-                window.parent.postMessage(msg, '*');
-            }
-        } catch (_) {}
-    }
-
-    // ── TCN events → forward to parent ──────────────────────────
+    // â”€â”€ TCN events â†’ forward to parent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window.addEventListener('tcn:ready', function () {
         _paused = false; setState('ready');
         toParent({ type: 'TCN_READY' });
@@ -391,16 +384,12 @@
     window.addEventListener('tcn:callStarted', function (e) {
         var d = e.detail || {};
         if (d.phone) setPhone(d.phone);
-        // Do NOT start the timer here — call is dialling, not yet answered.
-        // Timer starts only when TCN confirms INCALL (tcn:callAnswered).
         _tcnStatus = 'OUTBOUND_LOCKED';
         stopTimer();
         setState('calling');
         toParent({ type: 'TCN_CALL_STARTED', phone: d.phone || _phone, callLogId: d.callLogId });
         syncParent();
     });
-    // tcn:callPeered fires when TCN status = PEERED (bridging to PSTN, phone dialling on customer side).
-    // Update the label from "Ringing…" to "Connecting…" without changing call state.
     window.addEventListener('tcn:callPeered', function () {
         _tcnStatus = 'PEERED';
         if (_state === 'calling') render();
@@ -410,8 +399,6 @@
         var d = e.detail || {};
         _tcnStatus = 'INCALL';
         setState('on-call');
-        // If restored after reload, the elapsed time is already in the detail.
-        // Re-fire timer from callEstablishedAt so the counter is accurate.
         var offset = (d.restored && window.TCN && window.TCN._callEstablishedAt)
             ? Math.round((Date.now() - window.TCN._callEstablishedAt) / 1000)
             : 0;
@@ -419,8 +406,6 @@
         toParent({ type: 'TCN_CALL_ANSWERED', phone: _phone, callLogId: d.callLogId });
         syncParent();
     });
-    // tcn:callEnding fires when the agent clicks End — before TCN confirms.
-    // Show "Ending…" state so buttons are disabled and the user gets feedback.
     window.addEventListener('tcn:callEnding', function () {
         stopTimer();
         setState('ending');
@@ -428,8 +413,7 @@
     });
     window.addEventListener('tcn:callEnded', function (e) {
         var d = e.detail || {};
-        _tcnStatus = '';
-        stopTimer(); _muted = false; _onHold = false; _dtmfOpen = false;
+        _tcnStatus = ''; stopTimer(); _muted = false; _onHold = false; _dtmfOpen = false;
         resetMute();
         D.dtmfPad.className = 'sp-dtmf-pad';
         D.dtmfToggle.innerHTML = '<span class="material-icons" style="font-size:14px;">dialpad</span> Keypad';
@@ -453,32 +437,39 @@
         toParent({ type: 'TCN_ERROR', message: msg });
         syncParent();
     });
+    window.addEventListener('tcn:onHold',  function () { _onHold = true;  render(); syncParent(); });
+    window.addEventListener('tcn:offHold', function () { _onHold = false; render(); syncParent(); });
 
-    // ── Receive commands from parent ─────────────────────────────
+    // â”€â”€ Receive commands from parent (postMessage) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     window.addEventListener('message', function (ev) {
+        // Accept messages from the parent origin only (same-origin iframe).
+        if (ev.origin !== window.location.origin) return;
         var d = ev.data;
         if (!d || typeof d !== 'object') return;
-        if (d.type === 'CALL')     { if (d.phone) setPhone(d.phone); handleCall(); }
-        if (d.type === 'HANGUP')   { handleHangup(); }
-        if (d.type === 'MUTE')     { toggleMute(); }
-        if (d.type === 'HOLD')     { toggleHold(); }
-        if (d.type === 'DTMF')     { if (window.TCN && d.digit) window.TCN.dtmf(d.digit); }
-        if (d.type === 'SET_PHONE'){ setPhone(d.phone || ''); syncParent(); }
-        if (d.type === 'LOGOUT')   { handleLogout(); }
-        if (d.type === 'PING')     { toParent(buildSnapshot()); }
+
+        switch (d.type) {
+            case 'CALL':     if (d.phone) setPhone(d.phone); handleCall(); break;
+            case 'HANGUP':   handleHangup(); break;
+            case 'MUTE':     toggleMute(); break;
+            case 'HOLD':     toggleHold(); break;
+            case 'DTMF':     if (window.TCN && d.digit) window.TCN.dtmf(d.digit); break;
+            case 'SET_PHONE':setPhone(d.phone || ''); syncParent(); break;
+            case 'LOGOUT':   handleLogout(true); break;
+            case 'PING':     toParent(buildSnapshot()); break;
+        }
     });
 
-    // ── Call actions ─────────────────────────────────────────────
+    // â”€â”€ Call actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function handleCall() {
         if (_state !== 'ready' || _phone.length < 5) return;
         if (window.TcnService) {
             window.TcnService.call(_phone).catch(function (e) {
-                console.error('[SP] call failed:', e.message);
+                console.error('[SIP-CLIENT] call failed:', e.message);
                 setState('error');
             });
         } else if (window.TCN && window.TCN._loggedIn) {
             window.TCN.startCall(_phone, null).catch(function (e) {
-                console.error('[SP] startCall failed:', e.message);
+                console.error('[SIP-CLIENT] startCall failed:', e.message);
             });
         }
     }
@@ -489,22 +480,14 @@
 
     function toggleHold() {
         if (!window.TCN || !window.TCN._callActive) return;
-        if (_onHold) {
-            window.TCN.resume();
-        } else {
-            window.TCN.hold();
-        }
+        if (_onHold) { window.TCN.resume(); } else { window.TCN.hold(); }
     }
-
-    // Reflect TCN hold/resume events in the UI
-    window.addEventListener('tcn:onHold', function () { _onHold = true;  render(); syncParent(); });
-    window.addEventListener('tcn:offHold', function () { _onHold = false; render(); syncParent(); });
 
     function toggleMute() {
         if (!window.TCN) return;
         _muted = !_muted;
         if (_muted) { window.TCN.mute(); renderMuted(); }
-        else         { window.TCN.unmute(); resetMute(); }
+        else        { window.TCN.unmute(); resetMute(); }
     }
     function renderMuted() {
         D.muteBtn.innerHTML = '<span class="material-icons" style="font-size:21px;">mic_off</span>Unmute';
@@ -515,7 +498,7 @@
         D.muteBtn.className = 'sp-ibtn';
     }
 
-    // ── Pause / Resume ───────────────────────────────────────────
+    // â”€â”€ Pause / Resume â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     function togglePause() {
         if (_state === 'calling' || _state === 'on-call') return;
         var newPaused = !_paused;
@@ -526,15 +509,18 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf ? csrf.content : '' },
             body: JSON.stringify({ status: status }),
-        }).then(function (r) { return r.json(); })
-          .then(function () { _paused = newPaused; setState(_paused ? 'paused' : 'ready'); })
-          .catch(function () { _paused = newPaused; setState(_paused ? 'paused' : 'ready'); })
-          .finally(function () { D.pauseBtn.disabled = false; syncParent(); });
+        }).finally(function () {
+            _paused = newPaused;
+            setState(_paused ? 'paused' : 'ready');
+            D.pauseBtn.disabled = false;
+            syncParent();
+        });
     }
 
-    // ── Logout ───────────────────────────────────────────────────
-    function handleLogout() {
-        if (!confirm('Log out of TCN softphone?')) return;
+    // â”€â”€ Logout â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // silent=true when triggered by parent LOGOUT command (no confirm dialog).
+    function handleLogout(silent) {
+        if (!silent && !confirm('Log out of TCN softphone?')) return;
         if (window.TcnService) window.TcnService.logout();
         else if (window.TCN)   window.TCN.logout();
         setState('connecting');
@@ -542,7 +528,7 @@
         syncParent();
     }
 
-    // ── Minimize / Expand ────────────────────────────────────────
+    // â”€â”€ Minimize / Expand â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     D.minBtn.addEventListener('click', function () {
         _min = !_min;
         D.minIco.textContent = _min ? 'add' : 'remove';
@@ -550,19 +536,19 @@
         syncParent();
     });
 
-    // ── Button events ────────────────────────────────────────────
+    // â”€â”€ Button bindings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     D.callBtn.addEventListener('click', handleCall);
     D.hangupBtn.addEventListener('click', handleHangup);
     D.holdBtn.addEventListener('click', toggleHold);
     D.muteBtn.addEventListener('click', toggleMute);
     D.pauseBtn.addEventListener('click', togglePause);
-    D.logoutBtn.addEventListener('click', handleLogout);
+    D.logoutBtn.addEventListener('click', function () { handleLogout(false); });
 
-    // ── Initial render ───────────────────────────────────────────
+    // â”€â”€ Initial render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     render();
     syncParent();
 
-    // ── Boot TCN ─────────────────────────────────────────────────
+    // â”€â”€ Boot TcnService (loads tcn-softphone.js â†’ SIP login) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (window.TcnService) {
         window.TcnService.init()
             .then(function (ok) {
@@ -573,16 +559,15 @@
                     setState('error');
                     return;
                 }
-                // After login completes, check if a call was active when the page
-                // was last navigated away. Restores in-call state transparently.
+                // Restore in-progress call state (if CRM page navigated mid-call).
                 if (window.TCN && typeof window.TCN.resumeActiveCall === 'function') {
                     window.TCN.resumeActiveCall().catch(function (e) {
-                        console.warn('[SP] resumeActiveCall failed (non-fatal):', e);
+                        console.warn('[SIP-CLIENT] resumeActiveCall (non-fatal):', e);
                     });
                 }
             })
             .catch(function (e) {
-                console.error('[SP] TcnService.init failed:', e);
+                console.error('[SIP-CLIENT] TcnService.init failed:', e);
                 setState('error');
             });
     } else {
@@ -595,3 +580,4 @@
 </script>
 </body>
 </html>
+

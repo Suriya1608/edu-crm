@@ -80,8 +80,6 @@ class LeadCaptureController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Lead stored successfully',
-        ])->withHeaders([
-            'Access-Control-Allow-Origin' => '*',
         ]);
     }
 }

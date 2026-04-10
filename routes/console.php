@@ -38,3 +38,9 @@ Schedule::command('email:process-scheduled')
 
 // Horizon: take a metrics snapshot every 5 minutes (powers the throughput graphs)
 Schedule::command('horizon:snapshot')->everyFiveMinutes();
+
+// Queue health monitor (Horizon down, queue backlog, failed jobs threshold)
+Schedule::command('queue:health-check')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

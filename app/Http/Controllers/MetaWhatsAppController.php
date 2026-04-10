@@ -962,9 +962,14 @@ class MetaWhatsAppController extends Controller
         $last10 = substr($digits, -10);
 
         // Try exact matches first (covers +91XXXXXXXXXX, 91XXXXXXXXXX, and raw formats)
-        $lead = Lead::where('phone', $phone)
-            ->orWhere('phone', '+' . $digits)
-            ->orWhere('phone', $digits)
+        $candidates = array_values(array_unique(array_filter([
+            $phone,
+            $digits ? '+' . $digits : null,
+            $digits ?: null,
+        ])));
+
+        $lead = Lead::query()
+            ->whereIn('phone', $candidates)
             ->first();
 
         if ($lead) {
@@ -973,7 +978,9 @@ class MetaWhatsAppController extends Controller
 
         // Fallback: last-10-digit suffix LIKE match — avoids full-table scan
         if (strlen($last10) === 10) {
-            return Lead::where('phone', 'like', '%' . $last10)->first();
+            return Lead::where('phone_last10', $last10)
+                ->latest('id')
+                ->first();
         }
 
         return null;

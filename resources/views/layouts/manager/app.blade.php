@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'twilio') }}">
+    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'tcn') }}">
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
     <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
 
@@ -19,7 +19,7 @@
     @endif
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="{{ asset('css/style.css') }}" rel="stylesheet">
 
@@ -149,26 +149,7 @@
         });
     })();
     </script>
-    {{-- Global Active Call Bar --}}
-    <div id="gcCallBar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:1060; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; padding:10px 20px; box-shadow:0 -2px 12px rgba(0,0,0,0.25); align-items:center; gap:12px;">
-        <span class="material-icons" style="font-size:24px;">call</span>
-        <div>
-            <div style="font-size:11px; opacity:0.85; line-height:1;">Active Call</div>
-            <div id="gcCallPhone" style="font-weight:700; font-size:15px; letter-spacing:0.3px; line-height:1.3;"></div>
-            <a id="gcCallLeadLink" href="#" style="display:none; color:#fee2e2; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
-        </div>
-        <div style="margin-left:6px;">
-            <div style="font-size:11px; opacity:0.85; line-height:1;">Duration</div>
-            <div id="gcCallTimer" style="font-weight:700; font-size:15px; font-variant-numeric:tabular-nums; line-height:1.3;">0:00</div>
-        </div>
-        <div class="ms-auto">
-            <button id="gcBarEndBtn" class="btn btn-light btn-sm fw-semibold text-danger" style="min-width:110px;">
-                <span class="material-icons me-1" style="font-size:16px; vertical-align:middle;">call_end</span>End Call
-            </button>
-        </div>
-    </div>
-
-    {{-- Navigation Warning Modal (shown when user clicks a link during an active call) --}}
+    {{-- TCN softphone container --}}{{-- Navigation Warning Modal (shown when user clicks a link during an active call) --}}
     <div class="modal fade" id="gcNavWarningModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -190,64 +171,49 @@
                 </div>
             </div>
         </div>
+    </div>@if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
+    {{-- SIP Client iframe — same persistent softphone widget as in app.blade.php. --}}
+    <div id="sipClientWrapper"
+         style="position:fixed;bottom:20px;right:20px;z-index:1066;
+                width:300px;height:460px;
+                border-radius:16px;overflow:hidden;
+                box-shadow:0 8px 32px rgba(0,0,0,0.18);
+                transition:height .2s ease;">
+        <iframe id="sipClientFrame"
+                src="{{ route('sip.client') }}"
+                allow="microphone; autoplay; camera"
+                style="width:100%;height:100%;border:none;display:block;background:#fff;"
+                title="TCN Softphone">
+        </iframe>
     </div>
-
-    @if(\App\Models\Setting::get('primary_call_provider', 'twilio') === 'exotel')
-    <div id="gcIncomingBar" style="display:none; position:fixed; top:20px; right:20px; z-index:1070; background:#ffffff; border:2px solid #10b981; border-radius:12px; padding:14px 18px; box-shadow:0 4px 20px rgba(0,0,0,0.15); min-width:240px;">
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-            <span class="material-icons" style="color:#10b981; font-size:22px; animation:gcRing 0.6s infinite alternate;">call</span>
-            <div>
-                <div style="font-size:11px; color:#64748b; line-height:1;">Incoming Call</div>
-                <div id="gcIncomingPhone" style="font-weight:700; font-size:15px; color:#0f172a; line-height:1.3;"></div>
-                <a id="gcIncomingLeadLink" href="#" style="display:none; color:#137fec; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
-            </div>
-        </div>
-        <div style="display:flex; gap:8px;">
-            <button id="gcIncomingAnswerBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#10b981; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
-                <span class="material-icons" style="font-size:16px;">call</span> Answer
-            </button>
-            <button id="gcIncomingRejectBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#ef4444; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
-                <span class="material-icons" style="font-size:16px;">call_end</span> Reject
-            </button>
-        </div>
-    </div>
-    <style>@keyframes gcRing { from { transform:rotate(-15deg); } to { transform:rotate(15deg); } }</style>
-    @endif
-
-    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
-    {{-- Softphone iframe for managers — same fast-resume architecture as telecaller layout --}}
-    <iframe id="tcnSoftphoneFrame"
-        src="{{ route('softphone') }}"
-        allow="microphone"
-        style="position:fixed;bottom:20px;right:20px;width:300px;height:480px;border:none;z-index:1065;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;transition:height .2s,width .2s;">
-    </iframe>
+    {{-- DO NOT load tcn-softphone.js here — it lives only inside the iframe. --}}
+    <script src="{{ asset('js/tcn-widget.js') }}"></script>
     <script>
     (function () {
-        var _frame = null;
-        function frame() { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
-
-        document.addEventListener('click', function (e) {
-            var el = e.target.closest('[data-phone]');
-            if (!el) return;
-            var f = frame(); if (!f) return;
-            var phone = el.getAttribute('data-phone');
-            if (phone) {
-                f.style.display = 'block'; f.style.height = '480px'; f.style.width = '300px';
-                f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.TCNWidget) {
+                window.TCNWidget.init({
+                    frameId:   'sipClientFrame',
+                    wrapperId: 'sipClientWrapper',
+                });
             }
-        }, true);
-
-        window.addEventListener('message', function (ev) {
-            var d = ev.data; if (!d || typeof d !== 'object') return;
-            var f = frame(); if (!f) return;
-            if (d.type === 'SP_MINIMIZE') { f.style.height = '44px'; f.style.width = '170px'; f.style.borderRadius = '22px'; }
-            else if (d.type === 'SP_EXPAND') { f.style.height = '480px'; f.style.width = '300px'; f.style.borderRadius = '14px'; }
-            else if (d.type === 'TCN_READY') { f.style.display = 'block'; }
-            else if (d.type === 'TCN_CALL_STARTED' || d.type === 'TCN_CALL_ANSWERED') { f.style.bottom = '80px'; }
-            else if (d.type === 'TCN_CALL_ENDED' || d.type === 'TCN_LOGGED_OUT') { f.style.bottom = '20px'; }
+        });
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('form[action*="logout"]').forEach(function (form) {
+                form.addEventListener('submit', function () {
+                    var frame = document.getElementById('sipClientFrame');
+                    if (frame && frame.contentWindow) {
+                        try { frame.contentWindow.postMessage({ type: 'LOGOUT' }, window.location.origin); } catch (_) {}
+                    }
+                });
+            });
         });
     })();
     </script>
+    <style>
+        @keyframes tcnWidgetPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+        #sipClientWrapper { transition: height .2s ease; }
+    </style>
     @endif
     <script src="{{ asset('js/global-call.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -265,6 +231,7 @@
         <script>
             (function() {
                 const snapshotUrl  = @json(route('manager.notifications.snapshot'));
+                const streamUrl    = @json(route('manager.notifications.stream'));
                 const markReadUrl  = @json(route('manager.notifications.read-all'));
                 const csrfToken    = @json(csrf_token());
 
@@ -293,59 +260,83 @@
                     }
                 }
 
+                function applySnapshotData(data) {
+                    if (!data || !data.ok) return;
+
+                    const waItems  = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
+                    const sysItems = Array.isArray(data.system_notifications)   ? data.system_notifications   : [];
+                    const count    = Number(data.badge_count || 0);
+
+                    if (count > previousCount) {
+                        // light beep for new notifications
+                        try {
+                            const ac = new (window.AudioContext || window.webkitAudioContext)();
+                            const osc = ac.createOscillator();
+                            const g = ac.createGain();
+                            osc.type = 'sine';
+                            osc.frequency.setValueAtTime(880, ac.currentTime);
+                            g.gain.setValueAtTime(0.001, ac.currentTime);
+                            g.gain.exponentialRampToValueAtTime(0.15, ac.currentTime + 0.01);
+                            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.2);
+                            osc.connect(g); g.connect(ac.destination);
+                            osc.start(); osc.stop(ac.currentTime + 0.22);
+                        } catch(e) {}
+                    }
+                    previousCount = count;
+                    updateBadge(count);
+
+                    waWrap.innerHTML = renderList(
+                        waItems,
+                        function(item) {
+                            return '<div class="py-1 border-bottom">' +
+                                '<a href="' + (item.link || '#') + '" class="fw-semibold text-decoration-none d-block">' + (item.title || 'WhatsApp') + '</a>' +
+                                '<div class="text-muted">' + (item.message || '') + '</div>' +
+                                '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
+                                '</div>';
+                        },
+                        'No WhatsApp messages.'
+                    );
+
+                    systemWrap.innerHTML = renderList(
+                        sysItems,
+                        function(item) {
+                            return '<div class="py-1 border-bottom">' +
+                                '<div class="fw-semibold">' + (item.title || 'Notification') + '</div>' +
+                                '<div class="text-muted">' + (item.message || '') + '</div>' +
+                                '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
+                                '</div>';
+                        },
+                        'No system notifications.'
+                    );
+                }
+
                 async function fetchNotifications() {
                     try {
                         const res = await fetch(snapshotUrl, { headers: { 'Accept': 'application/json' } });
                         if (!res.ok) return;
                         const data = await res.json();
-                        if (!data || !data.ok) return;
-
-                        const waItems     = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
-                        const sysItems    = Array.isArray(data.system_notifications)   ? data.system_notifications   : [];
-                        const count       = Number(data.badge_count || 0);
-
-                        if (count > previousCount) {
-                            // light beep for new notifications
-                            try {
-                                const ac = new (window.AudioContext || window.webkitAudioContext)();
-                                const osc = ac.createOscillator();
-                                const g = ac.createGain();
-                                osc.type = 'sine';
-                                osc.frequency.setValueAtTime(880, ac.currentTime);
-                                g.gain.setValueAtTime(0.001, ac.currentTime);
-                                g.gain.exponentialRampToValueAtTime(0.15, ac.currentTime + 0.01);
-                                g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.2);
-                                osc.connect(g); g.connect(ac.destination);
-                                osc.start(); osc.stop(ac.currentTime + 0.22);
-                            } catch(e) {}
-                        }
-                        previousCount = count;
-                        updateBadge(count);
-
-                        waWrap.innerHTML = renderList(
-                            waItems,
-                            function(item) {
-                                return '<div class="py-1 border-bottom">' +
-                                    '<a href="' + (item.link || '#') + '" class="fw-semibold text-decoration-none d-block">' + (item.title || 'WhatsApp') + '</a>' +
-                                    '<div class="text-muted">' + (item.message || '') + '</div>' +
-                                    '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
-                                    '</div>';
-                            },
-                            'No WhatsApp messages.'
-                        );
-
-                        systemWrap.innerHTML = renderList(
-                            sysItems,
-                            function(item) {
-                                return '<div class="py-1 border-bottom">' +
-                                    '<div class="fw-semibold">' + (item.title || 'Notification') + '</div>' +
-                                    '<div class="text-muted">' + (item.message || '') + '</div>' +
-                                    '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
-                                    '</div>';
-                            },
-                            'No system notifications.'
-                        );
+                        applySnapshotData(data);
                     } catch (e) {}
+                }
+
+                function startNotificationsStream() {
+                    if (!window.EventSource) return false;
+
+                    let es = new EventSource(streamUrl);
+                    es.addEventListener('notifications', function (event) {
+                        try {
+                            const data = JSON.parse(event.data || '{}');
+                            applySnapshotData(data);
+                        } catch (_) {}
+                    });
+
+                    es.onerror = function () {
+                        try { es.close(); } catch (_) {}
+                        setTimeout(fetchNotifications, 2000);
+                        setTimeout(startNotificationsStream, 5000);
+                    };
+
+                    return true;
                 }
 
                 markReadBtn?.addEventListener('click', async function() {
@@ -359,7 +350,9 @@
                 });
 
                 fetchNotifications();
-                setInterval(fetchNotifications, 60000);
+                if (!startNotificationsStream()) {
+                    setInterval(fetchNotifications, 60000);
+                }
             })();
         </script>
 
@@ -393,7 +386,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             if (typeof Chart !== 'undefined') {
-                Chart.defaults.font.family    = "'Manrope', sans-serif";
+                Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
                 Chart.defaults.font.size      = 12;
                 Chart.defaults.color          = '#64748b';
                 Chart.defaults.plugins.legend.labels.usePointStyle = true;
@@ -619,3 +612,7 @@
 </body>
 
 </html>
+
+
+
+

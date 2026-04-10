@@ -19,8 +19,8 @@
                 <div class="col-md-3">
                     <label class="form-label">Provider</label>
                     <select name="sms_provider" class="form-select">
-                        @foreach (['twilio', 'msg91', 'textlocal', 'custom'] as $provider)
-                            <option value="{{ $provider }}" {{ \App\Models\Setting::get('sms_provider', 'twilio') === $provider ? 'selected' : '' }}>
+                        @foreach (['msg91', 'textlocal', 'custom'] as $provider)
+                            <option value="{{ $provider }}" {{ \App\Models\Setting::get('sms_provider', 'msg91') === $provider ? 'selected' : '' }}>
                                 {{ strtoupper($provider) }}
                             </option>
                         @endforeach
@@ -41,3 +41,4 @@
         </form>
     </div>
 @endsection
+

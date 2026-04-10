@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\LeadCaptureController;
 use App\Http\Controllers\Api\LeadApiController;
 use App\Http\Controllers\EmailTrackingController;
 use App\Http\Controllers\EmailWebhookController;
+use App\Http\Middleware\VerifyInboundLeadToken;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,7 +23,7 @@ Route::prefix('auth')->name('api.auth.')->group(function () {
 
 // Lead capture from external forms / landing pages
 Route::post('/lead-capture', [LeadCaptureController::class, 'store'])
-    ->middleware('throttle:10,1')
+    ->middleware([VerifyInboundLeadToken::class, 'throttle:30,1'])
     ->name('api.lead.capture');
 
 // Email open-tracking pixel

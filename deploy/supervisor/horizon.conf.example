@@ -1,0 +1,16 @@
+[program:crm-horizon]
+process_name=%(program_name)s
+directory=/var/www/edu-crm
+command=/usr/bin/php artisan horizon
+autostart=true
+autorestart=true
+startsecs=10
+startretries=5
+user=www-data
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/crm-horizon.log
+stopwaitsecs=3600
+stopasgroup=true
+killasgroup=true
+environment=APP_ENV="production",HOME="/var/www"
+

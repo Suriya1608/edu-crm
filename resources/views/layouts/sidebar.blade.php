@@ -1,9 +1,9 @@
-<aside class="sidebar" id="sidebar">
+<aside class="sidebar" id="sidebar" style="background-color:#0f172a!important;">
     <div class="sidebar-header">
-        <div class="sidebar-logo">
-            @php $siteLogo = \App\Models\Setting::get('site_logo'); @endphp
+        @php $siteLogo = \App\Models\Setting::get('site_logo'); @endphp
+        <div class="sidebar-logo {{ $siteLogo ? 'has-logo-img' : '' }}">
             @if($siteLogo)
-                <img src="{{ asset('storage/' . $siteLogo) }}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">
+                <img src="{{ asset('storage/' . $siteLogo) }}" alt="Logo">
             @else
                 <span class="material-icons">school</span>
             @endif
@@ -38,7 +38,7 @@
             {{-- ── People ── --}}
             <div class="nav-section-label">People</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminUsersActive ? 'active' : 'bg-transparent' }}" type="button"
+            <button class="nav-item w-100 border-0 {{ $adminUsersActive ? 'active' : 'crm-nav-inactive' }}" type="button"
                 data-bs-toggle="collapse" data-bs-target="#adminUsersMenu"
                 aria-expanded="{{ $adminUsersActive ? 'true' : 'false' }}" aria-controls="adminUsersMenu">
                 <span class="material-icons">group</span>
@@ -58,7 +58,7 @@
                     style="padding:8px 12px 8px 36px;font-size:13px;">Telecallers</a>
             </div>
 
-            <button class="nav-item w-100 border-0 {{ $adminLeadsActive ? 'active' : 'bg-transparent' }}" type="button"
+            <button class="nav-item w-100 border-0 {{ $adminLeadsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
                 data-bs-toggle="collapse" data-bs-target="#adminLeadsMenu"
                 aria-expanded="{{ $adminLeadsActive ? 'true' : 'false' }}" aria-controls="adminLeadsMenu">
                 <span class="material-icons">person_add</span>
@@ -90,7 +90,7 @@
             {{-- ── Outreach ── --}}
             <div class="nav-section-label">Outreach</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminCampaignsActive ? 'active' : 'bg-transparent' }}" type="button"
+            <button class="nav-item w-100 border-0 {{ $adminCampaignsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
                 data-bs-toggle="collapse" data-bs-target="#adminCampaignsMenu"
                 aria-expanded="{{ $adminCampaignsActive ? 'true' : 'false' }}" aria-controls="adminCampaignsMenu">
                 <span class="material-icons">insights</span>
@@ -113,7 +113,7 @@
                 <span>Social Media</span>
             </a>
 
-            <button class="nav-item w-100 border-0 {{ $adminEmailCampActive ? 'active' : 'bg-transparent' }}"
+            <button class="nav-item w-100 border-0 {{ $adminEmailCampActive ? 'active' : 'crm-nav-inactive' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminEmailMenu"
                 aria-expanded="{{ $adminEmailCampActive ? 'true' : 'false' }}" aria-controls="adminEmailMenu">
                 <span class="material-icons">mark_email_read</span>
@@ -133,7 +133,7 @@
             {{-- ── Analytics ── --}}
             <div class="nav-section-label">Analytics</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminReportsActive ? 'active' : 'bg-transparent' }}"
+            <button class="nav-item w-100 border-0 {{ $adminReportsActive ? 'active' : 'crm-nav-inactive' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminReportsMenu"
                 aria-expanded="{{ $adminReportsActive ? 'true' : 'false' }}" aria-controls="adminReportsMenu">
                 <span class="material-icons">bar_chart</span>
@@ -165,7 +165,7 @@
                     style="padding:8px 12px 8px 36px;font-size:13px;">Response Time</a>
             </div>
 
-            <button class="nav-item w-100 border-0 {{ $adminAutomationActive ? 'active' : 'bg-transparent' }}"
+            <button class="nav-item w-100 border-0 {{ $adminAutomationActive ? 'active' : 'crm-nav-inactive' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminAutomationMenu"
                 aria-expanded="{{ $adminAutomationActive ? 'true' : 'false' }}" aria-controls="adminAutomationMenu">
                 <span class="material-icons">auto_fix_high</span>
@@ -203,7 +203,7 @@
             {{-- ── System ── --}}
             <div class="nav-section-label">System</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminSettingsActive ? 'active' : 'bg-transparent' }}"
+            <button class="nav-item w-100 border-0 {{ $adminSettingsActive ? 'active' : 'crm-nav-inactive' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminSettingsMenu"
                 aria-expanded="{{ $adminSettingsActive ? 'true' : 'false' }}" aria-controls="adminSettingsMenu">
                 <span class="material-icons">settings</span>
@@ -227,9 +227,6 @@
                 <a href="{{ route('admin.settings.instagram') }}"
                     class="nav-item {{ request()->routeIs('admin.settings.instagram') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Instagram</a>
-                <a href="{{ route('admin.settings.twilio') }}"
-                    class="nav-item {{ request()->routeIs('admin.settings.twilio') ? 'active' : '' }}"
-                    style="padding:8px 12px 8px 36px;font-size:13px;">Twilio Voice</a>
                 <a href="{{ route('admin.settings.business-hours') }}"
                     class="nav-item {{ request()->routeIs('admin.settings.business-hours') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Business Hours</a>
@@ -342,7 +339,7 @@
             {{-- ── Activity ── --}}
             <div class="nav-section-label">Activity</div>
 
-            <button class="nav-item w-100 border-0 {{ $teleCallsMenuActive ? 'active' : 'bg-transparent' }}"
+            <button class="nav-item w-100 border-0 {{ $teleCallsMenuActive ? 'active' : 'crm-nav-inactive' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerCallsMenu"
                 aria-expanded="{{ $teleCallsMenuActive ? 'true' : 'false' }}"
                 aria-controls="telecallerCallsMenu">
@@ -366,7 +363,7 @@
                     style="padding:8px 12px 8px 36px;font-size:13px;">Call History</a>
             </div>
 
-            <button class="nav-item w-100 border-0 {{ $teleFollowupMenuActive ? 'active' : 'bg-transparent' }}"
+            <button class="nav-item w-100 border-0 {{ $teleFollowupMenuActive ? 'active' : 'crm-nav-inactive' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerFollowupMenu"
                 aria-expanded="{{ $teleFollowupMenuActive ? 'true' : 'false' }}" aria-controls="telecallerFollowupMenu">
                 <span class="material-icons">event_note</span>
@@ -395,7 +392,7 @@
             {{-- ── Analytics ── --}}
             <div class="nav-section-label">Analytics</div>
 
-            <button class="nav-item w-100 border-0 {{ $telePerformanceMenuActive ? 'active' : 'bg-transparent' }}"
+            <button class="nav-item w-100 border-0 {{ $telePerformanceMenuActive ? 'active' : 'crm-nav-inactive' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerPerformanceMenu"
                 aria-expanded="{{ $telePerformanceMenuActive ? 'true' : 'false' }}"
                 aria-controls="telecallerPerformanceMenu">
@@ -446,9 +443,9 @@
             </form>
 
             {{-- User popup menu --}}
-            <div id="sidebarUserMenu" style="display:none;position:absolute;bottom:60px;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:9999;overflow:hidden;">
-                <a href="{{ route('password.change') }}" class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none" style="color:#0f172a;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='#f6f7f8'" onmouseout="this.style.background='transparent'">
-                    <span class="material-icons" style="font-size:18px;color:#137fec;">lock_reset</span>
+            <div id="sidebarUserMenu" style="display:none;position:absolute;bottom:60px;left:0;right:0;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;overflow:hidden;">
+                <a href="{{ route('password.change') }}" class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none" style="color:#cbd5e1;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='rgba(99,102,241,0.15)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='#cbd5e1'">
+                    <span class="material-icons" style="font-size:18px;color:#a5b4fc;">lock_reset</span>
                     Change Password
                 </a>
             </div>

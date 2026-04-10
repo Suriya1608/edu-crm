@@ -11,6 +11,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FollowupManagementController extends Controller
 {
@@ -133,13 +134,56 @@ class FollowupManagementController extends Controller
             return response()->json(['ok' => false], 403);
         }
 
+        return response()->json($this->buildNotificationsSnapshotPayload($user));
+    }
+
+    public function notificationsStream(Request $request): StreamedResponse
+    {
+        $user = $request->user();
+        if (!$user || $user->role !== 'manager') {
+            abort(403);
+        }
+
+        return response()->stream(function () use ($user) {
+            $startedAt = microtime(true);
+            $maxStreamSeconds = 55;
+            $lastHash = null;
+
+            while (!connection_aborted() && (microtime(true) - $startedAt) < $maxStreamSeconds) {
+                $payload = $this->buildNotificationsSnapshotPayload($user);
+                $hash = md5((string) json_encode($payload));
+
+                if ($hash !== $lastHash) {
+                    echo "event: notifications\n";
+                    echo 'data: ' . json_encode($payload) . "\n\n";
+                    $lastHash = $hash;
+                } else {
+                    echo ": keepalive\n\n";
+                }
+
+                @ob_flush();
+                @flush();
+                sleep(5);
+            }
+        }, 200, [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache, no-transform',
+            'Connection' => 'keep-alive',
+            'X-Accel-Buffering' => 'no',
+        ]);
+    }
+
+    private function buildNotificationsSnapshotPayload($user): array
+    {
+        /** @var \App\Models\User $user */
+
         if (!Schema::hasTable('notifications')) {
-            return response()->json([
+            return [
                 'ok'                     => true,
                 'badge_count'            => 0,
                 'whatsapp_notifications' => [],
                 'system_notifications'   => [],
-            ]);
+            ];
         }
 
         $allUnread = $user->unreadNotifications()->latest()->limit(15)->get();
@@ -173,12 +217,12 @@ class FollowupManagementController extends Controller
 
         $badgeCount = $whatsappNotifications->count() + $systemNotifications->count();
 
-        return response()->json([
+        return [
             'ok'                     => true,
             'badge_count'            => $badgeCount,
             'whatsapp_notifications' => $whatsappNotifications,
             'system_notifications'   => $systemNotifications,
-        ]);
+        ];
     }
 
     /**

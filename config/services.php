@@ -43,4 +43,8 @@ return [
         'whatsapp_default_template_language' => env('META_WHATSAPP_DEFAULT_TEMPLATE_LANGUAGE', 'en'),
     ],
 
+    'geo_lookup' => [
+        'base_url' => env('GEO_LOOKUP_BASE_URL', 'https://ipwho.is'),
+    ],
+
 ];

@@ -161,8 +161,8 @@
         (function () {
             var activeBtn = null;
 
-            // Initialize Twilio via GC on page load
-            GC.initDevice();
+            // Initialize calling via GC on page load
+            window.GC.initDevice();
 
             function resetButton(btn) {
                 btn.disabled = false;
@@ -176,8 +176,8 @@
                 var btn = e.target.closest('.integrated-call-btn');
                 if (!btn) return;
 
-                if (GC.isActive()) {
-                    GC.endCall();
+                if (window.GC.isActive()) {
+                    window.GC.endCall();
                     return;
                 }
 
@@ -188,7 +188,7 @@
                 btn.innerHTML = '<span class="material-icons" style="font-size:16px;">ring_volume</span>';
 
                 try {
-                    await GC.startCall(btn.dataset.phone, btn.dataset.leadId || null);
+                    await window.GC.startCall(btn.dataset.phone, btn.dataset.leadId || null);
                 } catch (err) {
                     resetButton(btn);
                     activeBtn = null;

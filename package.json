@@ -19,7 +19,7 @@
         "vite": "^7.0.7"
     },
     "dependencies": {
-        "@twilio/voice-sdk": "^2.18.0",
         "sip.js": "^0.21.2"
     }
 }
+

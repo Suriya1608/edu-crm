@@ -78,17 +78,16 @@ class LoginSessionService
         }
 
         try {
-            $response = Http::timeout(3)->get("http://ip-api.com/json/{$ip}", [
-                'fields' => 'status,country,regionName,city,district',
-            ]);
+            $endpoint = rtrim((string) config('services.geo_lookup.base_url', 'https://ipwho.is'), '/');
+            $response = Http::timeout(3)->get("{$endpoint}/{$ip}");
 
             if ($response->ok()) {
                 $data = $response->json();
-                if (($data['status'] ?? '') === 'success') {
+                if (($data['success'] ?? false) === true) {
                     return [
-                        'area'    => $data['district']   ?? null,
+                        'area'    => $data['connection']['isp'] ?? null,
                         'city'    => $data['city']        ?? null,
-                        'state'   => $data['regionName']  ?? null,
+                        'state'   => $data['region']      ?? null,
                         'country' => $data['country']     ?? null,
                     ];
                 }

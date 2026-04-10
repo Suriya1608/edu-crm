@@ -13,6 +13,7 @@ class Lead extends Model
         'lead_code',
         'name',
         'phone',
+        'phone_last10',
         'email',
         'email_valid',
         'course_id',
@@ -33,6 +34,27 @@ class Lead extends Model
         'merged_into_lead_id' => 'integer',
         'course_id'           => 'integer',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Lead $lead): void {
+            $lead->phone_last10 = self::normalizePhoneLast10($lead->phone);
+        });
+    }
+
+    private static function normalizePhoneLast10(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        $digits = preg_replace('/\D+/', '', $value) ?? '';
+        if (strlen($digits) < 10) {
+            return null;
+        }
+
+        return substr($digits, -10);
+    }
 
     // ─── Relationships ──────────────────────────────────────────────────────────
 

@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'twilio') }}">
+    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'tcn') }}">
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
 
     {{-- Dynamic Title --}}
@@ -25,7 +25,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- Google Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
@@ -193,6 +193,7 @@
         <script>
             (function() {
                 const snapshotUrl = @json(route('telecaller.notifications.snapshot'));
+                const streamUrl = @json(route('telecaller.notifications.stream'));
                 const markReadUrl = @json(route('telecaller.notifications.read-all'));
                 const csrfToken = @json(csrf_token());
                 const soundKey = 'telecaller_notify_sound_enabled';
@@ -273,6 +274,76 @@
                     }
                 }
 
+                function applySnapshotData(data) {
+                    if (!data || !data.ok) return;
+
+                    const seenMissed = getSeenIds(seenMissedKey);
+                    const seenFollowups = getSeenIds(seenFollowupKey);
+
+                    const rawMissed = Array.isArray(data.missed_calls) ? data.missed_calls : [];
+                    const rawFollowups = Array.isArray(data.followup_reminders) ? data.followup_reminders : [];
+                    const rawWhatsapp = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
+                    const rawSystem = Array.isArray(data.system_notifications) ? data.system_notifications : [];
+
+                    const missedCalls = rawMissed.filter(item => !seenMissed.includes(Number(item.id)));
+                    const followupReminders = rawFollowups.filter(item => !seenFollowups.includes(Number(item.id)));
+                    const whatsappNotifications = rawWhatsapp;
+                    const systemNotifications = rawSystem;
+
+                    const count = missedCalls.length + followupReminders.length + whatsappNotifications.length + systemNotifications.length;
+                    if (count > previousCount) {
+                        playBeep();
+                    }
+                    previousCount = count;
+                    updateBadge(count);
+
+                    missedWrap.innerHTML = renderList(
+                        missedCalls,
+                        (item) => {
+                            const link = item.lead_url ?
+                                `<a href="${item.lead_url}" class="small fw-semibold text-decoration-none">Open</a>` :
+                                '';
+                            return `<div class="py-1 border-bottom">
+                                <div class="fw-semibold">${item.lead_name}</div>
+                                <div class="text-muted">${item.lead_code} | ${item.phone || '-'} ${item.time ? '| ' + item.time : ''}</div>
+                                ${link}
+                            </div>`;
+                        },
+                        'No missed calls.'
+                    );
+
+                    followupWrap.innerHTML = renderList(
+                        followupReminders,
+                        (item) => `<div class="py-1 border-bottom">
+                            <div class="fw-semibold">${item.lead_name}</div>
+                            <div class="text-muted">${item.lead_code} | ${item.next_followup || '-'}</div>
+                            <span class="badge ${item.type === 'overdue' ? 'bg-danger' : 'bg-warning text-dark'} mt-1">${item.type}</span>
+                        </div>`,
+                        'No reminders.'
+                    );
+
+                    if (waWrap) {
+                        waWrap.innerHTML = renderList(
+                            whatsappNotifications,
+                            (item) => `<div class="py-1 border-bottom">
+                                <a href="${item.link || '#'}" class="fw-semibold text-decoration-none d-block">${item.title || 'WhatsApp'}</a>
+                                <div class="text-muted">${item.message || ''}</div>
+                                <div class="text-muted" style="font-size:11px;">${item.time || ''}</div>
+                            </div>`,
+                            'No WhatsApp messages.'
+                        );
+                    }
+
+                    systemWrap.innerHTML = renderList(
+                        systemNotifications,
+                        (item) => `<div class="py-1 border-bottom">
+                            <div>${item.message}</div>
+                            <div class="text-muted">${item.time || ''}</div>
+                        </div>`,
+                        'No system notifications.'
+                    );
+                }
+
                 async function fetchNotifications() {
                     try {
                         const res = await fetch(snapshotUrl, {
@@ -281,74 +352,29 @@
                             }
                         });
                         const data = await res.json();
-                        if (!data || !data.ok) return;
-
-                        const seenMissed = getSeenIds(seenMissedKey);
-                        const seenFollowups = getSeenIds(seenFollowupKey);
-
-                        const rawMissed = Array.isArray(data.missed_calls) ? data.missed_calls : [];
-                        const rawFollowups = Array.isArray(data.followup_reminders) ? data.followup_reminders : [];
-                        const rawWhatsapp = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
-                        const rawSystem = Array.isArray(data.system_notifications) ? data.system_notifications : [];
-
-                        const missedCalls = rawMissed.filter(item => !seenMissed.includes(Number(item.id)));
-                        const followupReminders = rawFollowups.filter(item => !seenFollowups.includes(Number(item.id)));
-                        const whatsappNotifications = rawWhatsapp;
-                        const systemNotifications = rawSystem;
-
-                        const count = missedCalls.length + followupReminders.length + whatsappNotifications.length + systemNotifications.length;
-                        if (count > previousCount) {
-                            playBeep();
-                        }
-                        previousCount = count;
-                        updateBadge(count);
-
-                        missedWrap.innerHTML = renderList(
-                            missedCalls,
-                            (item) => {
-                                const link = item.lead_url ?
-                                    `<a href="${item.lead_url}" class="small fw-semibold text-decoration-none">Open</a>` :
-                                    '';
-                                return `<div class="py-1 border-bottom">
-                                    <div class="fw-semibold">${item.lead_name}</div>
-                                    <div class="text-muted">${item.lead_code} | ${item.phone || '-'} ${item.time ? '| ' + item.time : ''}</div>
-                                    ${link}
-                                </div>`;
-                            },
-                            'No missed calls.'
-                        );
-
-                        followupWrap.innerHTML = renderList(
-                            followupReminders,
-                            (item) => `<div class="py-1 border-bottom">
-                                <div class="fw-semibold">${item.lead_name}</div>
-                                <div class="text-muted">${item.lead_code} | ${item.next_followup || '-'}</div>
-                                <span class="badge ${item.type === 'overdue' ? 'bg-danger' : 'bg-warning text-dark'} mt-1">${item.type}</span>
-                            </div>`,
-                            'No reminders.'
-                        );
-
-                        if (waWrap) {
-                            waWrap.innerHTML = renderList(
-                                whatsappNotifications,
-                                (item) => `<div class="py-1 border-bottom">
-                                    <a href="${item.link || '#'}" class="fw-semibold text-decoration-none d-block">${item.title || 'WhatsApp'}</a>
-                                    <div class="text-muted">${item.message || ''}</div>
-                                    <div class="text-muted" style="font-size:11px;">${item.time || ''}</div>
-                                </div>`,
-                                'No WhatsApp messages.'
-                            );
-                        }
-
-                        systemWrap.innerHTML = renderList(
-                            systemNotifications,
-                            (item) => `<div class="py-1 border-bottom">
-                                <div>${item.message}</div>
-                                <div class="text-muted">${item.time || ''}</div>
-                            </div>`,
-                            'No system notifications.'
-                        );
+                        applySnapshotData(data);
                     } catch (e) {}
+                }
+
+                function startNotificationsStream() {
+                    if (!window.EventSource) return false;
+
+                    let es = new EventSource(streamUrl);
+                    es.addEventListener('notifications', function (event) {
+                        try {
+                            const data = JSON.parse(event.data || '{}');
+                            applySnapshotData(data);
+                        } catch (_) {}
+                    });
+
+                    es.onerror = function () {
+                        try { es.close(); } catch (_) {}
+                        // Fail-safe fallback if SSE is unavailable behind proxy/load balancer.
+                        setTimeout(fetchNotifications, 2000);
+                        setTimeout(startNotificationsStream, 5000);
+                    };
+
+                    return true;
                 }
 
                 soundToggle?.addEventListener('change', function() {
@@ -382,32 +408,15 @@
 
                 setSoundEnabled(getSoundEnabled());
                 fetchNotifications();
-                setInterval(fetchNotifications, 60000);
+                if (!startNotificationsStream()) {
+                    setInterval(fetchNotifications, 60000);
+                }
             })();
         </script>
     @endif
 
     @if (auth()->check() && auth()->user()->role === 'telecaller')
-        {{-- Global Active Call Bar (telecaller only) --}}
-        <div id="gcCallBar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:1060; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; padding:10px 20px; box-shadow:0 -2px 12px rgba(0,0,0,0.25); align-items:center; gap:12px;">
-            <span class="material-icons" style="font-size:24px;">call</span>
-            <div>
-                <div style="font-size:11px; opacity:0.85; line-height:1;">Active Call</div>
-                <div id="gcCallPhone" style="font-weight:700; font-size:15px; letter-spacing:0.3px; line-height:1.3;"></div>
-                <a id="gcCallLeadLink" href="#" style="display:none; color:#fee2e2; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
-            </div>
-            <div style="margin-left:6px;">
-                <div style="font-size:11px; opacity:0.85; line-height:1;">Duration</div>
-                <div id="gcCallTimer" style="font-weight:700; font-size:15px; font-variant-numeric:tabular-nums; line-height:1.3;">0:00</div>
-            </div>
-            <div class="ms-auto">
-                <button id="gcBarEndBtn" class="btn btn-light btn-sm fw-semibold text-danger" style="min-width:110px;">
-                    <span class="material-icons me-1" style="font-size:16px; vertical-align:middle;">call_end</span>End Call
-                </button>
-            </div>
-        </div>
-
-        {{-- Navigation Warning Modal (shown when user clicks a link during an active call) --}}
+        {{-- TCN softphone container --}}{{-- Navigation Warning Modal (shown when user clicks a link during an active call) --}}
         <div class="modal fade" id="gcNavWarningModal" tabindex="-1" aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
@@ -431,133 +440,78 @@
             </div>
         </div>
 
-        {{-- Incoming call bar — shown by JsSIP when a remote SIP call arrives --}}
-        @if(\App\Models\Setting::get('primary_call_provider', 'twilio') === 'exotel')
-        <div id="gcIncomingBar" style="display:none; position:fixed; top:20px; right:20px; z-index:1070; background:#ffffff; border:2px solid #10b981; border-radius:12px; padding:14px 18px; box-shadow:0 4px 20px rgba(0,0,0,0.15); min-width:240px;">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-                <span class="material-icons" style="color:#10b981; font-size:22px; animation:gcRing 0.6s infinite alternate;">call</span>
-                <div>
-                    <div style="font-size:11px; color:#64748b; line-height:1;">Incoming Call</div>
-                    <div id="gcIncomingPhone" style="font-weight:700; font-size:15px; color:#0f172a; line-height:1.3;"></div>
-                    <a id="gcIncomingLeadLink" href="#" style="display:none; color:#137fec; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
-                </div>
-            </div>
-            <div style="display:flex; gap:8px;">
-                <button id="gcIncomingAnswerBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#10b981; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
-                    <span class="material-icons" style="font-size:16px;">call</span> Answer
-                </button>
-                <button id="gcIncomingRejectBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#ef4444; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
-                    <span class="material-icons" style="font-size:16px;">call_end</span> Reject
-                </button>
-            </div>
-        </div>
-        <style>@keyframes gcRing { from { transform:rotate(-15deg); } to { transform:rotate(15deg); } }</style>
-
-        @endif
-
-        @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
+        @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
         {{--
-            TCN Softphone — embedded iframe widget (bottom-right corner).
-            Architecture:
-              • The iframe loads /softphone which runs TcnService + TCN SIP stack.
-              • On first load: full login (config → skills → ASM session → SIP INVITE).
-              • On page navigation: iframe is recreated but reads session from localStorage.
-                canResumeCachedSession() pings keepalive → if session alive, skips to SIP
-                INVITE only (~1-2s). loginWithToken is NOT called again if session is valid.
-              • localStorage (not sessionStorage) ensures cache survives iframe recreation.
+            SIP Client iframe â€” persistent softphone widget.
+            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            tcn-softphone.js runs ONLY inside this iframe (/sip-client).
+            The parent page NEVER loads tcn-softphone.js directly, which prevents
+            SIP re-initialization on every page navigation.
+
+            Security model for browser-side credentials:
+              â€¢ tcn-softphone.js keeps call/session state in memory only.
+              â€¢ Reload starts a fresh authenticated softphone session.
+              â€¢ Tokens and SIP credentials are never persisted in browser storage.
+
+            postMessage contract:
+              Parent â†’ iframe : CALL | HANGUP | MUTE | HOLD | DTMF | SET_PHONE | LOGOUT | PING
+              Iframe â†’ parent : TCN_READY | TCN_CALL_STARTED | TCN_CALL_ANSWERED |
+                                TCN_CALL_ENDED | TCN_STATE_SYNC | TCN_SIP_DROPPED |
+                                TCN_LOGGED_OUT | TCN_ERROR | SP_MINIMIZE | SP_EXPAND
+            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         --}}
-        <iframe id="tcnSoftphoneFrame"
-            src="{{ route('softphone') }}"
-            allow="microphone"
-            style="position:fixed;bottom:80px;right:20px;width:300px;height:480px;
-                   border:none;z-index:1065;border-radius:14px;
-                   box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;
-                   transition:height .2s,width .2s;">
-        </iframe>
-        {{-- Toggle button — shown once agent is READY --}}
-        <button id="tcnToggleBtn" title="Toggle Softphone"
-            style="position:fixed;bottom:20px;right:20px;z-index:1066;
-                   width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
-                   background:#64748b;color:#fff;display:none;
-                   align-items:center;justify-content:center;
-                   box-shadow:0 4px 20px rgba(0,0,0,.22);transition:background .25s;">
-            <span class="material-icons" style="font-size:24px;pointer-events:none;" id="tcnToggleIco">phone</span>
-        </button>
+        <div id="sipClientWrapper"
+             style="position:fixed;bottom:20px;right:20px;z-index:1066;
+                    width:300px;height:460px;
+                    border-radius:16px;overflow:hidden;
+                    box-shadow:0 8px 32px rgba(0,0,0,0.18);
+                    transition:height .2s ease;">
+            <iframe id="sipClientFrame"
+                    src="{{ route('sip.client') }}"
+                    allow="microphone; autoplay; camera"
+                    style="width:100%;height:100%;border:none;display:block;background:#fff;"
+                    title="TCN Softphone">
+            </iframe>
+        </div>
+
+        {{--
+            tcn-widget.js (v5) bridges postMessages from the iframe to document
+            CustomEvents that global-call.js consumes.
+            DO NOT load tcn-softphone.js here â€” it lives only in the iframe.
+        --}}
+        <script src="{{ asset('js/tcn-widget.js') }}"></script>
+        <script src="{{ asset('js/global-call.js') }}"></script>
         <script>
         (function () {
-            var _frame = null, _btn = null, _visible = false;
-
-            function frame() { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
-            function btn()   { if (!_btn)   _btn   = document.getElementById('tcnToggleBtn');       return _btn;   }
-            function ico()   { return document.getElementById('tcnToggleIco'); }
-
-            function show() {
-                var f = frame(); if (!f) return;
-                f.style.display = 'block';
-                f.style.bottom  = '80px';
-                f.style.height  = '480px';
-                f.style.width   = '300px';
-                f.style.borderRadius = '14px';
-                _visible = true;
-                var i = ico(); if (i) i.textContent = 'close';
-            }
-            function hide() {
-                var f = frame(); if (!f) return;
-                f.style.display = 'none';
-                _visible = false;
-                var i = ico(); if (i) i.textContent = 'phone';
-            }
-
             document.addEventListener('DOMContentLoaded', function () {
-                var b = btn();
-                if (b) b.addEventListener('click', function () {
-                    if (_visible) hide(); else show();
-                });
-
-                // Forward [data-phone] clicks into the iframe
-                document.addEventListener('click', function (e) {
-                    var el = e.target.closest('[data-phone]');
-                    if (!el) return;
-                    var phone = el.getAttribute('data-phone');
-                    if (!phone) return;
-                    var f = frame(); if (!f) return;
-                    f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
-                    if (!_visible) show();
-                }, true);
+                if (window.TCNWidget) {
+                    window.TCNWidget.init({
+                        frameId:   'sipClientFrame',
+                        wrapperId: 'sipClientWrapper',
+                    });
+                }
             });
 
-            // Receive status messages from the softphone iframe
-            window.addEventListener('message', function (ev) {
-                var d = ev.data;
-                if (!d || typeof d !== 'object') return;
-                var b = btn();
-
-                if (d.type === 'TCN_READY') {
-                    if (b) { b.style.display = 'flex'; b.style.background = '#10b981'; b.style.animation = ''; }
-                } else if (d.type === 'TCN_CALL_STARTED') {
-                    if (b) { b.style.background = '#137fec'; b.style.animation = 'tcnBtnPulse 1s ease-in-out infinite'; }
-                    if (!_visible) show();
-                } else if (d.type === 'TCN_CALL_ANSWERED') {
-                    if (b) { b.style.background = '#ef4444'; b.style.animation = ''; }
-                } else if (d.type === 'TCN_CALL_ENDED') {
-                    if (b) { b.style.background = '#10b981'; b.style.animation = ''; }
-                } else if (d.type === 'TCN_LOGGED_OUT') {
-                    if (b) { b.style.background = '#64748b'; b.style.animation = ''; }
-                } else if (d.type === 'TCN_SIP_DROPPED') {
-                    if (b) { b.style.background = '#f59e0b'; b.style.animation = ''; }
-                } else if (d.type === 'SP_MINIMIZE') {
-                    var f = frame();
-                    if (f) { f.style.height = '44px'; f.style.width = '170px'; f.style.borderRadius = '22px'; }
-                } else if (d.type === 'SP_EXPAND') {
-                    var f = frame();
-                    if (f) { f.style.height = '480px'; f.style.width = '300px'; f.style.borderRadius = '14px'; }
-                }
+            // Logout interception â€” send LOGOUT to the iframe before navigating
+            // away so TCN can cleanly close the SIP presence session.
+            document.addEventListener('DOMContentLoaded', function () {
+                document.querySelectorAll('form[action*="logout"]').forEach(function (form) {
+                    form.addEventListener('submit', function () {
+                        var frame = document.getElementById('sipClientFrame');
+                        if (frame && frame.contentWindow) {
+                            try { frame.contentWindow.postMessage({ type: 'LOGOUT' }, window.location.origin); } catch (_) {}
+                        }
+                    });
+                });
             });
         })();
         </script>
-        <style>@keyframes tcnBtnPulse{0%,100%{opacity:1}50%{opacity:.55}}</style>
+        <style>
+            @keyframes tcnWidgetPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
+            /* Minimised: clips the wrapper to the header bar height (â‰ˆ44 px). */
+            #sipClientWrapper { transition: height .2s ease; }
+        </style>
         @endif
-        <script src="{{ asset('js/global-call.js?v=2') }}"></script>
     @endif
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -572,11 +526,11 @@
 
     @stack('scripts')
 
-    {{-- Chart.js global defaults — applied after page scripts load Chart.js --}}
+    {{-- Chart.js global defaults â€” applied after page scripts load Chart.js --}}
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             if (typeof Chart !== 'undefined') {
-                Chart.defaults.font.family    = "'Manrope', sans-serif";
+                Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
                 Chart.defaults.font.size      = 12;
                 Chart.defaults.color          = '#64748b';
                 Chart.defaults.plugins.legend.labels.usePointStyle = true;
@@ -634,7 +588,7 @@
         @elseif(auth()->user()->role === 'manager')
         const pollUrl = @json(route('manager.whatsapp.inbox-poll'));
         @else
-        return; // admin or other roles — no WA toasts
+        return; // admin or other roles â€” no WA toasts
         @endif
 
         const LS_KEY = 'wa_notif_ts_{{ auth()->id() }}';
@@ -814,3 +768,8 @@
 </body>
 
 </html>
+
+
+
+
+

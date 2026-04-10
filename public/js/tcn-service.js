@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 window.TcnService = (function () {
     if (window.__tcnServiceSingleton) {
@@ -14,8 +14,9 @@ window.TcnService = (function () {
     let _tokenFetchedAt = null;
 
     const TOKEN_TTL_MS = 55 * 60 * 1000;
-    // localStorage (not sessionStorage) so the token survives page navigations
-    // and iframe recreation — sessionStorage is wiped whenever the iframe is destroyed.
+    // Security hardening:
+    // keep bootstrap credentials in memory only; do not persist tokens in
+    // localStorage/sessionStorage.
     const CACHE_KEY = 'tcn_service_bootstrap_v2';
 
     function _log(msg, data) {
@@ -37,24 +38,11 @@ window.TcnService = (function () {
     }
 
     function _readCache() {
-        try {
-            const raw = localStorage.getItem(CACHE_KEY);
-            return raw ? JSON.parse(raw) : null;
-        } catch (_) {
-            return null;
-        }
+        return null;
     }
 
     function _writeCache() {
-        try {
-            localStorage.setItem(CACHE_KEY, JSON.stringify({
-                access_token: _accessToken,
-                agent_id: _agentId,
-                hunt_group_id: _huntGroupId,
-                caller_id: _callerId,
-                token_fetched_at: _tokenFetchedAt,
-            }));
-        } catch (_) { }
+        // Intentionally no-op: never persist tokens in browser storage.
     }
 
     function _clearCache() {
@@ -67,18 +55,8 @@ window.TcnService = (function () {
     }
 
     function _restoreFromCache() {
-        const cached = _readCache();
-        if (!cached || !cached.access_token || !cached.agent_id || !cached.hunt_group_id) {
-            return false;
-        }
-
-        _accessToken = cached.access_token;
-        _agentId = cached.agent_id;
-        _huntGroupId = cached.hunt_group_id;
-        _callerId = cached.caller_id || '';
-        _tokenFetchedAt = Number(cached.token_fetched_at || 0) || null;
-
-        return !_isTokenExpired();
+        // Intentionally disabled for security hardening.
+        return false;
     }
 
     async function _fetchConfig() {
@@ -120,6 +98,27 @@ window.TcnService = (function () {
     }
 
     async function init() {
+        // If window.TCN is already logged in (same tab, e.g. loaded by the main layout),
+        // delegate to it directly instead of creating a competing session.
+        if (window.TCN && window.TCN._loggedIn) {
+            _log('window.TCN already active â€” delegating to existing session (no re-init).');
+            _initialized = true;
+            _emit('ready', {});
+            return true;
+        }
+
+        // Detect cross-tab lock: if another tab holds the TCN session,
+        // refuse to start a duplicate session here.
+        try {
+            var existingLock = localStorage.getItem('tcn_active_tab_lock');
+            if (existingLock) {
+                var lockMsg = 'TCN is already active in another browser tab. Close that tab first.';
+                _log(lockMsg);
+                _emit('error', { message: lockMsg });
+                return false;
+            }
+        } catch (_) { /* localStorage unavailable â€” proceed */ }
+
         if (_initialized && !_isTokenExpired() && window.TCN && window.TCN._loggedIn) {
             _log('Already initialized, skipping.');
             return true;
@@ -188,7 +187,7 @@ window.TcnService = (function () {
         return;
     }
 
-    // ✅ Step 1: Ensure initialized (ONLY if not initialized)
+    // âœ… Step 1: Ensure initialized (ONLY if not initialized)
     if (!_initialized || !window.TCN || !window.TCN._loggedIn) {
         _log('Not initialized - initializing...');
         const ok = await init();
@@ -198,16 +197,16 @@ window.TcnService = (function () {
         }
     }
 
-    // ✅ Step 2: Prevent re-init during active call
+    // âœ… Step 2: Prevent re-init during active call
     function isCallActive() {
         return window.TCN && window.TCN._callActive;
     }
 
     if (_isTokenExpired()) {
         if (isCallActive()) {
-            _log('Token expired but call is active → skipping re-init');
+            _log('Token expired but call is active â†’ skipping re-init');
         } else {
-            _log('Token expired → safe to re-init');
+            _log('Token expired â†’ safe to re-init');
             const ok = await init();
             if (!ok) {
                 _emit('call_failed', { phone: phone, reason: 'token_refresh_failed' });
@@ -216,7 +215,7 @@ window.TcnService = (function () {
         }
     }
 
-    // ✅ Continue call normally
+    // âœ… Continue call normally
     _log('Starting call -> ' + phone);
     _emit('calling', { phone: phone });
 
@@ -258,3 +257,4 @@ window.TcnService = (function () {
     window.__tcnServiceSingleton = api;
     return api;
 }());
+
