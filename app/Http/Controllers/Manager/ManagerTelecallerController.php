@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Inertia\Inertia;
 
 class ManagerTelecallerController extends Controller
 {
@@ -166,15 +167,34 @@ class ManagerTelecallerController extends Controller
             }
         }
 
-        return view('manager.telecallers.index', [
-            'telecallers' => $telecallers,
-            'totalTelecallers' => $telecallers->count(),
-            'activeTelecallers' => $onlineCount,
-            'inactiveTelecallers' => $telecallers->where('status', 0)->count(),
-            'onlineTelecallers' => $onlineCount,
-            'offlineTelecallers' => $offlineCount,
-            'onCallTelecallers' => $onCallCount,
-            'idleTelecallers' => $idleCount,
+        $teleData = $telecallers->map(fn($tele) => [
+            'id'                   => $tele->id,
+            'name'                 => $tele->name,
+            'phone'                => $tele->phone ?? null,
+            'status'               => $tele->status,
+            'total_leads'          => $tele->total_leads,
+            'converted_count'      => $tele->converted_count,
+            'not_interested_count' => $tele->not_interested_count,
+            'followup_count'       => $tele->followup_count,
+            'missed_followup_count'=> $tele->missed_followup_count,
+            'today_call_count'     => $tele->today_call_count,
+            'today_talk_time_sec'  => $tele->today_talk_time_sec,
+            'total_call_count'     => $tele->total_call_count,
+            'total_talk_time_sec'  => $tele->total_talk_time_sec,
+            'active_call_indicator'=> $tele->active_call_indicator,
+            'online_offline_status'=> $tele->online_offline_status,
+            'break_tracking_status'=> $tele->break_tracking_status,
+            'performance_rating'   => $tele->performance_rating,
+            'conversion_rate'      => $tele->conversion_rate,
+        ])->values();
+
+        return Inertia::render('Manager/Telecallers/Index', [
+            'telecallers'         => $teleData,
+            'totalTelecallers'    => $telecallers->count(),
+            'onlineTelecallers'   => $onlineCount,
+            'offlineTelecallers'  => $offlineCount,
+            'onCallTelecallers'   => $onCallCount,
+            'idleTelecallers'     => $idleCount,
         ]);
     }
 }

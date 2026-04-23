@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Telecaller;
 
 use App\Http\Controllers\Controller;
 use App\Models\Followup;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
+use Inertia\Inertia;
 
 class FollowupController extends Controller
 {
@@ -154,9 +156,38 @@ class FollowupController extends Controller
             }
         }
 
-        $followups = $query->orderBy('next_followup')->paginate(10)->withQueryString();
+        $followups = $query->orderBy('next_followup')->paginate(10)->withQueryString()->through(function ($followup) use ($scope) {
+            // Flat lead fields the JSX renders directly
+            $followup->lead_name  = $followup->lead?->name;
+            $followup->lead_code  = $followup->lead?->lead_code;
+            $followup->lead_phone = $followup->lead?->phone;
 
-        return view('telecaller.followups.index', compact('title', 'scope', 'followups'));
+            // Human-readable date/time strings for display columns
+            $followup->next_followup_fmt = $followup->next_followup?->format('d M Y');
+            $followup->followup_time_fmt = $followup->followup_time
+                ? Carbon::parse($followup->followup_time)->format('h:i A')
+                : null;
+
+            // Status label used by the StatusBadge component
+            $followup->status_label = $scope;
+
+            // Completion flag for showing/hiding reschedule & mark-complete buttons
+            $followup->is_completed = !is_null($followup->completed_at);
+
+            // Encrypted lead ID for the "Open Lead" link
+            $followup->encrypted_lead_id = $followup->lead_id ? encrypt($followup->lead_id) : null;
+
+            // Hide nested relationship objects — JSX uses flat fields only
+            $followup->makeHidden(['lead', 'user']);
+
+            return $followup;
+        });
+
+        return Inertia::render('Telecaller/Followups/Index', [
+            'scope'     => $scope,
+            'title'     => $title,
+            'followups' => $followups,
+        ]);
     }
 
     public function calendarData(Request $request): \Illuminate\Http\JsonResponse

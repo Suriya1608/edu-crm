@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\CallLog;
 use App\Models\WhatsAppMessage;
 
 class Lead extends Model
@@ -13,7 +14,6 @@ class Lead extends Model
         'lead_code',
         'name',
         'phone',
-        'phone_last10',
         'email',
         'email_valid',
         'course_id',
@@ -34,27 +34,6 @@ class Lead extends Model
         'merged_into_lead_id' => 'integer',
         'course_id'           => 'integer',
     ];
-
-    protected static function booted(): void
-    {
-        static::saving(function (Lead $lead): void {
-            $lead->phone_last10 = self::normalizePhoneLast10($lead->phone);
-        });
-    }
-
-    private static function normalizePhoneLast10(?string $value): ?string
-    {
-        if ($value === null) {
-            return null;
-        }
-
-        $digits = preg_replace('/\D+/', '', $value) ?? '';
-        if (strlen($digits) < 10) {
-            return null;
-        }
-
-        return substr($digits, -10);
-    }
 
     // ─── Relationships ──────────────────────────────────────────────────────────
 
@@ -86,6 +65,11 @@ class Lead extends Model
     public function whatsappMessages()
     {
         return $this->hasMany(WhatsAppMessage::class);
+    }
+
+    public function callLogs()
+    {
+        return $this->hasMany(CallLog::class);
     }
 
     /**

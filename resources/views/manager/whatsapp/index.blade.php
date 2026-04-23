@@ -854,49 +854,20 @@
     /* ── Polling ── */
     function startPolling() {
         stopPolling();
-        state.pollBackoffMs = 0;
-        state.pollInFlight = false;
-        schedulePolling(800);
+        state.pollTimer = setInterval(fetchMessages, 7000);
     }
     function stopPolling() {
-        if (state.pollTimer) {
-            clearTimeout(state.pollTimer);
-            state.pollTimer = null;
-        }
-        state.pollInFlight = false;
-    }
-
-    function nextPollDelay() {
-        const ACTIVE_MS = 15000;
-        const HIDDEN_MS = 60000;
-        const jitter = Math.floor(Math.random() * 1500);
-        return (document.hidden ? HIDDEN_MS : ACTIVE_MS) + jitter;
-    }
-
-    function schedulePolling(delayMs) {
-        if (!state.encryptedId) return;
-        if (state.pollTimer) clearTimeout(state.pollTimer);
-        state.pollTimer = setTimeout(fetchMessages, Math.max(500, Number(delayMs) || nextPollDelay()));
+        if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
     }
 
     async function fetchMessages() {
         if (!state.encryptedId) return;
-        if (state.pollInFlight) {
-            schedulePolling(2000);
-            return;
-        }
-
-        state.pollInFlight = true;
         try {
             const url = MSG_URL_PATTERN.replace('__ID__', state.encryptedId)
                       + '?after=' + state.lastMsgId;
             const res  = await fetch(url, { headers: { 'Accept': 'application/json' } });
-            if (!res.ok) {
-                state.pollBackoffMs = Math.min(state.pollBackoffMs ? state.pollBackoffMs * 2 : 15000, 120000);
-                return;
-            }
+            if (!res.ok) return;
             const data = await res.json();
-            state.pollBackoffMs = 0;
 
             if (data.messages && data.messages.length > 0) {
                 data.messages.forEach(m => {
@@ -928,20 +899,8 @@
                     el.style.display = cnt > 0 ? '' : 'none';
                 });
             }
-        } catch (_) {
-            state.pollBackoffMs = Math.min(state.pollBackoffMs ? state.pollBackoffMs * 2 : 15000, 120000);
-        } finally {
-            state.pollInFlight = false;
-            schedulePolling(state.pollBackoffMs || nextPollDelay());
-        }
+        } catch (_) {}
     }
-
-    document.addEventListener('visibilitychange', function () {
-        if (!state.encryptedId) return;
-        if (!document.hidden) {
-            schedulePolling(1000);
-        }
-    });
 
     /* ── Append a bubble ── */
     let lastRenderedDate = null;

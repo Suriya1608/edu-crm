@@ -8,6 +8,7 @@ use App\Models\Lead;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class CallLogController extends Controller
 {
@@ -68,27 +69,32 @@ class CallLogController extends Controller
 
         $query->latest('id');
 
-        $callLogs = $query->paginate(15)->withQueryString();
+        $callLogs = $query->paginate(15)->withQueryString()
+            ->through(fn($call) => [
+                'id'         => $call->id,
+                'created_at' => optional($call->created_at)->format('d M Y, h:i A'),
+                'lead_code'  => $call->lead->lead_code ?? ('#' . $call->lead_id),
+                'lead_name'  => $call->lead->name ?? 'N/A',
+                'lead_phone' => $call->lead->phone ?? '-',
+                'encrypted_lead_id' => $call->lead_id ? encrypt($call->lead_id) : null,
+                'type'       => $call->user_id ? 'outbound' : 'inbound',
+                'direction'  => $call->direction ?? null,
+                'status'     => $call->status ?? '-',
+                'duration'   => (int) ($call->duration ?? 0),
+                'telecaller' => $call->user->name ?? 'Not assigned',
+            ]);
 
-        $telecallers = User::where('role', 'telecaller')->where('status', 1)->whereIn('id', $myTelecallerIds)->orderBy('name')->get(['id', 'name']);
+        $telecallers = User::where('role', 'telecaller')->where('status', 1)
+            ->whereIn('id', $myTelecallerIds)->orderBy('name')->get(['id', 'name']);
 
-        $statusOptions = [
-            'initiated',
-            'ringing',
-            'in-progress',
-            'answered',
-            'completed',
-            'busy',
-            'failed',
-            'no-answer',
-            'canceled',
-        ];
+        $statusOptions = ['initiated', 'ringing', 'in-progress', 'answered', 'completed', 'busy', 'failed', 'no-answer', 'canceled'];
 
-        return view('manager.call_logs.index', [
-            'callLogs' => $callLogs,
-            'telecallers' => $telecallers,
+        return Inertia::render('Manager/CallLogs/Index', [
+            'callLogs'      => $callLogs,
+            'telecallers'   => $telecallers,
             'statusOptions' => $statusOptions,
-            'scope' => $scope,
+            'scope'         => $scope,
+            'filters'       => $request->only(['date', 'telecaller', 'status']),
         ]);
     }
 }

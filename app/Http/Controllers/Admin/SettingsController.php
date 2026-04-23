@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\Setting;
-use App\Services\EnvManager;
 use Illuminate\Support\Facades\Storage;
 
 class SettingsController extends Controller
@@ -63,10 +62,6 @@ class SettingsController extends Controller
 
         foreach ($request->except('_token', 'site_logo', 'site_favicon') as $key => $value) {
             Setting::set($key, $value);
-        }
-
-        if ($request->filled('site_url')) {
-            EnvManager::update(['APP_URL' => rtrim($request->input('site_url'), '/')]);
         }
 
         return back()->with('success', 'Settings updated successfully');

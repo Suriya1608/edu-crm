@@ -11,13 +11,46 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Inertia\Inertia;
 
 class FollowupManagementController extends Controller
 {
+    private function mapFollowup(Followup $f): array
+    {
+        $nf   = $f->next_followup;
+        $now  = now()->startOfDay();
+        $date = $nf ? $nf->startOfDay() : null;
+
+        if ($f->completed_at) {
+            $statusLabel = 'completed';
+        } elseif ($date && $date->lt($now)) {
+            $statusLabel = 'overdue';
+        } elseif ($date && $date->eq($now)) {
+            $statusLabel = 'today';
+        } else {
+            $statusLabel = 'upcoming';
+        }
+
+        return [
+            'id'                 => $f->id,
+            'next_followup'      => $nf?->format('Y-m-d'),
+            'next_followup_fmt'  => $nf?->format('d M Y'),
+            'followup_time'      => $f->followup_time,
+            'followup_time_fmt'  => $f->followup_time ? Carbon::parse($f->followup_time)->format('h:i A') : null,
+            'remarks'            => $f->remarks,
+            'status_label'       => $statusLabel,
+            'is_completed'       => (bool) $f->completed_at,
+            'lead_id'            => $f->lead_id,
+            'encrypted_lead_id'  => $f->lead_id ? encrypt($f->lead_id) : null,
+            'lead_code'          => $f->lead?->lead_code,
+            'lead_name'          => $f->lead?->name,
+            'lead_phone'         => $f->lead?->phone,
+            'telecaller_name'    => $f->lead?->assignedUser?->name ?? $f->user?->name,
+        ];
+    }
+
     public function today(Request $request)
     {
-
         $myLeadsSubquery = Lead::where('assigned_by', Auth::id())->select('id');
 
         $followups = Followup::with(['lead.assignedUser', 'user'])
@@ -25,9 +58,12 @@ class FollowupManagementController extends Controller
             ->whereDate('next_followup', now()->toDateString())
             ->orderBy('next_followup')
             ->paginate(15)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn($f) => $this->mapFollowup($f));
 
-        return view('manager.followups.today', [
+        return Inertia::render('Manager/Followups/Index', [
+            'scope'     => 'today',
+            'title'     => 'Today Follow-ups',
             'followups' => $followups,
         ]);
     }
@@ -41,9 +77,12 @@ class FollowupManagementController extends Controller
             ->whereDate('next_followup', '<', now()->toDateString())
             ->orderBy('next_followup')
             ->paginate(15)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn($f) => $this->mapFollowup($f));
 
-        return view('manager.followups.overdue', [
+        return Inertia::render('Manager/Followups/Index', [
+            'scope'     => 'overdue',
+            'title'     => 'Overdue Follow-ups',
             'followups' => $followups,
         ]);
     }
@@ -57,9 +96,12 @@ class FollowupManagementController extends Controller
             ->whereDate('next_followup', '>', now()->toDateString())
             ->orderBy('next_followup')
             ->paginate(15)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn($f) => $this->mapFollowup($f));
 
-        return view('manager.followups.upcoming', [
+        return Inertia::render('Manager/Followups/Index', [
+            'scope'     => 'upcoming',
+            'title'     => 'Upcoming Follow-ups',
             'followups' => $followups,
         ]);
     }
@@ -81,9 +123,16 @@ class FollowupManagementController extends Controller
             ->groupBy('telecaller.id', 'telecaller.name')
             ->orderByDesc('missed_count')
             ->paginate(15)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn($row) => [
+                'telecaller_id'   => $row->telecaller_id,
+                'telecaller_name' => $row->telecaller_name,
+                'missed_count'    => (int) $row->missed_count,
+                'oldest_pending'  => $row->oldest_pending ? Carbon::parse($row->oldest_pending)->format('d M Y') : '—',
+                'latest_pending'  => $row->latest_pending ? Carbon::parse($row->latest_pending)->format('d M Y') : '—',
+            ]);
 
-        return view('manager.followups.missed_by_telecaller', [
+        return Inertia::render('Manager/Followups/Missed', [
             'rows' => $rows,
         ]);
     }
@@ -134,56 +183,13 @@ class FollowupManagementController extends Controller
             return response()->json(['ok' => false], 403);
         }
 
-        return response()->json($this->buildNotificationsSnapshotPayload($user));
-    }
-
-    public function notificationsStream(Request $request): StreamedResponse
-    {
-        $user = $request->user();
-        if (!$user || $user->role !== 'manager') {
-            abort(403);
-        }
-
-        return response()->stream(function () use ($user) {
-            $startedAt = microtime(true);
-            $maxStreamSeconds = 55;
-            $lastHash = null;
-
-            while (!connection_aborted() && (microtime(true) - $startedAt) < $maxStreamSeconds) {
-                $payload = $this->buildNotificationsSnapshotPayload($user);
-                $hash = md5((string) json_encode($payload));
-
-                if ($hash !== $lastHash) {
-                    echo "event: notifications\n";
-                    echo 'data: ' . json_encode($payload) . "\n\n";
-                    $lastHash = $hash;
-                } else {
-                    echo ": keepalive\n\n";
-                }
-
-                @ob_flush();
-                @flush();
-                sleep(5);
-            }
-        }, 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache, no-transform',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no',
-        ]);
-    }
-
-    private function buildNotificationsSnapshotPayload($user): array
-    {
-        /** @var \App\Models\User $user */
-
         if (!Schema::hasTable('notifications')) {
-            return [
+            return response()->json([
                 'ok'                     => true,
                 'badge_count'            => 0,
                 'whatsapp_notifications' => [],
                 'system_notifications'   => [],
-            ];
+            ]);
         }
 
         $allUnread = $user->unreadNotifications()->latest()->limit(15)->get();
@@ -217,12 +223,12 @@ class FollowupManagementController extends Controller
 
         $badgeCount = $whatsappNotifications->count() + $systemNotifications->count();
 
-        return [
+        return response()->json([
             'ok'                     => true,
             'badge_count'            => $badgeCount,
             'whatsapp_notifications' => $whatsappNotifications,
             'system_notifications'   => $systemNotifications,
-        ];
+        ]);
     }
 
     /**

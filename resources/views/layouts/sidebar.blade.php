@@ -1,9 +1,9 @@
-<aside class="sidebar" id="sidebar" style="background-color:#0f172a!important;">
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-        @php $siteLogo = \App\Models\Setting::get('site_logo'); @endphp
-        <div class="sidebar-logo {{ $siteLogo ? 'has-logo-img' : '' }}">
+        <div class="sidebar-logo">
+            @php $siteLogo = \App\Models\Setting::get('site_logo'); @endphp
             @if($siteLogo)
-                <img src="{{ asset('storage/' . $siteLogo) }}" alt="Logo">
+                <img src="{{ asset('storage/' . $siteLogo) }}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:8px;">
             @else
                 <span class="material-icons">school</span>
             @endif
@@ -12,6 +12,9 @@
             <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
             <p>{{ ucfirst(auth()->user()->role) }} Panel</p>
         </div>
+        <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu">
+            <span class="material-icons">close</span>
+        </button>
     </div>
 
     <nav class="sidebar-nav">
@@ -38,7 +41,7 @@
             {{-- ── People ── --}}
             <div class="nav-section-label">People</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminUsersActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+            <button class="nav-item w-100 border-0 {{ $adminUsersActive ? 'active' : 'bg-transparent' }}" type="button"
                 data-bs-toggle="collapse" data-bs-target="#adminUsersMenu"
                 aria-expanded="{{ $adminUsersActive ? 'true' : 'false' }}" aria-controls="adminUsersMenu">
                 <span class="material-icons">group</span>
@@ -58,7 +61,7 @@
                     style="padding:8px 12px 8px 36px;font-size:13px;">Telecallers</a>
             </div>
 
-            <button class="nav-item w-100 border-0 {{ $adminLeadsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+            <button class="nav-item w-100 border-0 {{ $adminLeadsActive ? 'active' : 'bg-transparent' }}" type="button"
                 data-bs-toggle="collapse" data-bs-target="#adminLeadsMenu"
                 aria-expanded="{{ $adminLeadsActive ? 'true' : 'false' }}" aria-controls="adminLeadsMenu">
                 <span class="material-icons">person_add</span>
@@ -90,7 +93,7 @@
             {{-- ── Outreach ── --}}
             <div class="nav-section-label">Outreach</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminCampaignsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+            <button class="nav-item w-100 border-0 {{ $adminCampaignsActive ? 'active' : 'bg-transparent' }}" type="button"
                 data-bs-toggle="collapse" data-bs-target="#adminCampaignsMenu"
                 aria-expanded="{{ $adminCampaignsActive ? 'true' : 'false' }}" aria-controls="adminCampaignsMenu">
                 <span class="material-icons">insights</span>
@@ -113,7 +116,7 @@
                 <span>Social Media</span>
             </a>
 
-            <button class="nav-item w-100 border-0 {{ $adminEmailCampActive ? 'active' : 'crm-nav-inactive' }}"
+            <button class="nav-item w-100 border-0 {{ $adminEmailCampActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminEmailMenu"
                 aria-expanded="{{ $adminEmailCampActive ? 'true' : 'false' }}" aria-controls="adminEmailMenu">
                 <span class="material-icons">mark_email_read</span>
@@ -133,7 +136,7 @@
             {{-- ── Analytics ── --}}
             <div class="nav-section-label">Analytics</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminReportsActive ? 'active' : 'crm-nav-inactive' }}"
+            <button class="nav-item w-100 border-0 {{ $adminReportsActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminReportsMenu"
                 aria-expanded="{{ $adminReportsActive ? 'true' : 'false' }}" aria-controls="adminReportsMenu">
                 <span class="material-icons">bar_chart</span>
@@ -165,7 +168,7 @@
                     style="padding:8px 12px 8px 36px;font-size:13px;">Response Time</a>
             </div>
 
-            <button class="nav-item w-100 border-0 {{ $adminAutomationActive ? 'active' : 'crm-nav-inactive' }}"
+            <button class="nav-item w-100 border-0 {{ $adminAutomationActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminAutomationMenu"
                 aria-expanded="{{ $adminAutomationActive ? 'true' : 'false' }}" aria-controls="adminAutomationMenu">
                 <span class="material-icons">auto_fix_high</span>
@@ -203,7 +206,7 @@
             {{-- ── System ── --}}
             <div class="nav-section-label">System</div>
 
-            <button class="nav-item w-100 border-0 {{ $adminSettingsActive ? 'active' : 'crm-nav-inactive' }}"
+            <button class="nav-item w-100 border-0 {{ $adminSettingsActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#adminSettingsMenu"
                 aria-expanded="{{ $adminSettingsActive ? 'true' : 'false' }}" aria-controls="adminSettingsMenu">
                 <span class="material-icons">settings</span>
@@ -251,20 +254,187 @@
 
         {{-- MANAGER MENU --}}
         @if (auth()->user()->role == 'manager')
-            {{-- <a href="{{ route('manager.dashboard') }}" class="nav-item">
+            @php
+                $mgrLeadsActive     = request()->routeIs('manager.leads*');
+                $mgrCampaignsActive = request()->routeIs('manager.campaigns.*');
+                $mgrEmailCampActive = request()->routeIs('manager.email-campaigns*');
+                $mgrReportsActive   = request()->routeIs('manager.reports.*');
+                $mgrFollowupsActive = request()->routeIs('manager.followups.*');
+                $mgrCallLogsActive  = request()->routeIs('manager.call-logs.*');
+                $mgrCallScope       = request('scope', 'all');
+            @endphp
+
+            {{-- Dashboard --}}
+            <a href="{{ route('manager.dashboard') }}"
+                onclick="inertiaVisit(event, this.href)"
+                class="nav-item {{ request()->routeIs('manager.dashboard') ? 'active' : '' }}">
                 <span class="material-icons">dashboard</span>
                 <span>Dashboard</span>
-            </a> --}}
-
-            <a href="{{ route('manager.leads') }}" class="nav-item">
-                <span class="material-icons">person_add</span>
-                <span>Leads</span>
             </a>
+
+            {{-- ── People ── --}}
+            <div class="nav-section-label">People</div>
+
+            <button class="nav-item w-100 border-0 {{ $mgrLeadsActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#mgrLeadsMenu"
+                aria-expanded="{{ $mgrLeadsActive ? 'true' : 'false' }}" aria-controls="mgrLeadsMenu">
+                <span class="material-icons">person_add</span>
+                <span class="flex-grow-1 text-start">Leads</span>
+                <span class="material-icons" style="font-size:18px;">expand_more</span>
+            </button>
+            <div id="mgrLeadsMenu" class="collapse {{ $mgrLeadsActive ? 'show' : '' }}"
+                style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
+                <a href="{{ route('manager.leads') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.leads') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">All Leads</a>
+                <a href="{{ route('manager.leads.duplicates') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.leads.duplicates') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Duplicate Leads</a>
+            </div>
+
             <a href="{{ route('manager.telecallers') }}"
+                onclick="inertiaVisit(event, this.href)"
                 class="nav-item {{ request()->routeIs('manager.telecallers*') ? 'active' : '' }}">
-                <span class="material-icons">call</span>
+                <span class="material-icons">headset_mic</span>
                 <span>Telecallers</span>
             </a>
+
+            {{-- ── Outreach ── --}}
+            <div class="nav-section-label">Outreach</div>
+
+            <button class="nav-item w-100 border-0 {{ $mgrCampaignsActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#mgrCampaignsMenu"
+                aria-expanded="{{ $mgrCampaignsActive ? 'true' : 'false' }}" aria-controls="mgrCampaignsMenu">
+                <span class="material-icons">campaign</span>
+                <span class="flex-grow-1 text-start">Campaigns</span>
+                <span class="material-icons" style="font-size:18px;">expand_more</span>
+            </button>
+            <div id="mgrCampaignsMenu" class="collapse {{ $mgrCampaignsActive ? 'show' : '' }}"
+                style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
+                <a href="{{ route('manager.campaigns.index') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.campaigns.index') || request()->routeIs('manager.campaigns.show') || request()->routeIs('manager.campaigns.create') || request()->routeIs('manager.campaigns.contact') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">All Campaigns</a>
+                <a href="{{ route('manager.campaigns.performance') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.campaigns.performance') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Performance</a>
+            </div>
+
+            <a href="{{ route('manager.email-campaigns.index') }}"
+                onclick="inertiaVisit(event, this.href)"
+                class="nav-item {{ $mgrEmailCampActive ? 'active' : '' }}">
+                <span class="material-icons">mark_email_read</span>
+                <span>Email Campaigns</span>
+            </a>
+
+            <a href="{{ route('manager.whatsapp.hub') }}"
+                onclick="inertiaVisit(event, this.href)"
+                class="nav-item {{ request()->routeIs('manager.whatsapp.*') ? 'active' : '' }}">
+                <span class="material-icons">chat</span>
+                <span>WhatsApp Chat</span>
+            </a>
+
+            {{-- ── Activity ── --}}
+            <div class="nav-section-label">Activity</div>
+
+            <button class="nav-item w-100 border-0 {{ $mgrFollowupsActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#mgrFollowupMenu"
+                aria-expanded="{{ $mgrFollowupsActive ? 'true' : 'false' }}" aria-controls="mgrFollowupMenu">
+                <span class="material-icons">event_note</span>
+                <span class="flex-grow-1 text-start">Follow-up Management</span>
+                <span class="material-icons" style="font-size:18px;">expand_more</span>
+            </button>
+            <div id="mgrFollowupMenu" class="collapse {{ $mgrFollowupsActive ? 'show' : '' }}"
+                style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
+                <a href="{{ route('manager.followups.today') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.followups.today') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Today</a>
+                <a href="{{ route('manager.followups.overdue') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.followups.overdue') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Overdue</a>
+                <a href="{{ route('manager.followups.upcoming') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.followups.upcoming') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Upcoming</a>
+                <a href="{{ route('manager.followups.missed') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.followups.missed') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Missed by Telecaller</a>
+            </div>
+
+            <button class="nav-item w-100 border-0 {{ $mgrCallLogsActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#mgrCallLogsMenu"
+                aria-expanded="{{ $mgrCallLogsActive ? 'true' : 'false' }}" aria-controls="mgrCallLogsMenu">
+                <span class="material-icons">call</span>
+                <span class="flex-grow-1 text-start">Call Logs</span>
+                <span class="material-icons" style="font-size:18px;">expand_more</span>
+            </button>
+            <div id="mgrCallLogsMenu" class="collapse {{ $mgrCallLogsActive ? 'show' : '' }}"
+                style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
+                <a href="{{ route('manager.call-logs.index', ['scope' => 'all']) }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ $mgrCallLogsActive && $mgrCallScope === 'all' ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">All Calls</a>
+                <a href="{{ route('manager.call-logs.index', ['scope' => 'inbound']) }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ $mgrCallLogsActive && $mgrCallScope === 'inbound' ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Inbound</a>
+                <a href="{{ route('manager.call-logs.index', ['scope' => 'outbound']) }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ $mgrCallLogsActive && $mgrCallScope === 'outbound' ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Outbound</a>
+                <a href="{{ route('manager.call-logs.index', ['scope' => 'missed']) }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ $mgrCallLogsActive && $mgrCallScope === 'missed' ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Missed</a>
+            </div>
+
+            {{-- ── Analytics ── --}}
+            <div class="nav-section-label">Analytics</div>
+
+            <button class="nav-item w-100 border-0 {{ $mgrReportsActive ? 'active' : 'bg-transparent' }}" type="button"
+                data-bs-toggle="collapse" data-bs-target="#mgrReportsMenu"
+                aria-expanded="{{ $mgrReportsActive ? 'true' : 'false' }}" aria-controls="mgrReportsMenu">
+                <span class="material-icons">bar_chart</span>
+                <span class="flex-grow-1 text-start">Reports & Analytics</span>
+                <span class="material-icons" style="font-size:18px;">expand_more</span>
+            </button>
+            <div id="mgrReportsMenu" class="collapse {{ $mgrReportsActive ? 'show' : '' }}"
+                style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
+                <a href="{{ route('manager.reports.home') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.reports.home') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Overview</a>
+                <a href="{{ route('manager.reports.telecaller-performance') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.reports.telecaller-performance') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Telecaller Performance</a>
+                <a href="{{ route('manager.reports.conversion') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.reports.conversion') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Conversion Report</a>
+                <a href="{{ route('manager.reports.source-performance') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.reports.source-performance') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Source Performance</a>
+                <a href="{{ route('manager.reports.period') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.reports.period') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Daily / Weekly / Monthly</a>
+                <a href="{{ route('manager.reports.response-time') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.reports.response-time') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Lead Response Time</a>
+                <a href="{{ route('manager.reports.call-efficiency') }}"
+                    onclick="inertiaVisit(event, this.href)"
+                    class="nav-item {{ request()->routeIs('manager.reports.call-efficiency') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Call Efficiency</a>
+            </div>
         @endif
 
 
@@ -285,8 +455,15 @@
                 $teleCallsMenuActive       = request()->routeIs('telecaller.calls.*');
             @endphp
 
-            {{-- Dashboard --}}
+            {{--
+                Inertia-enabled links use inertiaVisit() so the browser never does a full
+                page reload — the SIP iframe and its WebRTC session survive navigation.
+                Links for pages not yet migrated to Inertia are left as plain <a href>.
+            --}}
+
+            {{-- Dashboard (Inertia) --}}
             <a href="{{ route('telecaller.dashboard') }}"
+                onclick="inertiaVisit(event, this.href)"
                 class="nav-item {{ request()->routeIs('telecaller.dashboard') ? 'active' : '' }}">
                 <span class="material-icons">dashboard</span>
                 <span>Dashboard</span>
@@ -295,13 +472,17 @@
             {{-- ── Work ── --}}
             <div class="nav-section-label">Work</div>
 
+            {{-- My Leads (Inertia) --}}
             <a href="{{ route('telecaller.leads') }}"
+                onclick="inertiaVisit(event, this.href)"
                 class="nav-item {{ request()->routeIs('telecaller.leads*') ? 'active' : '' }}">
                 <span class="material-icons">person_add</span>
                 <span>My Leads</span>
             </a>
 
+            {{-- My Campaigns (Inertia) --}}
             <a href="{{ route('telecaller.campaigns.index') }}"
+                onclick="inertiaVisit(event, this.href)"
                 class="nav-item {{ request()->routeIs('telecaller.campaigns*') ? 'active' : '' }}">
                 <span class="material-icons">campaign</span>
                 <span>My Campaigns</span>
@@ -310,36 +491,19 @@
             {{-- ── Messaging ── --}}
             <div class="nav-section-label">Messaging</div>
 
+            {{-- WhatsApp Chat (Inertia) --}}
             <a href="{{ route('telecaller.whatsapp.hub') }}"
+                onclick="inertiaVisit(event, this.href)"
                 class="nav-item {{ request()->routeIs('telecaller.whatsapp.*') ? 'active' : '' }}">
                 <span class="material-icons">chat</span>
                 <span>WhatsApp Chat</span>
             </a>
 
-            {{-- <a href="{{ route('telecaller.instagram.index') }}"
-                class="nav-item {{ request()->routeIs('telecaller.instagram.*') ? 'active' : '' }}">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                    style="flex-shrink:0;">
-                    <defs>
-                        <linearGradient id="igGradTc" x1="0%" y1="100%" x2="100%" y2="0%">
-                            <stop offset="0%" style="stop-color:#f09433"/>
-                            <stop offset="25%" style="stop-color:#e6683c"/>
-                            <stop offset="50%" style="stop-color:#dc2743"/>
-                            <stop offset="75%" style="stop-color:#cc2366"/>
-                            <stop offset="100%" style="stop-color:#bc1888"/>
-                        </linearGradient>
-                    </defs>
-                    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" fill="url(#igGradTc)"/>
-                    <circle cx="12" cy="12" r="4.5" fill="none" stroke="white" stroke-width="1.8"/>
-                    <circle cx="17.5" cy="6.5" r="1.2" fill="white"/>
-                </svg>
-                <span>Instagram Chat</span>
-            </a> --}}
-
             {{-- ── Activity ── --}}
             <div class="nav-section-label">Activity</div>
 
-            <button class="nav-item w-100 border-0 {{ $teleCallsMenuActive ? 'active' : 'crm-nav-inactive' }}"
+            {{-- Call Management (Inertia) --}}
+            <button class="nav-item w-100 border-0 {{ $teleCallsMenuActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerCallsMenu"
                 aria-expanded="{{ $teleCallsMenuActive ? 'true' : 'false' }}"
                 aria-controls="telecallerCallsMenu">
@@ -350,20 +514,25 @@
             <div id="telecallerCallsMenu" class="collapse {{ $teleCallsMenuActive ? 'show' : '' }}"
                 style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
                 <a href="{{ route('telecaller.calls.outbound') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.calls.outbound') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Outbound Calls</a>
                 <a href="{{ route('telecaller.calls.inbound') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.calls.inbound') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Inbound Calls</a>
                 <a href="{{ route('telecaller.calls.missed') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.calls.missed') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Missed Calls</a>
                 <a href="{{ route('telecaller.calls.history') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.calls.history') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Call History</a>
             </div>
 
-            <button class="nav-item w-100 border-0 {{ $teleFollowupMenuActive ? 'active' : 'crm-nav-inactive' }}"
+            {{-- Follow-ups (Inertia) --}}
+            <button class="nav-item w-100 border-0 {{ $teleFollowupMenuActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerFollowupMenu"
                 aria-expanded="{{ $teleFollowupMenuActive ? 'true' : 'false' }}" aria-controls="telecallerFollowupMenu">
                 <span class="material-icons">event_note</span>
@@ -376,15 +545,19 @@
             <div id="telecallerFollowupMenu" class="collapse {{ $teleFollowupMenuActive ? 'show' : '' }}"
                 style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
                 <a href="{{ route('telecaller.followups.today') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.followups.today') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Today</a>
                 <a href="{{ route('telecaller.followups.overdue') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.followups.overdue') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Overdue</a>
                 <a href="{{ route('telecaller.followups.upcoming') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.followups.upcoming') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Upcoming</a>
                 <a href="{{ route('telecaller.followups.completed') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.followups.completed') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Completed</a>
             </div>
@@ -392,7 +565,8 @@
             {{-- ── Analytics ── --}}
             <div class="nav-section-label">Analytics</div>
 
-            <button class="nav-item w-100 border-0 {{ $telePerformanceMenuActive ? 'active' : 'crm-nav-inactive' }}"
+            {{-- My Performance (plain — not yet on Inertia) --}}
+            <button class="nav-item w-100 border-0 {{ $telePerformanceMenuActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerPerformanceMenu"
                 aria-expanded="{{ $telePerformanceMenuActive ? 'true' : 'false' }}"
                 aria-controls="telecallerPerformanceMenu">
@@ -403,12 +577,15 @@
             <div id="telecallerPerformanceMenu" class="collapse {{ $telePerformanceMenuActive ? 'show' : '' }}"
                 style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
                 <a href="{{ route('telecaller.performance.daily') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.performance.daily') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Daily</a>
                 <a href="{{ route('telecaller.performance.weekly') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.performance.weekly') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Weekly</a>
                 <a href="{{ route('telecaller.performance.monthly') }}"
+                    onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('telecaller.performance.monthly') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Monthly</a>
             </div>
@@ -443,9 +620,9 @@
             </form>
 
             {{-- User popup menu --}}
-            <div id="sidebarUserMenu" style="display:none;position:absolute;bottom:60px;left:0;right:0;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;overflow:hidden;">
-                <a href="{{ route('password.change') }}" class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none" style="color:#cbd5e1;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='rgba(99,102,241,0.15)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='#cbd5e1'">
-                    <span class="material-icons" style="font-size:18px;color:#a5b4fc;">lock_reset</span>
+            <div id="sidebarUserMenu" style="display:none;position:absolute;bottom:60px;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:9999;overflow:hidden;">
+                <a href="{{ route('password.change') }}" class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none" style="color:#0f172a;font-size:13px;font-weight:500;transition:background .15s;" onmouseover="this.style.background='#f6f7f8'" onmouseout="this.style.background='transparent'">
+                    <span class="material-icons" style="font-size:18px;color:#137fec;">lock_reset</span>
                     Change Password
                 </a>
             </div>
@@ -463,6 +640,82 @@ document.addEventListener('click', function(e) {
     if (!menu) return;
     if (!e.target.closest('.user-profile')) {
         menu.style.display = 'none';
+    }
+});
+
+/**
+ * inertiaVisit(event, url)
+ *
+ * Intercepts a link click and delegates to Inertia's router so only the
+ * React page component swaps — the outer shell (sidebar, header, TCN iframe)
+ * is never destroyed, keeping the SIP/WebRTC connection alive across navigation.
+ *
+ * Falls back to normal browser navigation if the Inertia router isn't ready yet
+ * (e.g. first hard load before inertia-app.jsx has bootstrapped).
+ */
+function inertiaVisit(event, url) {
+    if (window._inertiaRouter) {
+        event.preventDefault();
+        window._inertiaRouter.visit(url);
+    }
+    // else: let the default href navigate normally
+}
+
+function syncSidebarActive(url) {
+    try {
+        const path = new URL(url, window.location.origin).pathname;
+        const nav = document.querySelector('.sidebar-nav');
+        if (!nav) return;
+
+        // Remove active from all plain nav-item anchors and buttons
+        nav.querySelectorAll('a.nav-item, button.nav-item').forEach(el => {
+            el.classList.remove('active');
+            if (el.tagName === 'BUTTON') {
+                el.classList.add('bg-transparent');
+            }
+        });
+
+        // Close all collapse sub-menus
+        nav.querySelectorAll('.collapse').forEach(el => el.classList.remove('show'));
+
+        // Find the best matching link
+        let bestLink = null;
+        let bestLen = 0;
+        nav.querySelectorAll('a.nav-item[href]').forEach(a => {
+            try {
+                const aPath = new URL(a.href, window.location.origin).pathname;
+                if (path.startsWith(aPath) && aPath.length > bestLen) {
+                    bestLen = aPath.length;
+                    bestLink = a;
+                }
+            } catch (e) {}
+        });
+
+        if (bestLink) {
+            bestLink.classList.add('active');
+            // If it's inside a collapse sub-menu, open the parent collapse and activate its toggle button
+            const collapse = bestLink.closest('.collapse');
+            if (collapse) {
+                collapse.classList.add('show');
+                const toggleId = collapse.id;
+                const btn = nav.querySelector(`[data-bs-target="#${toggleId}"]`);
+                if (btn) {
+                    btn.classList.add('active');
+                    btn.classList.remove('bg-transparent');
+                }
+            }
+        }
+    } catch (e) {}
+}
+
+// Sync on hard load and on every Inertia navigation
+document.addEventListener('DOMContentLoaded', function () {
+    syncSidebarActive(window.location.href);
+    // Keep active state in sync across Inertia SPA navigations
+    if (window._inertiaRouter && typeof window._inertiaRouter.on === 'function') {
+        window._inertiaRouter.on('navigate', function () {
+            syncSidebarActive(window.location.href);
+        });
     }
 });
 </script>

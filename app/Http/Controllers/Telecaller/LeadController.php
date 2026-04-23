@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\WhatsAppMessage;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
+use Inertia\Inertia;
 
 class LeadController extends Controller
 {
@@ -69,17 +70,31 @@ class LeadController extends Controller
             ->groupByRaw('DATE(next_followup)')
             ->pluck('total', 'day');
 
-        return view('telecaller.dashboard', compact(
-            'totalAssignedLeads',
-            'newLeads',
-            'followupsToday',
-            'overdueFollowups',
-            'totalCallsToday',
-            'talkTimeTodaySeconds',
-            'activeCallCount',
-            'missedCallbacks',
-            'followupCalendar'
-        ));
+        // Missed callbacks — serialise to plain arrays for JSON transport
+        $missedCallbacksData = $missedCallbacks->map(fn($c) => [
+            'id'               => $c->id,
+            'phone'            => $c->phone,
+            'status'           => $c->status,
+            'created_at'       => $c->created_at?->toDateTimeString(),
+            'lead_name'        => $c->lead?->name ?? 'Unknown Lead',
+            'lead_code'        => $c->lead?->lead_code ?? '-',
+            'lead_phone'       => $c->lead?->phone ?? $c->phone,
+            'encrypted_lead_id'=> $c->lead_id ? encrypt($c->lead_id) : null,
+        ]);
+
+        return Inertia::render('Telecaller/Dashboard', [
+            'stats' => [
+                'assigned'       => $totalAssignedLeads,
+                'new_leads'      => $newLeads,
+                'followups'      => $followupsToday,
+                'overdue'        => $overdueFollowups,
+                'calls'          => $totalCallsToday,
+                'talk_time_secs' => $talkTimeTodaySeconds,
+                'active_calls'   => $activeCallCount,
+            ],
+            'missed_callbacks' => $missedCallbacksData,
+            'followup_calendar' => $followupCalendar,
+        ]);
     }
 
     /* ======================================================
@@ -87,7 +102,7 @@ class LeadController extends Controller
     ======================================================*/
     public function index(Request $request)
     {
-        $query = Lead::with(['assignedBy', 'followups'])
+        $query = Lead::with(['enrolledCourse'])
             ->where('assigned_to', Auth::id());
 
         /* ---------- FILTERS ---------- */
@@ -118,7 +133,13 @@ class LeadController extends Controller
             }
         }
 
-        $leads = $query->latest()->paginate(10);
+        $leads = $query->latest()->paginate(10)->withQueryString()->through(function ($lead) {
+            $lead->encrypted_id = encrypt($lead->id);
+            $lead->course       = $lead->enrolledCourse?->name;
+            $lead->days_aged    = (int) ($lead->created_at?->diffInDays(now()) ?? 0);
+            $lead->makeHidden(['enrolledCourse', 'assignedBy', 'assignedUser', 'followups', 'activities', 'whatsappMessages', 'lastActivity']);
+            return $lead;
+        });
 
 
         /* ---------- DASHBOARD COUNTS ---------- */
@@ -143,34 +164,21 @@ class LeadController extends Controller
             ->whereIn('status', ['initiated', 'ringing', 'in-progress', 'answered'])
             ->count();
 
-        $missedCallbacks = CallLog::with('lead:id,name,lead_code,phone')
-            ->where('user_id', Auth::id())
-            ->where('direction', 'inbound')
-            ->whereIn('status', ['missed', 'no-answer'])
-            ->latest('id')
-            ->limit(5)
-            ->get();
-
-        $todayFollowupsQuery = Followup::with('lead:id,name,lead_code,phone')
-            ->whereDate('next_followup', today())
-            ->whereHas('lead', fn($q) => $q->whereAssignedTo(Auth::id()))
-            ->orderBy('next_followup');
-        if ($hasCompletedAt) {
-            $todayFollowupsQuery->whereNull('completed_at');
-        }
-        $todayFollowups = $todayFollowupsQuery->limit(5)->get();
-
-
-        return view('telecaller.leads.index', compact(
-            'leads',
-            'totalLeads',
-            'newLeads',
-            'interestedLeads',
-            'followupToday',
-            'activeCallCount',
-            'missedCallbacks',
-            'todayFollowups'
-        ));
+        return Inertia::render('Telecaller/Leads/Index', [
+            'stats' => [
+                'total'        => $totalLeads,
+                'new'          => $newLeads,
+                'interested'   => $interestedLeads,
+                'followup'     => $followupToday,
+                'active_calls' => $activeCallCount,
+            ],
+            'leads'   => $leads,
+            'filters' => [
+                'search'     => $request->search     ?? '',
+                'status'     => $request->status     ?? '',
+                'date_range' => $request->date_range ?? '',
+            ],
+        ]);
     }
 
 
@@ -187,20 +195,55 @@ class LeadController extends Controller
         }
 
         $lead = Lead::with([
-            'assignedBy',
-            'activities.user',
-            'followups'
+            'assignedBy:id,name',
+            'enrolledCourse:id,name',
+            'activities.user:id,name',
         ])
             ->where('assigned_to', Auth::id())
             ->findOrFail($id);
 
-        $provider = Setting::get('primary_call_provider', 'tcn');
         $whatsappMessages = Schema::hasTable('whatsapp_messages')
             ? WhatsAppMessage::where('lead_id', $lead->id)->orderBy('created_at')->get()
             : collect();
-        $waTemplateName = Setting::get('meta_whatsapp_template_name', 'welcome_template');
 
-        return view('telecaller.leads.show', compact('lead', 'provider', 'whatsappMessages', 'waTemplateName'));
+        $waTemplateName = Setting::get('meta_whatsapp_template_name', 'welcome_template');
+        $encId = encrypt($lead->id);
+
+        // Flatten to plain scalars — JSX renders these directly as strings/numbers.
+        // Raw Eloquent models would serialize relationship objects (User, Course) as nested
+        // JS objects which React cannot render as children (Error #31).
+        $leadData = [
+            'id'          => $lead->id,
+            'lead_code'   => $lead->lead_code,
+            'name'        => $lead->name,
+            'phone'       => $lead->phone,
+            'email'       => $lead->email,
+            'status'      => $lead->status,
+            'course'      => $lead->enrolledCourse?->name,
+            'assigned_by' => $lead->assignedBy?->name,
+            'activities'  => $lead->activities->map(fn($a) => [
+                'id'          => $a->id,
+                'type'        => $a->type,
+                'description' => $a->description,
+                'user'        => $a->user?->name,
+                'time'        => $a->activity_time?->format('d M Y, h:i A'),
+            ])->values()->all(),
+        ];
+
+        return Inertia::render('Telecaller/Leads/Show', [
+            'lead'              => $leadData,
+            'whatsapp_messages' => $whatsappMessages,
+            'wa_template_name'  => $waTemplateName,
+            'urls' => [
+                'wa_fetch'      => route('telecaller.leads.whatsapp.fetch',    $encId),
+                'wa_store'      => route('telecaller.leads.whatsapp.store',    $encId),
+                'wa_media'      => route('telecaller.leads.whatsapp.media',    $encId),
+                'wa_template'   => route('telecaller.leads.whatsapp.template', $encId),
+                'add_note'      => route('telecaller.leads.addNote',           $encId),
+                'change_status' => route('telecaller.leads.changeStatus',      $encId),
+                'call_outcome'  => route('call.outcome'),
+            ],
+        ]);
     }
 
 
@@ -235,10 +278,33 @@ class LeadController extends Controller
 
         $columns = [];
         foreach ($statuses as $status) {
-            $columns[$status] = (clone $base)->where('status', $status)->latest()->limit(60)->get();
+            $columns[$status] = (clone $base)->where('status', $status)->latest()->limit(60)->get()
+                ->map(fn($lead) => [
+                    'id'           => $lead->id,
+                    'encrypted_id' => encrypt($lead->id),
+                    'lead_code'    => $lead->lead_code,
+                    'name'         => $lead->name,
+                    'phone'        => $lead->phone,
+                    'course'       => $lead->enrolledCourse?->name,
+                    'days_aged'    => (int) ($lead->created_at?->diffInDays(now()) ?? 0),
+                    'created_at'   => $lead->created_at?->format('d M'),
+                    'next_followup'=> $lead->followups->sortByDesc('next_followup')->first()?->next_followup,
+                ])->values()->all();
         }
 
-        return view('telecaller.leads.pipeline', compact('columns'));
+        return Inertia::render('Telecaller/Leads/Pipeline', [
+            'columns' => $columns,
+            'filters' => [
+                'search'     => $request->search     ?? '',
+                'date_range' => $request->date_range ?? '',
+            ],
+            'urls' => [
+                'pipeline'        => route('telecaller.leads.pipeline'),
+                'pipeline_status' => route('telecaller.leads.pipeline.status'),
+                'leads_index'     => route('telecaller.leads'),
+                'lead_show_base'  => url('telecaller/leads'),
+            ],
+        ]);
     }
 
     public function updatePipelineStatus(Request $request)
@@ -517,4 +583,3 @@ class LeadController extends Controller
     }
     
 }
-

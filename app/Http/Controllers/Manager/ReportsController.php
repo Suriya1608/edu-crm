@@ -13,6 +13,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Inertia\Inertia;
 
 class ReportsController extends Controller
 {
@@ -61,18 +62,18 @@ class ReportsController extends Controller
 
         $telecallerRows = $this->telecallerPerformanceRows($startAt, $endAt, $filters);
 
-        return view('manager.reports.home', compact(
-            'filters',
-            'filterOptions',
-            'totalLeads',
-            'contactedLeads',
-            'convertedLeads',
-            'conversionRate',
-            'activeTelecallers',
-            'funnel',
-            'sourceRows',
-            'telecallerRows'
-        ));
+        return Inertia::render('Manager/Reports/Home', [
+            'filters'           => $filters,
+            'filterOptions'     => $filterOptions,
+            'totalLeads'        => $totalLeads,
+            'contactedLeads'    => $contactedLeads,
+            'convertedLeads'    => $convertedLeads,
+            'conversionRate'    => $conversionRate,
+            'activeTelecallers' => $activeTelecallers,
+            'funnel'            => $funnel,
+            'sourceRows'        => $sourceRows,
+            'telecallerRows'    => $telecallerRows,
+        ]);
     }
 
     public function telecallerPerformance(Request $request)
@@ -81,7 +82,7 @@ class ReportsController extends Controller
         $filterOptions = $this->filterOptions();
         [$startAt, $endAt] = $this->periodRange($filters['date_range']);
         $rows = $this->telecallerPerformanceRows($startAt, $endAt, $filters);
-        return view('manager.reports.telecaller_performance', compact('filters', 'filterOptions', 'rows'));
+        return Inertia::render('Manager/Reports/TelecallerPerformance', compact('filters', 'filterOptions', 'rows'));
     }
 
     public function conversion(Request $request)
@@ -130,7 +131,7 @@ class ReportsController extends Controller
                 return ['name' => $u->name, 'total' => $u->total_leads, 'converted' => $u->converted_leads, 'rate' => $rate];
             });
 
-        return view('manager.reports.conversion', compact('filters', 'filterOptions', 'statusRows', 'teleRows'));
+        return Inertia::render('Manager/Reports/Conversion', compact('filters', 'filterOptions', 'statusRows', 'teleRows'));
     }
 
     public function sourcePerformance(Request $request)
@@ -155,7 +156,7 @@ class ReportsController extends Controller
                 return $r;
             });
 
-        return view('manager.reports.source_performance', compact('filters', 'filterOptions', 'rows'));
+        return Inertia::render('Manager/Reports/SourcePerformance', compact('filters', 'filterOptions', 'rows'));
     }
 
     public function period(Request $request)
@@ -187,7 +188,7 @@ class ReportsController extends Controller
             ->orderBy('period_month')
             ->get();
 
-        return view('manager.reports.period', compact('filters', 'filterOptions', 'daily', 'weekly', 'monthly'));
+        return Inertia::render('Manager/Reports/Period', compact('filters', 'filterOptions', 'daily', 'weekly', 'monthly'));
     }
 
     public function responseTime(Request $request)
@@ -233,7 +234,7 @@ class ReportsController extends Controller
 
         $avgResponse = round($rows->whereNotNull('response_minutes')->avg('response_minutes') ?? 0, 2);
 
-        return view('manager.reports.response_time', compact('filters', 'filterOptions', 'rows', 'avgResponse'));
+        return Inertia::render('Manager/Reports/ResponseTime', compact('filters', 'filterOptions', 'rows', 'avgResponse'));
     }
 
     public function callEfficiency(Request $request)
@@ -272,7 +273,7 @@ class ReportsController extends Controller
                 return $r;
             });
 
-        return view('manager.reports.call_efficiency', compact('filters', 'filterOptions', 'rows'));
+        return Inertia::render('Manager/Reports/CallEfficiency', compact('filters', 'filterOptions', 'rows'));
     }
 
     public function export(Request $request, string $report, string $format)

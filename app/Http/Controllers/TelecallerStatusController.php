@@ -13,7 +13,6 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TelecallerStatusController extends Controller
 {
@@ -158,51 +157,6 @@ class TelecallerStatusController extends Controller
         }
         /** @var \App\Models\User $user */
 
-        return response()->json($this->buildNotificationsSnapshotPayload($user));
-    }
-
-    public function notificationsStream(Request $request): StreamedResponse
-    {
-        $user = Auth::user();
-        if (!$user || $user->role !== 'telecaller') {
-            abort(403);
-        }
-        /** @var \App\Models\User $user */
-
-        return response()->stream(function () use ($user) {
-            $startedAt = microtime(true);
-            $maxStreamSeconds = 55; // keep short-lived; browser reconnects automatically
-            $lastHash = null;
-
-            while (!connection_aborted() && (microtime(true) - $startedAt) < $maxStreamSeconds) {
-                $payload = $this->buildNotificationsSnapshotPayload($user);
-                $hash = md5((string) json_encode($payload));
-
-                if ($hash !== $lastHash) {
-                    echo "event: notifications\n";
-                    echo 'data: ' . json_encode($payload) . "\n\n";
-                    $lastHash = $hash;
-                } else {
-                    // Keep intermediaries and browser connection alive.
-                    echo ": keepalive\n\n";
-                }
-
-                @ob_flush();
-                @flush();
-                sleep(5);
-            }
-        }, 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache, no-transform',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no',
-        ]);
-    }
-
-    private function buildNotificationsSnapshotPayload(User $user): array
-    {
-        /** @var \App\Models\User $user */
-
         $missedCalls = CallLog::with('lead:id,name,lead_code,phone')
             ->where('user_id', $user->id)
             ->where('direction', 'inbound')
@@ -289,14 +243,14 @@ class TelecallerStatusController extends Controller
         $badgeCount = $missedCalls->count() + $followupReminders->count()
             + $whatsappNotifications->count() + $systemNotifications->count();
 
-        return [
+        return response()->json([
             'ok'                    => true,
             'badge_count'           => $badgeCount,
             'missed_calls'          => $missedCalls,
             'followup_reminders'    => $followupReminders,
             'whatsapp_notifications' => $whatsappNotifications,
             'system_notifications'  => $systemNotifications,
-        ];
+        ]);
     }
 
     public function markNotificationsRead()

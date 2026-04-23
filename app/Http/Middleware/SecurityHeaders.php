@@ -11,17 +11,6 @@ class SecurityHeaders
     public function handle(Request $request, Closure $next): Response
     {
         $response = $next($request);
-        $cspNonce = base64_encode(random_bytes(16));
-        $request->attributes->set('csp_nonce', $cspNonce);
-
-        if ($this->isHtmlResponse($response)) {
-            $content = (string) $response->getContent();
-            if ($content !== '') {
-                $content = preg_replace('/<script\b(?![^>]*\bnonce=)([^>]*)>/i', '<script nonce="' . $cspNonce . '"$1>', $content) ?? $content;
-                $content = preg_replace('/<style\b(?![^>]*\bnonce=)([^>]*)>/i', '<style nonce="' . $cspNonce . '"$1>', $content) ?? $content;
-                $response->setContent($content);
-            }
-        }
 
         // Prevent clickjacking
         $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
@@ -47,12 +36,12 @@ class SecurityHeaders
         }
 
         // Content Security Policy
-        // Inline scripts are nonce-protected. Inline styles are still temporarily allowed
-        // because the current UI uses style attributes extensively across Blade templates.
+        // 'unsafe-inline' is required because the app uses inline <script> and <style> blocks.
+        // frame-ancestors and form-action constraints still provide meaningful protection.
         $csp = implode('; ', [
             "default-src 'self'",
-            "script-src 'self' 'nonce-{$cspNonce}' cdn.jsdelivr.net cdnjs.cloudflare.com",
-            "style-src 'self' 'unsafe-inline' 'nonce-{$cspNonce}' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com",
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.jsdelivr.net cdnjs.cloudflare.com",
+            "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com",
             "font-src 'self' fonts.gstatic.com fonts.googleapis.com cdnjs.cloudflare.com data:",
             "img-src 'self' data: blob: https://placehold.co https://cdn-icons-png.flaticon.com",
             "connect-src 'self' cdn.jsdelivr.net cdnjs.cloudflare.com fonts.googleapis.com fonts.gstatic.com wss: https://api.bom.tcn.com https://auth.tcn.com https://api.tcn.com",
@@ -69,12 +58,5 @@ class SecurityHeaders
         $response->headers->remove('Server');
 
         return $response;
-    }
-
-    private function isHtmlResponse(Response $response): bool
-    {
-        $contentType = strtolower((string) $response->headers->get('Content-Type', ''));
-
-        return str_contains($contentType, 'text/html');
     }
 }

@@ -9,6 +9,7 @@
     "devDependencies": {
         "@tailwindcss/forms": "^0.5.2",
         "@tailwindcss/vite": "^4.0.0",
+        "@vitejs/plugin-react": "^5.2.0",
         "alpinejs": "^3.4.2",
         "autoprefixer": "^10.4.2",
         "axios": "^1.11.0",
@@ -19,7 +20,11 @@
         "vite": "^7.0.7"
     },
     "dependencies": {
+        "@hotwired/turbo": "^8.0.5",
+        "@inertiajs/react": "^3.0.3",
+        "@twilio/voice-sdk": "^2.18.0",
+        "react": "^19.2.5",
+        "react-dom": "^19.2.5",
         "sip.js": "^0.21.2"
     }
 }
-

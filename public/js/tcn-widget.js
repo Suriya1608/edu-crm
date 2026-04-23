@@ -1,280 +1,637 @@
 /**
- * tcn-widget.js — v5.0  iframe postMessage bridge
- * ─────────────────────────────────────────────────────────────────────────────
+ * tcn-widget.js — Floating softphone widget for TCN WebRTC integration
  *
- * ARCHITECTURE (v5)
- * ──────────────────
- * tcn-softphone.js runs ONLY inside <iframe id="sipClientFrame"> (/sip-client).
- * This widget is loaded in the parent CRM layout and bridges:
+ * Depends on: tcn-softphone.js (window.TCN), global-call.js (window.GC)
+ * Material Icons and Manrope font must be loaded by the host page.
  *
- *   iframe → postMessage → window.message listener here
- *          → document CustomEvents → global-call.js
+ * Auto-initializes on DOMContentLoaded.
+ * Exposes: window.TcnWidget = { setState, setPhone, expand, collapse }
  *
- *   global-call.js / .call-btn → TCNWidget.call()
- *          → postMessage → iframe → window.TCN.startCall()
- *
- * A minimal window.TCN proxy is kept in sync so that global-call.js
- * readiness checks (window.TCN.isReady, window.TCN._loggedIn) continue
- * to work without modification.
- *
- * Singleton guard: the IIFE exits immediately if already loaded.
+ * States: connecting | ready | paused | calling | on-call | incoming | wrapup | error
  */
-(function (window, document) {
+(function () {
     'use strict';
 
-    if (window.__tcnWidgetV5) return;
-    window.__tcnWidgetV5 = true;
+    // ─── Design tokens ───────────────────────────────────────────────────
+    var C = {
+        primary:  '#137fec',
+        success:  '#10b981',
+        warning:  '#f59e0b',
+        danger:   '#ef4444',
+        muted:    '#64748b',
+        white:    '#ffffff',
+        surface:  '#f8fafc',
+        border:   '#e2e8f0',
+        dark:     '#0f172a',
+    };
 
-    // ── Internal state ────────────────────────────────────────────────────────
-    var _frame   = null;   // <iframe id="sipClientFrame"> element
-    var _wrapper = null;   // <div id="sipClientWrapper"> element
-    var _snap    = null;   // last known state snapshot from iframe
-    var _origin  = window.location.origin;
+    // ─── State ───────────────────────────────────────────────────────────
+    var _state        = 'connecting';
+    var _phone        = '';
+    var _incomingPhone = '';
+    var _muted        = false;
+    var _agentPaused  = false;
+    var _expanded     = false;
+    var _callSecs     = 0;
+    var _callTimer    = null;
 
-    // Heights for expand/minimise transitions.
-    var _H_EXPANDED  = '460px';
-    var _H_MINIMIZED = '44px';   // show only the softphone header bar
+    // DOM refs populated by buildWidget()
+    var W = {};
 
-    // ── Call button state ─────────────────────────────────────────────────────
-
-    function _setCallButtonsEnabled(enabled) {
-        ['.call-btn', '.integrated-call-btn'].forEach(function (sel) {
-            document.querySelectorAll(sel).forEach(function (el) {
-                el.disabled = !enabled;
-                el.title    = enabled ? '' : 'Softphone connecting\u2026';
+    // ─── Helper: create element with attributes ───────────────────────────
+    function el(tag, attrs, html) {
+        var e = document.createElement(tag);
+        if (attrs) {
+            Object.keys(attrs).forEach(function (k) {
+                if (k === 'class')      { e.className = attrs[k]; }
+                else if (k === 'style') { e.style.cssText = attrs[k]; }
+                else                   { e.setAttribute(k, attrs[k]); }
             });
+        }
+        if (html !== undefined) e.innerHTML = html;
+        return e;
+    }
+
+    function csrf() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        return m ? m.getAttribute('content') : '';
+    }
+
+    // ─── Build widget DOM ────────────────────────────────────────────────
+    function buildWidget() {
+        // ── Inject CSS ──────────────────────────────────────────────────
+        var styleEl = document.createElement('style');
+        styleEl.textContent = [
+            '#tcnWidget{position:fixed;bottom:20px;right:20px;z-index:1040;font-family:"Manrope",sans-serif;}',
+            '#tcnWidgetTab{width:52px;height:52px;border-radius:50%;background:' + C.muted + ';cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,.22);transition:background .25s;position:relative;user-select:none;}',
+            '#tcnWidgetTab:hover{box-shadow:0 6px 24px rgba(0,0,0,.28);}',
+            '#tcnWidgetDot{width:11px;height:11px;border-radius:50%;position:absolute;top:1px;right:1px;border:2px solid #fff;background:' + C.muted + ';transition:background .25s;}',
+            '#tcnWidgetPanel{width:268px;background:#fff;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.18);border:1px solid ' + C.border + ';overflow:hidden;margin-bottom:10px;animation:tcnSlideUp .2s ease;}',
+            '.tcn-dp{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:4px 14px 12px;}',
+            '.tcn-dp-key{height:44px;border:none;border-radius:9px;background:' + C.surface + ';font-family:"Manrope",sans-serif;font-size:18px;font-weight:700;color:' + C.dark + ';cursor:pointer;transition:background .12s;display:flex;align-items:center;justify-content:center;}',
+            '.tcn-dp-key:hover{background:' + C.border + ';}',
+            '.tcn-dp-key:active{background:#dbeafe;color:' + C.primary + ';}',
+            '.tcn-dp-back{height:38px;border:none;border-radius:9px;background:' + C.surface + ';font-family:"Manrope",sans-serif;cursor:pointer;transition:background .12s;display:flex;align-items:center;justify-content:center;color:' + C.muted + ';grid-column:1/-1;}',
+            '.tcn-dp-back:hover{background:' + C.border + ';}',
+            '.tcn-ctrl-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:9px;padding:10px 0;font-family:"Manrope",sans-serif;font-weight:700;font-size:13px;cursor:pointer;border:1px solid ' + C.border + ';transition:opacity .15s;}',
+            '.tcn-icon-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:9px;padding:10px 0;font-family:"Manrope",sans-serif;font-weight:600;font-size:11px;cursor:pointer;border:1px solid ' + C.border + ';background:' + C.surface + ';color:' + C.dark + ';transition:background .15s;}',
+            '.tcn-icon-btn:hover{background:' + C.border + ';}',
+            '.tcn-incoming-banner{background:linear-gradient(135deg,#059669,#10b981);padding:14px 14px 12px;text-align:center;}',
+            '.tcn-incoming-icon{font-size:32px;color:#fff;animation:tcnRingBounce .6s ease-in-out infinite alternate;display:block;}',
+            '.tcn-incoming-label{font-size:11px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.8px;margin-top:4px;}',
+            '.tcn-incoming-num{font-size:20px;font-weight:800;color:#fff;margin-top:2px;letter-spacing:1px;}',
+            '.tcn-incoming-btns{display:flex;gap:10px;padding:12px 14px 14px;}',
+            '@keyframes tcnSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}',
+            '@keyframes tcnPulse{0%,100%{opacity:1}50%{opacity:.6}}',
+            '@keyframes tcnRingBounce{from{transform:rotate(-15deg) scale(1)}to{transform:rotate(15deg) scale(1.15)}}',
+        ].join('');
+        document.head.appendChild(styleEl);
+
+        // ── Root container ──────────────────────────────────────────────
+        var root = el('div', { id: 'tcnWidget', style: 'display:none;' });
+
+        // ── Panel ───────────────────────────────────────────────────────
+        var panel = el('div', { id: 'tcnWidgetPanel', style: 'display:none;' });
+
+        //   Header
+        var hdr = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;border-bottom:1px solid ' + C.border + ';' });
+        var hdrLeft = el('div', { style: 'display:flex;align-items:center;gap:8px;' });
+        var hdrIcon = el('span', { class: 'material-icons', style: 'color:' + C.primary + ';font-size:20px;' }, 'phone');
+        var hdrTitle = el('span', { style: 'font-weight:700;font-size:13px;color:' + C.dark + ';' }, 'TCN Softphone');
+        hdrLeft.appendChild(hdrIcon);
+        hdrLeft.appendChild(hdrTitle);
+        var minBtn = el('button', { style: 'background:none;border:none;cursor:pointer;color:' + C.muted + ';padding:2px;line-height:1;display:flex;align-items:center;' });
+        minBtn.innerHTML = '<span class="material-icons" style="font-size:18px;">remove</span>';
+        minBtn.addEventListener('click', function (e) { e.stopPropagation(); collapse(); });
+        hdr.appendChild(hdrLeft);
+        hdr.appendChild(minBtn);
+
+        //   Status bar
+        var statusBar = el('div', { style: 'display:flex;align-items:center;gap:7px;padding:6px 14px 8px;' });
+        var statusDot = el('span', { style: 'width:9px;height:9px;border-radius:50%;display:inline-block;background:' + C.muted + ';flex-shrink:0;transition:background .25s;' });
+        var statusTxt = el('span', { style: 'font-size:12px;font-weight:600;color:' + C.muted + ';transition:color .25s;' }, 'Connecting\u2026');
+        statusBar.appendChild(statusDot);
+        statusBar.appendChild(statusTxt);
+
+        //   Phone display
+        var phoneDisp = el('div', { style: 'margin:0 14px 8px;padding:10px 12px;background:' + C.surface + ';border:1px solid ' + C.border + ';border-radius:9px;font-size:19px;font-weight:800;color:' + C.dark + ';letter-spacing:1.5px;min-height:46px;line-height:1.3;word-break:break-all;font-variant-numeric:tabular-nums;' });
+        phoneDisp.textContent = '\u2014';
+
+        //   Dial pad
+        var dpSection = el('div', { id: 'tcnDpSection' });
+        var dpGrid = el('div', { class: 'tcn-dp' });
+        ['1','2','3','4','5','6','7','8','9','*','0','#'].forEach(function (k) {
+            var b = el('button', { class: 'tcn-dp-key', 'data-tcn-key': k }, k);
+            b.addEventListener('click', function () { appendDigit(k); });
+            dpGrid.appendChild(b);
+        });
+        var bkBtn = el('button', { class: 'tcn-dp-back' });
+        bkBtn.innerHTML = '<span class="material-icons" style="font-size:18px;">backspace</span>';
+        bkBtn.addEventListener('click', function () { deleteDigit(); });
+        dpGrid.appendChild(bkBtn);
+        dpSection.appendChild(dpGrid);
+
+        //   Pre-call controls
+        var preCallCtrl = el('div', { style: 'padding:0 14px 12px;' });
+        var callBtn = el('button', { class: 'tcn-ctrl-btn', style: 'width:100%;background:' + C.success + ';color:#fff;border-color:' + C.success + ';' });
+        callBtn.innerHTML = '<span class="material-icons" style="font-size:17px;">call</span> Call';
+        callBtn.addEventListener('click', function () { handleCallBtn(); });
+        preCallCtrl.appendChild(callBtn);
+
+        //   In-call controls
+        var inCallCtrl = el('div', { style: 'display:none;padding:0 14px 12px;' });
+        var timerDisp = el('div', { style: 'text-align:center;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;color:' + C.dark + ';margin-bottom:4px;' }, '0:00');
+        var callingLbl = el('div', { style: 'text-align:center;font-size:12px;color:' + C.muted + ';margin-bottom:12px;' });
+        var inCallBtns = el('div', { style: 'display:flex;gap:8px;' });
+        var muteBtn = el('button', { class: 'tcn-icon-btn' });
+        muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic</span>Mute';
+        muteBtn.addEventListener('click', function () { toggleMute(); });
+        var endBtn = el('button', { class: 'tcn-icon-btn', style: 'background:' + C.danger + ';border-color:' + C.danger + ';color:#fff;' });
+        endBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">call_end</span>End';
+        endBtn.addEventListener('click', function () { handleEndBtn(); });
+        inCallBtns.appendChild(muteBtn);
+        inCallBtns.appendChild(endBtn);
+        inCallCtrl.appendChild(timerDisp);
+        inCallCtrl.appendChild(callingLbl);
+        inCallCtrl.appendChild(inCallBtns);
+
+        //   Incoming call view — shown inside panel when state === 'incoming'
+        var incomingView = el('div', { style: 'display:none;' });
+        var incomingBanner = el('div', { class: 'tcn-incoming-banner' });
+        var incomingRingIcon = el('span', { class: 'material-icons tcn-incoming-icon' }, 'phone_in_talk');
+        var incomingLabel = el('div', { class: 'tcn-incoming-label' }, 'Incoming Call');
+        var incomingNumDisp = el('div', { class: 'tcn-incoming-num' }, '\u2014');
+        incomingBanner.appendChild(incomingRingIcon);
+        incomingBanner.appendChild(incomingLabel);
+        incomingBanner.appendChild(incomingNumDisp);
+        var incomingActionBtns = el('div', { class: 'tcn-incoming-btns' });
+        var acceptBtn = el('button', { class: 'tcn-ctrl-btn', style: 'background:' + C.success + ';color:#fff;border-color:' + C.success + ';' });
+        acceptBtn.innerHTML = '<span class="material-icons" style="font-size:17px;">call</span> Accept';
+        acceptBtn.addEventListener('click', function () { handleAcceptIncoming(); });
+        var rejectBtn = el('button', { class: 'tcn-ctrl-btn', style: 'background:' + C.danger + ';color:#fff;border-color:' + C.danger + ';' });
+        rejectBtn.innerHTML = '<span class="material-icons" style="font-size:17px;">call_end</span> Reject';
+        rejectBtn.addEventListener('click', function () { handleRejectIncoming(); });
+        incomingActionBtns.appendChild(acceptBtn);
+        incomingActionBtns.appendChild(rejectBtn);
+        incomingView.appendChild(incomingBanner);
+        incomingView.appendChild(incomingActionBtns);
+
+        //   Agent controls
+        var agentCtrl = el('div', { style: 'display:flex;gap:8px;padding:10px 14px 14px;border-top:1px solid ' + C.border + ';' });
+        var pauseBtn = el('button', { class: 'tcn-icon-btn' });
+        pauseBtn.innerHTML = '<span class="material-icons" style="font-size:18px;" id="tcnPauseIcon">pause</span><span id="tcnPauseLabel">Pause</span>';
+        pauseBtn.addEventListener('click', function () { toggleAgentStatus(); });
+        var logoutBtn = el('button', { class: 'tcn-icon-btn', style: 'color:' + C.muted + ';' });
+        logoutBtn.innerHTML = '<span class="material-icons" style="font-size:18px;">logout</span>Logout';
+        logoutBtn.addEventListener('click', function () { handleLogout(); });
+        agentCtrl.appendChild(pauseBtn);
+        agentCtrl.appendChild(logoutBtn);
+
+        //   Assemble panel
+        panel.appendChild(hdr);
+        panel.appendChild(statusBar);
+        panel.appendChild(incomingView);   // incoming view first — hides rest when shown
+        panel.appendChild(phoneDisp);
+        panel.appendChild(dpSection);
+        panel.appendChild(preCallCtrl);
+        panel.appendChild(inCallCtrl);
+        panel.appendChild(agentCtrl);
+
+        // ── Minimized tab ───────────────────────────────────────────────
+        var tab = el('div', { id: 'tcnWidgetTab' });
+        var tabDot = el('span', { id: 'tcnWidgetDot' });
+        var tabIcon = el('span', { class: 'material-icons', style: 'color:#fff;font-size:24px;pointer-events:none;' }, 'phone');
+        tab.appendChild(tabDot);
+        tab.appendChild(tabIcon);
+        tab.addEventListener('click', function () { expand(); });
+
+        // ── Assemble widget ─────────────────────────────────────────────
+        root.appendChild(panel);
+        root.appendChild(tab);
+        document.body.appendChild(root);
+
+        // ── Store refs ──────────────────────────────────────────────────
+        W = {
+            root:            root,
+            panel:           panel,
+            tab:             tab,
+            tabDot:          tabDot,
+            statusDot:       statusDot,
+            statusTxt:       statusTxt,
+            phoneDisp:       phoneDisp,
+            dpSection:       dpSection,
+            preCallCtrl:     preCallCtrl,
+            callBtn:         callBtn,
+            inCallCtrl:      inCallCtrl,
+            timerDisp:       timerDisp,
+            callingLbl:      callingLbl,
+            muteBtn:         muteBtn,
+            endBtn:          endBtn,
+            incomingView:    incomingView,
+            incomingNumDisp: incomingNumDisp,
+            agentCtrl:       agentCtrl,
+            pauseBtn:        pauseBtn,
+            pauseIcon:       null, // set after append
+            pauseLabel:      null,
+            logoutBtn:       logoutBtn,
+        };
+
+        // Late-bind elements that were created with id
+        W.pauseIcon  = document.getElementById('tcnPauseIcon');
+        W.pauseLabel = document.getElementById('tcnPauseLabel');
+    }
+
+    // ─── Render (sync DOM to state) ──────────────────────────────────────
+    function render() {
+        if (!W.root) return;
+        W.root.style.display = 'block';
+
+        var COLOR_MAP = {
+            connecting: C.muted,
+            ready:      C.success,
+            paused:     C.warning,
+            calling:    C.primary,
+            'on-call':  C.danger,
+            incoming:   C.success,
+            wrapup:     C.warning,
+            error:      C.danger,
+        };
+        var LABEL_MAP = {
+            connecting: 'Connecting\u2026',
+            ready:      'Ready',
+            paused:     'Paused',
+            calling:    'Calling\u2026',
+            'on-call':  'On Call',
+            incoming:   'Incoming Call',
+            wrapup:     'Wrap-up\u2026',
+            error:      'Error',
+        };
+
+        var stateColor = COLOR_MAP[_state] || C.muted;
+        var stateLabel = LABEL_MAP[_state]  || _state;
+
+        // Tab color + pulse for calling and incoming
+        W.tab.style.background = stateColor;
+        W.tabDot.style.background = stateColor;
+        W.tab.style.animation = (_state === 'calling' || _state === 'incoming')
+            ? 'tcnPulse .8s ease-in-out infinite' : '';
+
+        // Status bar
+        W.statusDot.style.background = stateColor;
+        W.statusTxt.style.color      = stateColor;
+        W.statusTxt.textContent      = stateLabel;
+
+        // Section visibility — mutually exclusive sections
+        var inCall    = (_state === 'calling' || _state === 'on-call');
+        var isIncoming = (_state === 'incoming');
+
+        W.incomingView.style.display  = isIncoming          ? 'block' : 'none';
+        W.phoneDisp.style.display     = (inCall || isIncoming) ? 'none' : 'block';
+        W.dpSection.style.display     = (inCall || isIncoming) ? 'none' : 'block';
+        W.preCallCtrl.style.display   = (inCall || isIncoming) ? 'none' : 'block';
+        W.inCallCtrl.style.display    = inCall               ? 'block' : 'none';
+        W.agentCtrl.style.display     = (inCall || isIncoming) ? 'none' : 'flex';
+
+        // Update incoming number display
+        if (isIncoming && W.incomingNumDisp) {
+            W.incomingNumDisp.textContent = _incomingPhone || 'Unknown';
+        }
+
+        // Call button enable/disable
+        var canCall = (_state === 'ready' && _phone.length >= 5);
+        W.callBtn.disabled      = !canCall;
+        W.callBtn.style.opacity = canCall ? '1' : '0.5';
+        W.callBtn.style.cursor  = canCall ? 'pointer' : 'not-allowed';
+
+        // Calling label (phone number under timer)
+        if (inCall) W.callingLbl.textContent = _phone || '';
+
+        // Pause/Resume button
+        if (_agentPaused) {
+            if (W.pauseIcon)  W.pauseIcon.textContent  = 'play_arrow';
+            if (W.pauseLabel) W.pauseLabel.textContent  = 'Resume';
+            W.pauseBtn.style.background  = C.warning;
+            W.pauseBtn.style.borderColor = C.warning;
+            W.pauseBtn.style.color       = '#fff';
+        } else {
+            if (W.pauseIcon)  W.pauseIcon.textContent  = 'pause';
+            if (W.pauseLabel) W.pauseLabel.textContent  = 'Pause';
+            W.pauseBtn.style.background  = C.surface;
+            W.pauseBtn.style.borderColor = C.border;
+            W.pauseBtn.style.color       = C.dark;
+        }
+    }
+
+    // ─── State setter ─────────────────────────────────────────────────────
+    function setState(newState) {
+        _state = newState;
+        render();
+    }
+
+    // ─── Phone management ─────────────────────────────────────────────────
+    function setPhone(phone) {
+        _phone = String(phone || '').replace(/\s+/g, '');
+        if (W.phoneDisp) W.phoneDisp.textContent = _phone || '\u2014';
+        render();
+    }
+
+    function appendDigit(d) {
+        if (_state === 'calling' || _state === 'on-call') return;
+        _phone += d;
+        if (W.phoneDisp) W.phoneDisp.textContent = _phone;
+        render();
+    }
+
+    function deleteDigit() {
+        if (_state === 'calling' || _state === 'on-call') return;
+        _phone = _phone.slice(0, -1);
+        if (W.phoneDisp) W.phoneDisp.textContent = _phone || '\u2014';
+        render();
+    }
+
+    // ─── Expand / collapse ────────────────────────────────────────────────
+    function expand() {
+        _expanded = true;
+        if (W.panel) {
+            W.panel.style.display   = 'block';
+            W.panel.style.animation = 'tcnSlideUp .2s ease';
+        }
+    }
+
+    function collapse() {
+        // Don't allow collapsing during incoming call — agent must act
+        if (_state === 'incoming') return;
+        _expanded = false;
+        if (W.panel) W.panel.style.display = 'none';
+    }
+
+    // ─── Incoming call accept / reject ────────────────────────────────────
+    function handleAcceptIncoming() {
+        if (window.TCN && typeof window.TCN.acceptIncomingCall === 'function') {
+            window.TCN.acceptIncomingCall();
+        }
+        // State will transition to 'calling' → 'on-call' via tcn:callStarted / tcn:callAnswered
+    }
+
+    function handleRejectIncoming() {
+        if (window.TCN && typeof window.TCN.rejectIncomingCall === 'function') {
+            window.TCN.rejectIncomingCall();
+        }
+        setState('ready');
+    }
+
+    // ─── Outbound call button ─────────────────────────────────────────────
+    function handleCallBtn() {
+        if (_state !== 'ready' || _phone.length < 5) return;
+        if (window.GC && typeof window.GC.startCall === 'function') {
+            window.GC.startCall(_phone, null).catch(function (e) {
+                console.error('[TCN-Widget] startCall failed:', e && e.message);
+            });
+        } else if (window.TCN && window.TCN._loggedIn) {
+            window.TCN.startCall(_phone, null).catch(function (e) {
+                console.error('[TCN-Widget] startCall failed:', e && e.message);
+            });
+        }
+    }
+
+    function handleEndBtn() {
+        if (window.GC && typeof window.GC.endCall === 'function') {
+            window.GC.endCall();
+        } else if (window.TCN && window.TCN._isIncoming && typeof window.TCN.endIncomingCall === 'function') {
+            window.TCN.endIncomingCall();
+        } else if (window.TCN && window.TCN._callActive) {
+            window.TCN.endCall();
+        }
+    }
+
+    function toggleMute() {
+        if (!window.TCN) return;
+        _muted = !_muted;
+        if (_muted) {
+            window.TCN.mute();
+            W.muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic_off</span>Unmute';
+            W.muteBtn.style.background  = '#fee2e2';
+            W.muteBtn.style.borderColor = C.danger;
+            W.muteBtn.style.color       = C.danger;
+        } else {
+            window.TCN.unmute();
+            W.muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic</span>Mute';
+            W.muteBtn.style.background  = C.surface;
+            W.muteBtn.style.borderColor = C.border;
+            W.muteBtn.style.color       = C.dark;
+        }
+    }
+
+    // ─── Agent pause / resume ─────────────────────────────────────────────
+    function toggleAgentStatus() {
+        if (_state === 'calling' || _state === 'on-call' || _state === 'incoming') return;
+        var newPaused   = !_agentPaused;
+        var statusParam = newPaused ? 'UNAVAILABLE' : 'READY';
+
+        W.pauseBtn.disabled = true;
+
+        fetch('/tcn/set-status', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf() },
+            body: JSON.stringify({ status: statusParam }),
+        }).then(function (res) { return res.json(); })
+        .then(function (data) {
+            _agentPaused = newPaused;
+            setState(_agentPaused ? 'paused' : 'ready');
+            if (data && data.warning) console.warn('[TCN-Widget] set-status warning:', data.warning);
+        }).catch(function (e) {
+            console.error('[TCN-Widget] set-status error:', e);
+            _agentPaused = newPaused;
+            setState(_agentPaused ? 'paused' : 'ready');
+        }).finally(function () {
+            W.pauseBtn.disabled = false;
         });
     }
 
-    // Disable all call buttons immediately on page load; re-enabled on TCN_READY.
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () { _setCallButtonsEnabled(false); });
-    } else {
-        _setCallButtonsEnabled(false);
-    }
-
-    // ── Document CustomEvent dispatch ─────────────────────────────────────────
-    // global-call.js listens to these events on document.
-
-    function _dispatch(name, detail) {
-        document.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
-    }
-
-    // ── window.TCN proxy ──────────────────────────────────────────────────────
-    // global-call.js checks window.TCN.isReady and window.TCN._loggedIn before
-    // allowing a call.  We keep a minimal proxy in sync with the iframe state so
-    // those guards work without touching global-call.js.
-
-    function _updateTcnProxy(state, callActive) {
-        var ready = (state === 'ready' || state === 'calling' || state === 'on-call' || state === 'paused');
-        if (!window.TCN || !window.TCN.__iframeProxy) {
-            window.TCN = { __iframeProxy: true, isReady: false, _loggedIn: false, _callActive: false };
+    // ─── Logout ────────────────────────────────────────────────────────────
+    function handleLogout() {
+        if (!confirm('Log out of TCN softphone?')) return;
+        if (window.GC && typeof window.GC.disableCallingMode === 'function') {
+            window.GC.disableCallingMode();
+        } else if (window.TCN) {
+            window.TCN.logout();
         }
-        window.TCN.isReady    = ready;
-        window.TCN._loggedIn  = ready;
-        window.TCN._callActive = !!callActive;
-        window.isSoftphoneReady = ready;
+        setState('connecting');
+        _expanded = false;
+        if (W.panel) W.panel.style.display = 'none';
     }
 
-    // ── postMessage to iframe ─────────────────────────────────────────────────
-
-    function _postToFrame(msg) {
-        if (!_frame) return;
-        try { _frame.contentWindow.postMessage(msg, _origin); } catch (_) {}
+    // ─── Call timer ────────────────────────────────────────────────────────
+    function startCallTimer() {
+        _callSecs = 0;
+        stopCallTimer();
+        updateTimer();
+        _callTimer = setInterval(function () {
+            _callSecs++;
+            updateTimer();
+        }, 1000);
     }
 
-    // ── Handle incoming messages from iframe ──────────────────────────────────
+    function stopCallTimer() {
+        if (_callTimer) { clearInterval(_callTimer); _callTimer = null; }
+    }
 
-    function _onMessage(event) {
-        if (event.origin !== _origin)  return;
-        if (!_frame || event.source !== _frame.contentWindow) return;
+    function updateTimer() {
+        if (!W.timerDisp) return;
+        var m = Math.floor(_callSecs / 60);
+        var s = _callSecs % 60;
+        W.timerDisp.textContent = m + ':' + (s < 10 ? '0' : '') + s;
+    }
 
-        var msg = event.data;
-        if (!msg || typeof msg !== 'object') return;
+    // ─── Wire TCN + GC events ─────────────────────────────────────────────
+    function wireEvents() {
+        window.addEventListener('tcn:ready', function () {
+            _agentPaused = false;
+            setState('ready');
+        });
 
-        switch (msg.type) {
+        // ── Incoming call ────────────────────────────────────────────────
+        // Fired by tcn-softphone.js onInvite delegate when TCN sends a SIP INVITE.
+        window.addEventListener('tcn:incomingCall', function (e) {
+            _incomingPhone = (e.detail && e.detail.phone) ? e.detail.phone : 'Unknown';
+            setState('incoming');
+            // Force panel open so telecaller sees it immediately
+            expand();
+        });
 
-            // ── Ready ──────────────────────────────────────────────────────────
-            case 'TCN_READY':
-                _snap = Object.assign({}, _snap || {}, { state: 'ready', paused: false, callActive: false });
-                _updateTcnProxy('ready', false);
-                _setCallButtonsEnabled(true);
-                _dispatch('tcn:tcn-host-ready', { snapshot: _snap });
-                _dispatch('tcn:state-sync', _snap);
-                break;
+        window.addEventListener('tcn:incomingCallRejected', function () {
+            if (_state === 'incoming') setState('ready');
+        });
 
-            // ── Full state sync (PING response or minimise/expand) ─────────────
-            case 'TCN_STATE_SYNC':
-                _snap = Object.assign({}, msg);
-                _updateTcnProxy(msg.state, msg.callActive);
-                if (msg.state === 'ready' || msg.state === 'on-call' || msg.state === 'paused') {
-                    _setCallButtonsEnabled(true);
+        // Fired when getclientinfodata resolves the real caller ANI after the initial
+        // SIP INVITE provided no phone number — update the incoming banner live.
+        window.addEventListener('tcn:phoneResolved', function (e) {
+            if (e.detail && e.detail.phone) {
+                _incomingPhone = e.detail.phone;
+                if ((_state === 'incoming' || _state === 'on-call') && W.incomingNumDisp) {
+                    W.incomingNumDisp.textContent = _incomingPhone;
                 }
-                _dispatch('tcn:state-sync', _snap);
-                break;
+            }
+        });
 
-            // ── Call started (SIP INVITE sent) ─────────────────────────────────
-            case 'TCN_CALL_STARTED':
-                _snap = Object.assign({}, _snap || {}, {
-                    state:     'calling',
-                    phone:     msg.phone || (_snap && _snap.phone) || '',
-                    callLogId: msg.callLogId || null,
-                    callActive:true,
-                });
-                _updateTcnProxy('calling', true);
-                _dispatch('tcn:tcn-call-started', { phone: msg.phone, callLogId: msg.callLogId });
-                _dispatch('tcn:state-sync', _snap);
-                break;
+        // ── Outbound / accepted incoming call ────────────────────────────
+        window.addEventListener('tcn:callStarted', function (e) {
+            var detail = e.detail || {};
+            if (detail.phone) setPhone(detail.phone);
+            stopCallTimer();
+            _callSecs = 0;
+            updateTimer();
+            setState('calling');
+            if (!_expanded) expand();
+        });
 
-            // ── Call answered (remote audio established) ────────────────────────
-            case 'TCN_CALL_ANSWERED':
-                _snap = Object.assign({}, _snap || {}, {
-                    state:              'on-call',
-                    phone:              msg.phone || (_snap && _snap.phone) || '',
-                    callLogId:          msg.callLogId || null,
-                    callActive:         true,
-                    callEstablishedAt:  Date.now(),
-                });
-                _updateTcnProxy('on-call', true);
-                _dispatch('tcn:tcn-call-answered', { phone: msg.phone, callLogId: msg.callLogId });
-                _dispatch('tcn:state-sync', _snap);
-                _dispatch('gc:callAccepted', {});
-                break;
+        window.addEventListener('tcn:callAnswered', function (e) {
+            if (e.detail && e.detail.phone) {
+                _incomingPhone = e.detail.phone;
+            }
+            startCallTimer();
+            setState('on-call');
+        });
 
-            // ── Call ended ─────────────────────────────────────────────────────
-            case 'TCN_CALL_ENDED':
-                _snap = Object.assign({}, _snap || {}, {
-                    state:             (_snap && _snap.paused) ? 'paused' : 'ready',
-                    callActive:        false,
-                    callLogId:         null,
-                    callEstablishedAt: null,
-                });
-                _updateTcnProxy(_snap.state, false);
-                _dispatch('tcn:tcn-call-ended', {
-                    callLogId: msg.callLogId || null,
-                    phone:     msg.phone     || null,
-                    duration:  msg.duration  || null,
-                });
-                _dispatch('tcn:state-sync', _snap);
-                // gc:callEnded triggers the call-outcome modal in the parent page.
-                _dispatch('gc:callEnded', { callLogId: msg.callLogId || null, phone: msg.phone || null });
-                break;
+        window.addEventListener('tcn:callEnded', function () {
+            stopCallTimer();
+            _muted = false;
+            if (W.muteBtn) {
+                W.muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic</span>Mute';
+                W.muteBtn.style.background  = C.surface;
+                W.muteBtn.style.borderColor = C.border;
+                W.muteBtn.style.color       = C.dark;
+            }
+            // tcn:statusUpdate from the wrapup monitor drives wrapup → ready transition
+            setState('wrapup');
+        });
 
-            // ── SIP presence session dropped (reconnecting) ────────────────────
-            case 'TCN_SIP_DROPPED':
-                if (_snap && !_snap.callActive) {
-                    _snap = Object.assign({}, _snap, { state: 'connecting' });
-                    _updateTcnProxy('connecting', false);
-                    _setCallButtonsEnabled(false);
+        // Driven by real-time TCN status from keepAlive and wrapup monitor polls.
+        window.addEventListener('tcn:statusUpdate', function (e) {
+            var status = (e.detail && e.detail.status) || '';
+            // Don't override active call / incoming states via background polling
+            if (_state === 'calling' || _state === 'on-call' || _state === 'incoming') return;
+
+            if (status === 'WRAPUP') {
+                setState('wrapup');
+            } else if (status === 'READY' || status === 'AVAILABLE') {
+                setState(_agentPaused ? 'paused' : 'ready');
+            } else if (status === 'INCALL' || status === 'TALKING') {
+                setState('on-call');
+            }
+        });
+
+        window.addEventListener('tcn:agentReady', function () {
+            if (_state === 'wrapup' || _state === 'connecting') {
+                setState(_agentPaused ? 'paused' : 'ready');
+            }
+        });
+
+        window.addEventListener('tcn:sipDropped', function () {
+            if (_state !== 'calling' && _state !== 'on-call' && _state !== 'incoming') {
+                setState('connecting');
+            }
+        });
+
+        window.addEventListener('tcn:loggedOut', function () {
+            stopCallTimer();
+            setState('connecting');
+        });
+
+        window.addEventListener('tcn:error', function (e) {
+            var msg = (e.detail && e.detail.message) ? e.detail.message : 'An error occurred';
+            console.error('[TCN-Widget] tcn:error:', msg);
+
+            if (_state === 'calling') {
+                // Dial failed — show error in phone display and return to ready
+                setState('ready');
+                if (W.phoneDisp) {
+                    var prev = _phone || '\u2014';
+                    W.phoneDisp.style.color = C.danger;
+                    W.phoneDisp.style.fontSize = '12px';
+                    W.phoneDisp.style.fontWeight = '600';
+                    W.phoneDisp.textContent = msg;
+                    setTimeout(function () {
+                        W.phoneDisp.style.color = '';
+                        W.phoneDisp.style.fontSize = '';
+                        W.phoneDisp.style.fontWeight = '';
+                        W.phoneDisp.textContent = prev;
+                    }, 5000);
                 }
-                _dispatch('tcn:state-sync', _snap || {});
-                break;
+            } else if (_state !== 'on-call' && _state !== 'ready') {
+                setState('error');
+            }
+        });
 
-            // ── Logged out ─────────────────────────────────────────────────────
-            case 'TCN_LOGGED_OUT':
-                _snap = { state: 'connecting', callActive: false, callLogId: null };
-                _updateTcnProxy('connecting', false);
-                _setCallButtonsEnabled(false);
-                _dispatch('tcn:tcn-logged-out', {});
-                _dispatch('tcn:state-sync', _snap);
-                break;
-
-            // ── Error ──────────────────────────────────────────────────────────
-            case 'TCN_ERROR':
-                _dispatch('tcn:tcn-error', { message: msg.message });
-                _dispatch('tcn:state-sync', _snap || {});
-                break;
-
-            // ── Softphone minimised / expanded ─────────────────────────────────
-            // Adjust wrapper height to clip/reveal the iframe content.
-            case 'SP_MINIMIZE':
-                if (_wrapper) _wrapper.style.height = _H_MINIMIZED;
-                if (_snap) _snap.minimized = true;
-                break;
-
-            case 'SP_EXPAND':
-                if (_wrapper) _wrapper.style.height = _H_EXPANDED;
-                if (_snap) _snap.minimized = false;
-                break;
-        }
+        // Intercept [data-phone] clicks to pre-populate dial pad
+        document.addEventListener('click', function (e) {
+            if (W.root && W.root.contains(e.target)) return;
+            var btn = e.target.closest('[data-phone]');
+            if (btn) {
+                var phone = btn.getAttribute('data-phone');
+                if (phone) {
+                    setPhone(phone);
+                    if (!_expanded) expand();
+                }
+            }
+        }, true);
     }
 
-    window.addEventListener('message', _onMessage);
+    // ─── Initialize ───────────────────────────────────────────────────────
+    function init() {
+        buildWidget();
+        wireEvents();
+        render();
+    }
 
-    // ── Public API ────────────────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', init);
 
-    window.TCNWidget = {
-
-        /**
-         * init({ frameId, wrapperId })
-         * Called once per page from the layout after DOMContentLoaded.
-         *
-         * frameId   — id of the <iframe> element (default: 'sipClientFrame')
-         * wrapperId — id of the wrapper <div> used for minimise animation
-         */
-        init: function (options) {
-            options  = options  || {};
-            _frame   = document.getElementById(options.frameId   || 'sipClientFrame');
-            _wrapper = document.getElementById(options.wrapperId || 'sipClientWrapper');
-
-            if (!_frame) {
-                console.warn('[TCNWidget v5] #sipClientFrame not found — widget inactive.');
-                return this;
-            }
-
-            // Ping the iframe once it finishes loading to get the current state.
-            // This covers the case where the CRM page navigated during a live call.
-            _frame.addEventListener('load', function () {
-                // Short delay: give sip-client.blade.php time to finish its init.
-                setTimeout(function () { _postToFrame({ type: 'PING' }); }, 500);
-            });
-
-            // If the iframe is already loaded (same src — browser served from cache),
-            // ping immediately to hydrate _snap.
-            if (_frame.contentDocument && _frame.contentDocument.readyState === 'complete') {
-                _postToFrame({ type: 'PING' });
-            }
-
-            return this;
-        },
-
-        /**
-         * Initiate an outbound call.
-         * phone  — E.164 or local number; normalisation is done inside the iframe.
-         * leadId — optional CRM lead ID attached to the call log.
-         */
-        call: function (phone, leadId) {
-            _postToFrame({ type: 'CALL', phone: phone, leadId: leadId || null });
-        },
-
-        /** Hang up the active call. */
-        end: function () {
-            _postToFrame({ type: 'HANGUP' });
-        },
-
-        /** Expand the softphone widget (un-minimise). */
-        open: function () {
-            if (_wrapper) _wrapper.style.height = _H_EXPANDED;
-            _postToFrame({ type: 'PING' });
-        },
-
-        /**
-         * Generic message forwarding.
-         * Handles: LOGOUT | CALL | HANGUP | MUTE | HOLD | DTMF | SET_PHONE | PING
-         */
-        send: function (msg) {
-            _postToFrame(msg);
-        },
-
-        /** True when a call is active (used by global-call.js nav-intercept). */
-        isCallActive: function () {
-            return _snap ? !!_snap.callActive : false;
-        },
-
-        /** Last known state snapshot from the iframe, or null. */
-        snapshot: function () {
-            return _snap ? Object.assign({}, _snap) : null;
-        },
+    // ─── Public API ───────────────────────────────────────────────────────
+    window.TcnWidget = {
+        setState: setState,
+        setPhone: setPhone,
+        expand:   expand,
+        collapse: collapse,
     };
 
-})(window, document);
+})();

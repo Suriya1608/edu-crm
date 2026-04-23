@@ -1,11 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'tcn') }}">
+    <meta name="call-provider" content="tcn">
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
 
     {{-- Dynamic Title --}}
@@ -24,8 +24,8 @@
     <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-    <!-- Google Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
@@ -54,6 +54,9 @@
 </head>
 
 <body>
+
+    {{-- Sidebar backdrop (mobile/tablet) --}}
+    <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
 
     @include('layouts.sidebar')
     <div class="main-content" id="mainContent">
@@ -165,7 +168,8 @@
     </div>
 
     @if (auth()->check() && auth()->user()->role === 'telecaller')
-        <script>
+        {{-- data-turbo-eval="false": run once on hard load; Turbo navigation does NOT restart this interval --}}
+        <script data-turbo-eval="false">
             (function() {
                 const csrfToken = @json(csrf_token());
                 const heartbeatUrl = @json(route('telecaller.status.heartbeat'));
@@ -190,10 +194,9 @@
 
             })();
         </script>
-        <script>
+        <script data-turbo-eval="false">
             (function() {
                 const snapshotUrl = @json(route('telecaller.notifications.snapshot'));
-                const streamUrl = @json(route('telecaller.notifications.stream'));
                 const markReadUrl = @json(route('telecaller.notifications.read-all'));
                 const csrfToken = @json(csrf_token());
                 const soundKey = 'telecaller_notify_sound_enabled';
@@ -274,76 +277,6 @@
                     }
                 }
 
-                function applySnapshotData(data) {
-                    if (!data || !data.ok) return;
-
-                    const seenMissed = getSeenIds(seenMissedKey);
-                    const seenFollowups = getSeenIds(seenFollowupKey);
-
-                    const rawMissed = Array.isArray(data.missed_calls) ? data.missed_calls : [];
-                    const rawFollowups = Array.isArray(data.followup_reminders) ? data.followup_reminders : [];
-                    const rawWhatsapp = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
-                    const rawSystem = Array.isArray(data.system_notifications) ? data.system_notifications : [];
-
-                    const missedCalls = rawMissed.filter(item => !seenMissed.includes(Number(item.id)));
-                    const followupReminders = rawFollowups.filter(item => !seenFollowups.includes(Number(item.id)));
-                    const whatsappNotifications = rawWhatsapp;
-                    const systemNotifications = rawSystem;
-
-                    const count = missedCalls.length + followupReminders.length + whatsappNotifications.length + systemNotifications.length;
-                    if (count > previousCount) {
-                        playBeep();
-                    }
-                    previousCount = count;
-                    updateBadge(count);
-
-                    missedWrap.innerHTML = renderList(
-                        missedCalls,
-                        (item) => {
-                            const link = item.lead_url ?
-                                `<a href="${item.lead_url}" class="small fw-semibold text-decoration-none">Open</a>` :
-                                '';
-                            return `<div class="py-1 border-bottom">
-                                <div class="fw-semibold">${item.lead_name}</div>
-                                <div class="text-muted">${item.lead_code} | ${item.phone || '-'} ${item.time ? '| ' + item.time : ''}</div>
-                                ${link}
-                            </div>`;
-                        },
-                        'No missed calls.'
-                    );
-
-                    followupWrap.innerHTML = renderList(
-                        followupReminders,
-                        (item) => `<div class="py-1 border-bottom">
-                            <div class="fw-semibold">${item.lead_name}</div>
-                            <div class="text-muted">${item.lead_code} | ${item.next_followup || '-'}</div>
-                            <span class="badge ${item.type === 'overdue' ? 'bg-danger' : 'bg-warning text-dark'} mt-1">${item.type}</span>
-                        </div>`,
-                        'No reminders.'
-                    );
-
-                    if (waWrap) {
-                        waWrap.innerHTML = renderList(
-                            whatsappNotifications,
-                            (item) => `<div class="py-1 border-bottom">
-                                <a href="${item.link || '#'}" class="fw-semibold text-decoration-none d-block">${item.title || 'WhatsApp'}</a>
-                                <div class="text-muted">${item.message || ''}</div>
-                                <div class="text-muted" style="font-size:11px;">${item.time || ''}</div>
-                            </div>`,
-                            'No WhatsApp messages.'
-                        );
-                    }
-
-                    systemWrap.innerHTML = renderList(
-                        systemNotifications,
-                        (item) => `<div class="py-1 border-bottom">
-                            <div>${item.message}</div>
-                            <div class="text-muted">${item.time || ''}</div>
-                        </div>`,
-                        'No system notifications.'
-                    );
-                }
-
                 async function fetchNotifications() {
                     try {
                         const res = await fetch(snapshotUrl, {
@@ -352,29 +285,74 @@
                             }
                         });
                         const data = await res.json();
-                        applySnapshotData(data);
+                        if (!data || !data.ok) return;
+
+                        const seenMissed = getSeenIds(seenMissedKey);
+                        const seenFollowups = getSeenIds(seenFollowupKey);
+
+                        const rawMissed = Array.isArray(data.missed_calls) ? data.missed_calls : [];
+                        const rawFollowups = Array.isArray(data.followup_reminders) ? data.followup_reminders : [];
+                        const rawWhatsapp = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
+                        const rawSystem = Array.isArray(data.system_notifications) ? data.system_notifications : [];
+
+                        const missedCalls = rawMissed.filter(item => !seenMissed.includes(Number(item.id)));
+                        const followupReminders = rawFollowups.filter(item => !seenFollowups.includes(Number(item.id)));
+                        const whatsappNotifications = rawWhatsapp;
+                        const systemNotifications = rawSystem;
+
+                        const count = missedCalls.length + followupReminders.length + whatsappNotifications.length + systemNotifications.length;
+                        if (count > previousCount) {
+                            playBeep();
+                        }
+                        previousCount = count;
+                        updateBadge(count);
+
+                        missedWrap.innerHTML = renderList(
+                            missedCalls,
+                            (item) => {
+                                const link = item.lead_url ?
+                                    `<a href="${item.lead_url}" class="small fw-semibold text-decoration-none">Open</a>` :
+                                    '';
+                                return `<div class="py-1 border-bottom">
+                                    <div class="fw-semibold">${item.lead_name}</div>
+                                    <div class="text-muted">${item.lead_code} | ${item.phone || '-'} ${item.time ? '| ' + item.time : ''}</div>
+                                    ${link}
+                                </div>`;
+                            },
+                            'No missed calls.'
+                        );
+
+                        followupWrap.innerHTML = renderList(
+                            followupReminders,
+                            (item) => `<div class="py-1 border-bottom">
+                                <div class="fw-semibold">${item.lead_name}</div>
+                                <div class="text-muted">${item.lead_code} | ${item.next_followup || '-'}</div>
+                                <span class="badge ${item.type === 'overdue' ? 'bg-danger' : 'bg-warning text-dark'} mt-1">${item.type}</span>
+                            </div>`,
+                            'No reminders.'
+                        );
+
+                        if (waWrap) {
+                            waWrap.innerHTML = renderList(
+                                whatsappNotifications,
+                                (item) => `<div class="py-1 border-bottom">
+                                    <a href="${item.link || '#'}" class="fw-semibold text-decoration-none d-block">${item.title || 'WhatsApp'}</a>
+                                    <div class="text-muted">${item.message || ''}</div>
+                                    <div class="text-muted" style="font-size:11px;">${item.time || ''}</div>
+                                </div>`,
+                                'No WhatsApp messages.'
+                            );
+                        }
+
+                        systemWrap.innerHTML = renderList(
+                            systemNotifications,
+                            (item) => `<div class="py-1 border-bottom">
+                                <div>${item.message}</div>
+                                <div class="text-muted">${item.time || ''}</div>
+                            </div>`,
+                            'No system notifications.'
+                        );
                     } catch (e) {}
-                }
-
-                function startNotificationsStream() {
-                    if (!window.EventSource) return false;
-
-                    let es = new EventSource(streamUrl);
-                    es.addEventListener('notifications', function (event) {
-                        try {
-                            const data = JSON.parse(event.data || '{}');
-                            applySnapshotData(data);
-                        } catch (_) {}
-                    });
-
-                    es.onerror = function () {
-                        try { es.close(); } catch (_) {}
-                        // Fail-safe fallback if SSE is unavailable behind proxy/load balancer.
-                        setTimeout(fetchNotifications, 2000);
-                        setTimeout(startNotificationsStream, 5000);
-                    };
-
-                    return true;
                 }
 
                 soundToggle?.addEventListener('change', function() {
@@ -408,127 +386,300 @@
 
                 setSoundEnabled(getSoundEnabled());
                 fetchNotifications();
-                if (!startNotificationsStream()) {
-                    setInterval(fetchNotifications, 60000);
-                }
+                setInterval(fetchNotifications, 60000);
+
+                // Immediately refresh when a missed call occurs (fired by global-call.js)
+                window.addEventListener('gc:missedCall', function () {
+                    fetchNotifications();
+                });
             })();
         </script>
     @endif
 
+
+    {{--
+        TCN Softphone — persistent iframe widget (bottom-right corner).
+        NO role check here — the widget is always rendered when provider=tcn.
+        Visibility is controlled entirely by JavaScript (postMessage events from
+        the iframe). This guarantees data-turbo-permanent can always match the
+        element by id across every Turbo navigation and NEVER recreates the iframe.
+
+        Persistence strategy:
+          • data-turbo-permanent: Turbo Drive matches #tcnWidget by id and keeps
+            the existing DOM node (including the live iframe) on every navigation.
+          • The iframe loads once; SIP connects once; calls never drop on nav.
+          • data-turbo-eval="false" on the script prevents duplicate event listeners.
+    --}}
+    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn' && auth()->user()->role !== 'admin')
+    <div id="tcnWidget" data-turbo-permanent>
+        <iframe id="tcnSoftphoneFrame"
+            src="/softphone"
+            allow="microphone"
+            style="position:fixed;bottom:80px;right:20px;width:300px;height:480px;
+                   border:none;z-index:1065;border-radius:14px;
+                   box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;
+                   transition:height .2s,width .2s;">
+        </iframe>
+        {{--
+            Toggle button — always in DOM with a neutral gray color.
+            JS turns it green on TCN_READY, shows/hides the iframe on click.
+            Using inline display:flex (not Bootstrap d-flex) so JS display:none works.
+        --}}
+        <button id="tcnToggleBtn" title="Toggle Softphone"
+            style="position:fixed;bottom:20px;right:20px;z-index:1066;
+                   width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+                   background:#64748b;color:#fff;display:flex;
+                   align-items:center;justify-content:center;
+                   box-shadow:0 4px 20px rgba(0,0,0,.22);transition:background .25s;">
+            <span class="material-icons" style="font-size:24px;pointer-events:none;" id="tcnToggleIco">phone</span>
+        </button>
+    </div>
+    {{--
+        data-turbo-eval="false" — runs ONCE on the first hard page load.
+        Turbo navigations do NOT re-execute it, so event listeners are never
+        duplicated. DOM refs are captured immediately (elements are above this script).
+    --}}
+    <script data-turbo-eval="false">
+    (function () {
+        var _frame    = document.getElementById('tcnSoftphoneFrame');
+        var _btn      = document.getElementById('tcnToggleBtn');
+        var _ico      = document.getElementById('tcnToggleIco');
+        var _visible  = false;
+        var _sipReady = false;   // true once TCN_READY received this tab lifetime
+
+        // ── Header button helpers — always look up fresh DOM refs so they
+        //    work after Turbo navigation replaces the header HTML. ────────
+        function _rdyUpdate(active) {
+            var btn = document.getElementById('tcnReadyBtn');
+            var ico = document.getElementById('tcnReadyIco');
+            var lbl = document.getElementById('tcnReadyLabel');
+            if (!btn) return;
+            if (active) {
+                btn.style.background = '#10b981';
+                if (ico) ico.textContent = 'phone';
+                if (lbl) lbl.textContent = 'Ready';
+            } else {
+                btn.style.background = '#64748b';
+                if (ico) ico.textContent = 'phone_disabled';
+                if (lbl) lbl.textContent = 'Not Ready';
+            }
+        }
+
+        function _rdyConnecting() {
+            var btn = document.getElementById('tcnReadyBtn');
+            var ico = document.getElementById('tcnReadyIco');
+            var lbl = document.getElementById('tcnReadyLabel');
+            if (!btn) return;
+            btn.style.background = '#f59e0b';
+            if (ico) ico.textContent = 'hourglass_empty';
+            if (lbl) lbl.textContent = 'Connecting\u2026';
+        }
+
+        // ── Set initial header button state on hard page load ─────────────
+        try {
+            if (localStorage.getItem('tcn_sip_active') === '1') { _rdyConnecting(); }
+        } catch (_) {}
+
+        // ── Restore header button state after every Turbo navigation ──────
+        // (also fires on the first hard load, after DOMContentLoaded)
+        document.addEventListener('turbo:load', function () {
+            if (_sipReady) { _rdyUpdate(true); return; }
+            try {
+                if (localStorage.getItem('tcn_sip_active') === '1') { _rdyConnecting(); }
+            } catch (_) {}
+        });
+
+        // ── show / hide iframe ────────────────────────────────────────────
+        function show() {
+            if (!_frame) return;
+            _frame.style.display      = 'block';
+            _frame.style.bottom       = '80px';
+            _frame.style.height       = '480px';
+            _frame.style.width        = '300px';
+            _frame.style.borderRadius = '14px';
+            _visible = true;
+            if (_ico) _ico.textContent = 'close';
+        }
+
+        function hide() {
+            if (!_frame) return;
+            _frame.style.display = 'none';
+            _visible = false;
+            if (_ico) _ico.textContent = 'phone';
+        }
+
+        // ── Header Start / Stop button (event delegation — survives Turbo nav) ──
+        // Using capture phase so it fires before any other click handlers.
+        document.addEventListener('click', function (e) {
+            if (!e.target.closest('#tcnReadyBtn')) return;
+            var lbl = document.getElementById('tcnReadyLabel');
+            var isReady = lbl && lbl.textContent.trim() === 'Ready';
+            if (isReady) {
+                // STOP — send silent logout (no browser confirm needed; user just clicked Stop)
+                if (window.GC && typeof window.GC.disableCallingMode === 'function') {
+                    window.GC.disableCallingMode();
+                }
+                _sipReady = false;
+                _rdyUpdate(false);
+                hide();
+            } else {
+                // START — persist flag + boot SIP in iframe
+                _rdyConnecting();
+                if (window.GC && typeof window.GC.enableCallingMode === 'function') {
+                    window.GC.enableCallingMode();
+                }
+                show();
+            }
+        }, true);
+
+        // ── Floating toggle button — show/hide iframe ONLY (no SIP side-effects) ──
+        if (_btn) {
+            _btn.addEventListener('click', function () {
+                if (_visible) { hide(); } else { show(); }
+            });
+        }
+
+        // ── Forward [data-phone] attribute clicks to the iframe ───────────
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest('[data-phone]');
+            if (!el || !_frame) return;
+            var phone = el.getAttribute('data-phone');
+            if (!phone) return;
+            _frame.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
+            if (!_visible) show();
+        }, true);
+
+        // ── Messages from softphone iframe ────────────────────────────────
+        // Registered once; persists across Turbo navigations for the tab lifetime.
+        window.addEventListener('message', function (ev) {
+            var d = ev.data;
+            if (!d || typeof d !== 'object') return;
+
+            switch (d.type) {
+                case 'TCN_READY':
+                    _sipReady = true;
+                    if (_btn) { _btn.style.background = '#10b981'; _btn.style.animation = ''; }
+                    _rdyUpdate(true);
+                    break;
+
+                case 'TCN_INCOMING_CALL':
+                    // Show iframe so the incoming banner is visible
+                    if (!_visible) show();
+                    // Pulse the toggle button green to draw attention
+                    if (_btn) { _btn.style.background = '#10b981'; _btn.style.animation = 'tcnBtnPulse .6s ease-in-out infinite'; }
+                    break;
+
+                case 'TCN_INCOMING_REJECTED':
+                    if (_btn) { _btn.style.animation = ''; }
+                    break;
+
+                case 'TCN_CALL_STARTED':
+                    if (_btn) { _btn.style.background = '#6366f1'; _btn.style.animation = 'tcnBtnPulse 1s ease-in-out infinite'; }
+                    if (!_visible) show();
+                    break;
+
+                case 'TCN_CALL_ANSWERED':
+                    if (_btn) { _btn.style.background = '#ef4444'; _btn.style.animation = ''; }
+                    break;
+
+                case 'TCN_CALL_ENDED':
+                    if (_btn) { _btn.style.background = '#10b981'; _btn.style.animation = ''; }
+                    break;
+
+                case 'TCN_LOGGED_OUT':
+                    _sipReady = false;
+                    if (_btn) { _btn.style.background = '#64748b'; _btn.style.animation = ''; }
+                    _rdyUpdate(false);
+                    break;
+
+                case 'TCN_SIP_DROPPED':
+                    // Reconnect is in-flight — show amber on both buttons
+                    _sipReady = false;
+                    if (_btn) { _btn.style.background = '#f59e0b'; _btn.style.animation = ''; }
+                    _rdyConnecting();
+                    break;
+
+                case 'SP_MINIMIZE':
+                    if (_frame) { _frame.style.height = '44px'; _frame.style.width = '170px'; _frame.style.borderRadius = '22px'; }
+                    break;
+
+                case 'SP_EXPAND':
+                    if (_frame) { _frame.style.height = '480px'; _frame.style.width = '300px'; _frame.style.borderRadius = '14px'; }
+                    break;
+            }
+        });
+    })();
+    </script>
+    <style>@keyframes tcnBtnPulse{0%,100%{opacity:1}50%{opacity:.55}}</style>
+    @endif
+
     @if (auth()->check() && auth()->user()->role === 'telecaller')
-        {{-- TCN softphone container --}}{{-- Navigation Warning Modal (shown when user clicks a link during an active call) --}}
-        <div class="modal fade" id="gcNavWarningModal" tabindex="-1" aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-                    <div class="modal-header" style="background:#dc2626; color:#fff;">
-                        <h5 class="modal-title d-flex align-items-center gap-2">
-                            <span class="material-icons">warning</span> Call in Progress
-                        </h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-1">A call is currently in progress.</p>
-                        <p class="text-muted small mb-0">Navigating away will <strong>end the call</strong> and save the log. Click <strong>Stay on Call</strong> to remain on this page.</p>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Stay on Call</button>
-                        <button type="button" class="btn btn-danger" id="gcNavProceedBtn">
-                            <span class="material-icons me-1" style="font-size:16px; vertical-align:middle;">call_end</span>End &amp; Navigate
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
         {{--
-            SIP Client iframe â€” persistent softphone widget.
-            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            tcn-softphone.js runs ONLY inside this iframe (/sip-client).
-            The parent page NEVER loads tcn-softphone.js directly, which prevents
-            SIP re-initialization on every page navigation.
-
-            Security model for browser-side credentials:
-              â€¢ tcn-softphone.js keeps call/session state in memory only.
-              â€¢ Reload starts a fresh authenticated softphone session.
-              â€¢ Tokens and SIP credentials are never persisted in browser storage.
-
-            postMessage contract:
-              Parent â†’ iframe : CALL | HANGUP | MUTE | HOLD | DTMF | SET_PHONE | LOGOUT | PING
-              Iframe â†’ parent : TCN_READY | TCN_CALL_STARTED | TCN_CALL_ANSWERED |
-                                TCN_CALL_ENDED | TCN_STATE_SYNC | TCN_SIP_DROPPED |
-                                TCN_LOGGED_OUT | TCN_ERROR | SP_MINIMIZE | SP_EXPAND
-            â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            data-turbo-eval="false" prevents Turbo Drive from re-evaluating this
+            script on every navigation — avoids duplicate GC instances and double
+            /call/end requests for a single call.
         --}}
-        <div id="sipClientWrapper"
-             style="position:fixed;bottom:20px;right:20px;z-index:1066;
-                    width:300px;height:460px;
-                    border-radius:16px;overflow:hidden;
-                    box-shadow:0 8px 32px rgba(0,0,0,0.18);
-                    transition:height .2s ease;">
-            <iframe id="sipClientFrame"
-                    src="{{ route('sip.client') }}"
-                    allow="microphone; autoplay; camera"
-                    style="width:100%;height:100%;border:none;display:block;background:#fff;"
-                    title="TCN Softphone">
-            </iframe>
-        </div>
+        <script src="{{ asset('js/global-call.js?v=4') }}" data-turbo-eval="false"></script>
 
-        {{--
-            tcn-widget.js (v5) bridges postMessages from the iframe to document
-            CustomEvents that global-call.js consumes.
-            DO NOT load tcn-softphone.js here â€” it lives only in the iframe.
-        --}}
-        <script src="{{ asset('js/tcn-widget.js') }}"></script>
-        <script src="{{ asset('js/global-call.js') }}"></script>
-        <script>
+        {{-- GC lifecycle helpers — runs once on first hard load, persists via data-turbo-eval --}}
+        <script data-turbo-eval="false">
         (function () {
             document.addEventListener('DOMContentLoaded', function () {
-                if (window.TCNWidget) {
-                    window.TCNWidget.init({
-                        frameId:   'sipClientFrame',
-                        wrapperId: 'sipClientWrapper',
-                    });
+                var metaProvider = document.querySelector('meta[name="call-provider"]');
+                if (metaProvider && metaProvider.getAttribute('content') === 'tcn') {
+                    if (window.GC && typeof window.GC.initDevice === 'function') {
+                        window.GC.initDevice();
+                    }
                 }
             });
 
-            // Logout interception â€” send LOGOUT to the iframe before navigating
-            // away so TCN can cleanly close the SIP presence session.
-            document.addEventListener('DOMContentLoaded', function () {
-                document.querySelectorAll('form[action*="logout"]').forEach(function (form) {
-                    form.addEventListener('submit', function () {
-                        var frame = document.getElementById('sipClientFrame');
-                        if (frame && frame.contentWindow) {
-                            try { frame.contentWindow.postMessage({ type: 'LOGOUT' }, window.location.origin); } catch (_) {}
-                        }
-                    });
-                });
+            document.addEventListener('turbo:load', function () {
+                var m = document.querySelector('meta[name="csrf-token"]');
+                if (m && window.GC) {
+                    window.GC._csrf = m.getAttribute('content');
+                }
             });
         })();
         </script>
-        <style>
-            @keyframes tcnWidgetPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
-            /* Minimised: clips the wrapper to the header bar height (â‰ˆ44 px). */
-            #sipClientWrapper { transition: height .2s ease; }
-        </style>
-        @endif
     @endif
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        function openSidebar() {
+            const sidebar  = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar)  sidebar.classList.add('show');
+            if (backdrop) backdrop.classList.add('show');
+        }
+
+        function closeSidebar() {
+            const sidebar  = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar)  sidebar.classList.remove('show');
+            if (backdrop) backdrop.classList.remove('show');
+        }
+
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
-            if (sidebar) {
-                sidebar.classList.toggle('show');
+            if (!sidebar) return;
+            if (sidebar.classList.contains('show')) {
+                closeSidebar();
+            } else {
+                openSidebar();
             }
         }
+
+        // Close sidebar on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeSidebar();
+        });
     </script>
 
     @stack('scripts')
 
-    {{-- Chart.js global defaults â€” applied after page scripts load Chart.js --}}
+    {{-- Chart.js global defaults — applied after page scripts load Chart.js --}}
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
+        function _applyChartDefaults() {
             if (typeof Chart !== 'undefined') {
                 Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
                 Chart.defaults.font.size      = 12;
@@ -544,7 +695,9 @@
                 Chart.defaults.scale.grid.color                     = 'rgba(0,0,0,.04)';
                 Chart.defaults.scale.grid.drawBorder                = false;
             }
-        });
+        }
+        document.addEventListener('DOMContentLoaded', _applyChartDefaults);
+        document.addEventListener('turbo:load',       _applyChartDefaults);
     </script>
 
     {{-- Global Toast Container --}}
@@ -568,27 +721,31 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
+        // Show Bootstrap flash toasts on both hard page loads AND Turbo navigations.
+        function _showFlashToasts() {
             ['flashToast', 'flashToastError'].forEach(function(id) {
                 var el = document.getElementById(id);
-                if (el) {
+                if (el && !el.dataset.bsToastShown) {
+                    el.dataset.bsToastShown = '1';
                     new bootstrap.Toast(el, { delay: 4000 }).show();
                 }
             });
-        });
+        }
+        document.addEventListener('DOMContentLoaded', _showFlashToasts);
+        document.addEventListener('turbo:load',       _showFlashToasts);
     </script>
 
     {{-- WhatsApp Real-Time Inbound Notifications (5 s polling) --}}
     @auth
     <div id="waToastStack" style="position:fixed;top:76px;right:20px;z-index:9999;width:320px;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
-    <script>
+    <script data-turbo-eval="false">
     (function () {
         @if(auth()->user()->role === 'telecaller')
         const pollUrl = @json(route('telecaller.whatsapp.inbox-poll'));
         @elseif(auth()->user()->role === 'manager')
         const pollUrl = @json(route('manager.whatsapp.inbox-poll'));
         @else
-        return; // admin or other roles â€” no WA toasts
+        return; // admin or other roles — no WA toasts
         @endif
 
         const LS_KEY = 'wa_notif_ts_{{ auth()->id() }}';
@@ -701,10 +858,11 @@
             </div>
         </div>
     </div>
-    <script>
+    {{-- data-turbo-eval="false": idle timer runs once; Turbo navigation resets it (counts as activity) --}}
+    <script data-turbo-eval="false">
     (function () {
-        const IDLE_TIMEOUT   = 15 * 60 * 1000; // 15 minutes
-        const WARN_BEFORE    = 60 * 1000;        // show warning 60s before timeout
+        const IDLE_TIMEOUT    = 15 * 60 * 1000; // 15 minutes
+        const WARN_BEFORE     = 60 * 1000;       // show warning 60s before timeout
         const IDLE_LOGOUT_URL = @json(route('idle.logout'));
 
         let idleTimer, warnTimer, countdownInterval;
@@ -714,9 +872,7 @@
         function resetTimers() {
             clearTimeout(idleTimer);
             clearTimeout(warnTimer);
-            if (warningShown) {
-                hideWarning();
-            }
+            if (warningShown) hideWarning();
             warnTimer = setTimeout(showWarning, IDLE_TIMEOUT - WARN_BEFORE);
             idleTimer = setTimeout(doLogout,    IDLE_TIMEOUT);
         }
@@ -724,7 +880,8 @@
         function showWarning() {
             warningShown = true;
             let secs = 60;
-            document.getElementById('idleCountdown').textContent = secs;
+            const cdEl = document.getElementById('idleCountdown');
+            if (cdEl) cdEl.textContent = secs;
             clearInterval(countdownInterval);
             countdownInterval = setInterval(function () {
                 secs--;
@@ -733,9 +890,9 @@
             }, 1000);
             if (!modal) {
                 modal = document.getElementById('idleWarningModal');
-                modalInstance = new bootstrap.Modal(modal);
+                if (modal) modalInstance = new bootstrap.Modal(modal);
             }
-            modalInstance.show();
+            if (modalInstance) modalInstance.show();
         }
 
         function hideWarning() {
@@ -749,18 +906,27 @@
             window.location.href = IDLE_LOGOUT_URL;
         }
 
-        // Reset on any user interaction
+        // Any user interaction resets the idle timer
         ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function (evt) {
             document.addEventListener(evt, resetTimers, { passive: true });
         });
 
-        // Stay logged in button
-        document.addEventListener('DOMContentLoaded', function () {
-            const btn = document.getElementById('idleStayBtn');
-            if (btn) btn.addEventListener('click', resetTimers);
-        });
+        // Turbo navigation counts as activity — always reset idle timer on page change
+        document.addEventListener('turbo:load', resetTimers);
 
-        // Start timers on page load
+        // Stay logged in button — bind once; button is inside idleWarningModal which
+        // is not a permanent element, so re-bind after each Turbo page swap.
+        function _bindStayBtn() {
+            var btn = document.getElementById('idleStayBtn');
+            if (btn && !btn.dataset.idleBound) {
+                btn.dataset.idleBound = '1';
+                btn.addEventListener('click', resetTimers);
+            }
+        }
+        document.addEventListener('DOMContentLoaded', _bindStayBtn);
+        document.addEventListener('turbo:load',       _bindStayBtn);
+
+        // Start timers immediately
         resetTimers();
     })();
     </script>
@@ -768,8 +934,3 @@
 </body>
 
 </html>
-
-
-
-
-

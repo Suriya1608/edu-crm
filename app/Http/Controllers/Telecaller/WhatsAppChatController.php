@@ -9,6 +9,7 @@ use App\Models\WhatsAppMessage;
 use App\Notifications\WhatsAppInboundNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class WhatsAppChatController extends Controller
 {
@@ -65,12 +66,50 @@ class WhatsAppChatController extends Controller
             }
         }
 
-        return view('telecaller.whatsapp.index', compact(
-            'conversations',
-            'unreadCounts',
-            'activeLead',
-            'activeMessages'
-        ));
+        // Serialize conversations for Inertia
+        $conversationData = $conversations->map(fn($lead) => [
+            'id'           => $lead->id,
+            'encrypted_id' => encrypt($lead->id),
+            'name'         => $lead->name,
+            'phone'        => $lead->phone,
+            'lead_url'     => route('telecaller.leads.show', encrypt($lead->id)),
+            'unread_count' => $unreadCounts[$lead->id] ?? 0,
+            'last_message' => $lead->whatsappMessages->first() ? [
+                'body'      => $lead->whatsappMessages->first()->message_body,
+                'direction' => $lead->whatsappMessages->first()->direction,
+                'time'      => $lead->whatsappMessages->first()->created_at?->format('h:i A'),
+            ] : null,
+        ]);
+
+        // Serialize active lead & messages
+        $activeLeadData = $activeLead ? [
+            'id'           => $activeLead->id,
+            'encrypted_id' => encrypt($activeLead->id),
+            'name'         => $activeLead->name,
+            'phone'        => $activeLead->phone,
+            'lead_url'     => route('telecaller.leads.show', encrypt($activeLead->id)),
+        ] : null;
+
+        $activeMessagesData = $activeMessages->map(fn($m) => [
+            'id'             => $m->id,
+            'message_body'   => $m->message_body,
+            'direction'      => $m->direction,
+            'media_type'     => $m->media_type,
+            'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
+            'media_filename' => $m->media_filename,
+            'time'           => $m->created_at?->format('h:i A'),
+            'date'           => $m->created_at?->format('d M Y'),
+            'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
+        ])->values();
+
+        return Inertia::render('Telecaller/WhatsApp/Index', [
+            'conversations'       => $conversationData,
+            'activeLead'          => $activeLeadData,
+            'activeMessages'      => $activeMessagesData,
+            'sendUrlPattern'      => route('telecaller.leads.whatsapp.store',   '__ID__'),
+            'mediaUrlPattern'     => route('telecaller.leads.whatsapp.media',   '__ID__'),
+            'messagesUrlPattern'  => route('telecaller.whatsapp.messages',      '__ID__'),
+        ]);
     }
 
     /**

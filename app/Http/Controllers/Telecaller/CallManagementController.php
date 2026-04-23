@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CallLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class CallManagementController extends Controller
 {
@@ -60,8 +61,6 @@ class CallManagementController extends Controller
                 break;
         }
 
-        $callLogs = $query->latest('id')->paginate(15)->withQueryString();
-
         $statusOptions = [
             'ringing',
             'in-progress',
@@ -74,7 +73,37 @@ class CallManagementController extends Controller
             'canceled',
         ];
 
-        return view('telecaller.calls.index', compact('callLogs', 'scope', 'title', 'statusOptions'));
+        $callLogs = $query->latest('id')->paginate(15)->withQueryString()->through(function ($call) {
+            $duration = (int) ($call->duration ?? 0);
+            $type     = ($call->direction === 'inbound') ? 'inbound' : 'outbound';
+
+            return [
+                'id'              => $call->id,
+                'created_at_fmt'  => optional($call->created_at)->format('d M Y, h:i A'),
+                'lead_name'       => $call->lead?->name,
+                'lead_code'       => $call->lead?->lead_code,
+                'lead_phone'      => $call->lead?->phone,
+                'customer_number' => $call->customer_number,
+                'lead_id'         => $call->lead_id,
+                'direction'       => $type,
+                'status'          => $call->status ?? '',
+                'duration_fmt'    => sprintf(
+                    '%02d:%02d:%02d',
+                    floor($duration / 3600),
+                    floor(($duration % 3600) / 60),
+                    $duration % 60
+                ),
+                'recording_url'   => $call->recording_url,
+            ];
+        });
+
+        return Inertia::render('Telecaller/Calls/Index', [
+            'scope'         => $scope,
+            'title'         => $title,
+            'callLogs'      => $callLogs,
+            'statusOptions' => $statusOptions,
+            'filters'       => $request->only('date', 'status'),
+        ]);
     }
 }
 

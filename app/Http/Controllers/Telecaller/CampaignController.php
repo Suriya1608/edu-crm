@@ -9,6 +9,7 @@ use App\Models\CampaignContact;
 use App\Models\WhatsAppMessage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class CampaignController extends Controller
 {
@@ -30,9 +31,17 @@ class CampaignController extends Controller
                 $q->where('assigned_to', Auth::id());
             }])
             ->latest()
-            ->paginate(15);
+            ->paginate(15)
+            ->through(fn($c) => [
+                'id'                => $c->id,
+                'encrypted_id'      => encrypt($c->id),
+                'name'              => $c->name,
+                'description'       => $c->description,
+                'status'            => $c->status,
+                'my_contacts_count' => $c->my_contacts_count,
+            ]);
 
-        return view('telecaller.campaigns.index', compact('campaigns', 'totalStats'));
+        return Inertia::render('Telecaller/Campaigns/Index', compact('campaigns', 'totalStats'));
     }
 
     // ─── Campaign Contact List ─────────────────────────────────────────────────
@@ -55,7 +64,18 @@ class CampaignController extends Controller
             });
         }
 
-        $contacts = $query->latest()->paginate(20)->withQueryString();
+        $contacts = $query->latest()->paginate(20)->withQueryString()
+            ->through(fn($c) => [
+                'id'           => $c->id,
+                'encrypted_id' => encrypt($c->id),
+                'name'         => $c->name,
+                'phone'        => $c->phone,
+                'course'       => $c->course,
+                'city'         => $c->city,
+                'status'       => $c->status,
+                'next_followup'=> $c->next_followup?->format('Y-m-d'),
+                'call_count'   => $c->call_count,
+            ]);
 
         $stats = [
             'total'    => $campaign->contacts()->where('assigned_to', Auth::id())->count(),
@@ -64,7 +84,20 @@ class CampaignController extends Controller
             'converted'=> $campaign->contacts()->where('assigned_to', Auth::id())->where('status', 'converted')->count(),
         ];
 
-        return view('telecaller.campaigns.show', compact('campaign', 'contacts', 'stats'));
+        $filters = $request->only(['search', 'status']);
+
+        return Inertia::render('Telecaller/Campaigns/Show', [
+            'campaign' => [
+                'id'           => $campaign->id,
+                'encrypted_id' => encrypt($campaign->id),
+                'name'         => $campaign->name,
+                'description'  => $campaign->description,
+                'status'       => $campaign->status,
+            ],
+            'contacts' => $contacts,
+            'stats'    => $stats,
+            'filters'  => $filters,
+        ]);
     }
 
     // ─── Contact Detail Page ──────────────────────────────────────────────────
@@ -83,7 +116,7 @@ class CampaignController extends Controller
         $contactMessages = WhatsAppMessage::where('campaign_contact_id', $contact->id)
             ->latest()->limit(50)->get()->reverse()->values();
 
-        $provider = \App\Models\Setting::get('primary_call_provider', 'tcn');
+        $provider = 'tcn';
 
         return view('telecaller.campaigns.contact', compact('campaign', 'contact', 'activities', 'contactMessages', 'provider'));
     }
@@ -241,4 +274,3 @@ class CampaignController extends Controller
     }
 
 }
-

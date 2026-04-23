@@ -21,6 +21,10 @@ class SendEmailCampaignJob implements ShouldQueue
 
     public string $queue = 'emails';
 
+    public int $tries = 2;
+
+    public int $timeout = 300;
+
     public int $tries   = 3;
     public int $timeout = 600;
 

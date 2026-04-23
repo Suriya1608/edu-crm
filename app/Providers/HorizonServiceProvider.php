@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use Illuminate\Support\Facades\Gate;
-use Laravel\Horizon\Horizon;
 use Laravel\Horizon\HorizonApplicationServiceProvider;
 
 class HorizonServiceProvider extends HorizonApplicationServiceProvider
@@ -12,17 +11,9 @@ class HorizonServiceProvider extends HorizonApplicationServiceProvider
     {
         parent::boot();
 
-        // Route Horizon's built-in alerts (long wait, failed jobs, etc.).
-        $alertEmail = trim((string) env('HORIZON_ALERT_EMAIL', ''));
-        if ($alertEmail !== '') {
-            Horizon::routeMailNotificationsTo($alertEmail);
-        }
-
-        $slackWebhook = trim((string) env('HORIZON_SLACK_WEBHOOK', ''));
-        $slackChannel = trim((string) env('HORIZON_SLACK_CHANNEL', ''));
-        if ($slackWebhook !== '' && $slackChannel !== '') {
-            Horizon::routeSlackNotificationsTo($slackWebhook, $slackChannel);
-        }
+        // Uncomment to enable email/Slack notifications for long waits or failures:
+        // Horizon::routeMailNotificationsTo('admin@yourdomain.com');
+        // Horizon::routeSlackNotificationsTo(env('HORIZON_SLACK_WEBHOOK'), '#crm-ops');
     }
 
     /**

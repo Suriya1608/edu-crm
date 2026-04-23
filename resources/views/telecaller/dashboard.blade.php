@@ -2,338 +2,548 @@
 
 @section('page_title', 'Dashboard')
 
-@section('header_actions')
-    <div class="d-flex align-items-center gap-2 flex-wrap">
-        <span class="badge rounded-pill border px-3 py-2 d-flex align-items-center gap-1"
-              style="background:rgba(99,102,241,0.08);color:#6366f1;border-color:rgba(99,102,241,0.2)!important;font-size:11px;font-weight:700;">
-            <span class="material-icons" style="font-size:14px;">headset_mic</span>
-            <span id="realtimeCallStatus">{{ $activeCallCount > 0 ? 'On Call' : 'Idle' }}</span>
-        </span>
-        <span id="activeCallBadge"
-              class="badge rounded-pill px-3 py-2 d-flex align-items-center gap-1 {{ $activeCallCount > 0 ? 'bg-danger' : 'bg-success' }}"
-              style="font-size:11px;font-weight:700;">
-            <span class="material-icons" style="font-size:13px;">call</span>
-            Active: <span id="activeCallCount">{{ $activeCallCount }}</span>
-        </span>
-    </div>
 @endsection
 
 @section('content')
 
-    {{-- ── Page Header ── --}}
-    <div class="d-flex align-items-start justify-content-between mb-4 flex-wrap gap-2">
-        <div>
-            <h2 style="font-size:22px;font-weight:800;color:#0f172a;margin:0;letter-spacing:-0.3px;">
-                @php
-                    $hour = now()->hour;
-                    $greeting = $hour < 12 ? 'Good morning' : ($hour < 17 ? 'Good afternoon' : 'Good evening');
-                @endphp
-                {{ $greeting }}, {{ explode(' ', auth()->user()->name)[0] }} 👋
-            </h2>
-            <p style="color:#64748b;font-size:13px;margin:4px 0 0 0;">Here's your activity summary for today.</p>
-        </div>
-        <span style="font-size:11px;font-weight:700;color:#64748b;background:#f1f5f9;border-radius:20px;padding:5px 14px;border:1px solid #e2e8f0;">
-            {{ now()->format('D, d M Y') }}
-        </span>
-    </div>
-
-    {{-- ── Follow-up Reminder Banner ── --}}
-    @if ($followupsToday > 0 || $overdueFollowups > 0)
-        <div class="mb-4 rounded-3 px-4 py-3 d-flex align-items-center gap-3 flex-wrap"
-             style="background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(245,158,11,0.05));border:1px solid rgba(245,158,11,0.3);">
-            <div style="width:38px;height:38px;min-width:38px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#fbbf24);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(245,158,11,0.35);">
-                <span class="material-icons" style="font-size:20px;color:#fff;">notifications_active</span>
-            </div>
-            <div style="flex:1;min-width:0;">
-                <div style="font-size:13px;font-weight:700;color:#92400e;">Follow-up Reminder</div>
-                <div style="font-size:12px;color:#78350f;margin-top:1px;">
-                    <span id="todayFollowupCount">{{ $followupsToday }}</span> due today &nbsp;·&nbsp;
-                    <span id="overdueFollowupCount">{{ $overdueFollowups }}</span> overdue
+{{-- ── Hero Greeting Banner ─────────────────────────────────────────────── --}}
+<div class="tc-greeting-banner mb-4">
+    <div class="tc-greeting-inner">
+        <div style="position:relative;z-index:1;flex:1;">
+            <p class="tc-greeting-title" id="greetingTitle">Good Morning, {{ auth()->user()->name }}</p>
+            <p class="tc-greeting-sub">Here's your performance snapshot for today.</p>
+            <div class="tc-greeting-meta">
+                <div class="tc-greeting-meta-item">
+                    <span class="material-icons" style="font-size:15px;">today</span>
+                    <span id="greetingDate"></span>
                 </div>
-            </div>
-            <a href="{{ route('telecaller.leads', ['status' => 'follow_up']) }}"
-               class="btn btn-sm"
-               style="background:#f59e0b;color:#fff;font-weight:600;font-size:12px;border:none;padding:6px 16px;border-radius:8px;white-space:nowrap;">
-                View Leads
-            </a>
-        </div>
-    @endif
-
-    {{-- ── Row 1 — Primary Stats ── --}}
-    <div class="row g-3 mb-3">
-        <div class="col-6 col-md-3">
-            <div class="stat-card">
-                <div class="stat-icon blue"><span class="material-icons">assignment_ind</span></div>
-                <div class="stat-label">Assigned Leads</div>
-                <div class="stat-value" id="totalAssignedLeads">{{ $totalAssignedLeads }}</div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat-card">
-                <div class="stat-icon green"><span class="material-icons">fiber_new</span></div>
-                <div class="stat-label">New Leads</div>
-                <div class="stat-value" id="newLeads">{{ $newLeads }}</div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat-card">
-                <div class="stat-icon amber"><span class="material-icons">event_note</span></div>
-                <div class="stat-label">Follow-ups Today</div>
-                <div class="stat-value" id="followupsToday">{{ $followupsToday }}</div>
-            </div>
-        </div>
-        <div class="col-6 col-md-3">
-            <div class="stat-card highlight-danger">
-                <div class="stat-icon red"><span class="material-icons">warning</span></div>
-                <div class="stat-label">Overdue Follow-ups</div>
-                <div class="stat-value" id="overdueFollowups">{{ $overdueFollowups }}</div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ── Row 2 — Call Stats ── --}}
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-md-4">
-            <div class="stat-card">
-                <div class="stat-icon blue"><span class="material-icons">call</span></div>
-                <div class="stat-label">Calls Today</div>
-                <div class="stat-value" id="totalCallsToday">{{ $totalCallsToday }}</div>
-            </div>
-        </div>
-        <div class="col-6 col-md-4">
-            <div class="stat-card">
-                <div class="stat-icon cyan"><span class="material-icons">timer</span></div>
-                <div class="stat-label">Talk Time Today</div>
-                <div class="stat-value stat-value--mono" id="talkTimeToday">
-                    {{ gmdate('H:i:s', max(0, (int) $talkTimeTodaySeconds)) }}
+                <div class="tc-greeting-meta-item">
+                    <span class="live-pulse-dot"></span>
+                    <span>Live</span>
+                    <span class="material-icons" style="font-size:14px;opacity:.75;">sync</span>
+                    <span id="lastRefreshed">Just now</span>
                 </div>
-            </div>
-        </div>
-        <div class="col-12 col-md-4">
-            <div class="stat-card {{ $missedCallbacks->count() > 0 ? 'highlight-danger' : '' }}">
-                <div class="stat-icon red"><span class="material-icons">phone_missed</span></div>
-                <div class="stat-label">Missed Callbacks</div>
-                <div class="stat-value" id="missedCallAlerts">{{ $missedCallbacks->count() }}</div>
-            </div>
-        </div>
-    </div>
-
-    {{-- ── Row 3 — Quick Actions + Missed Callbacks ── --}}
-    <div class="row g-3 mb-4">
-        {{-- Quick Actions --}}
-        <div class="col-lg-7">
-            <div class="chart-card h-100" style="margin-bottom:0;">
-                <div class="chart-header mb-3">
-                    <div>
-                        <h3 style="font-size:15px;font-weight:700;color:#0f172a;margin:0;">Quick Actions</h3>
-                        <p style="font-size:12px;color:#64748b;margin:3px 0 0 0;">Jump straight into your daily workflow</p>
-                    </div>
-                </div>
-                <div class="row g-2">
-                    <div class="col-6 col-sm-3">
-                        <a href="{{ route('telecaller.leads', ['status' => 'new']) }}"
-                           class="d-flex flex-column align-items-center justify-content-center gap-2 p-3 rounded-3 text-decoration-none text-center h-100"
-                           style="background:rgba(99,102,241,0.07);border:1px solid rgba(99,102,241,0.15);color:#6366f1;transition:all .2s;"
-                           onmouseover="this.style.background='rgba(99,102,241,0.14)'" onmouseout="this.style.background='rgba(99,102,241,0.07)'">
-                            <span class="material-icons" style="font-size:22px;">new_releases</span>
-                            <span style="font-size:11px;font-weight:700;">New Leads</span>
-                        </a>
-                    </div>
-                    <div class="col-6 col-sm-3">
-                        <a href="{{ route('telecaller.leads', ['status' => 'follow_up']) }}"
-                           class="d-flex flex-column align-items-center justify-content-center gap-2 p-3 rounded-3 text-decoration-none text-center h-100"
-                           style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);color:#d97706;transition:all .2s;"
-                           onmouseover="this.style.background='rgba(245,158,11,0.15)'" onmouseout="this.style.background='rgba(245,158,11,0.08)'">
-                            <span class="material-icons" style="font-size:22px;">event</span>
-                            <span style="font-size:11px;font-weight:700;">Follow-ups</span>
-                        </a>
-                    </div>
-                    <div class="col-6 col-sm-3">
-                        <button type="button" id="jumpMissedCallbacks"
-                           class="d-flex flex-column align-items-center justify-content-center gap-2 p-3 rounded-3 text-center w-100 border-0 h-100"
-                           style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.15)!important;color:#ef4444;transition:all .2s;cursor:pointer;"
-                           onmouseover="this.style.background='rgba(239,68,68,0.14)'" onmouseout="this.style.background='rgba(239,68,68,0.07)'">
-                            <span class="material-icons" style="font-size:22px;">phone_missed</span>
-                            <span style="font-size:11px;font-weight:700;">Missed Calls</span>
-                        </button>
-                    </div>
-                    <div class="col-6 col-sm-3">
-                        <button type="button" id="refreshTelecallerPanel"
-                           class="d-flex flex-column align-items-center justify-content-center gap-2 p-3 rounded-3 text-center w-100 border-0 h-100"
-                           style="background:rgba(100,116,139,0.07);border:1px solid rgba(100,116,139,0.15)!important;color:#64748b;transition:all .2s;cursor:pointer;"
-                           onmouseover="this.style.background='rgba(100,116,139,0.13)'" onmouseout="this.style.background='rgba(100,116,139,0.07)'">
-                            <span class="material-icons" style="font-size:22px;">refresh</span>
-                            <span style="font-size:11px;font-weight:700;">Refresh</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        {{-- Missed Callbacks Panel --}}
-        <div class="col-lg-5" id="missedCallbacksPanel">
-            <div class="chart-card h-100" style="margin-bottom:0;">
-                <div class="d-flex align-items-center justify-content-between mb-3">
-                    <div>
-                        <h3 style="font-size:15px;font-weight:700;color:#0f172a;margin:0;">Missed Callbacks</h3>
-                        <p style="font-size:12px;color:#64748b;margin:3px 0 0 0;">
-                            <span id="missedCallbackCount">{{ $missedCallbacks->count() }}</span> pending callback(s)
-                        </p>
-                    </div>
-                    @if($missedCallbacks->count() > 0)
-                        <span style="background:rgba(239,68,68,0.1);color:#ef4444;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;border:1px solid rgba(239,68,68,0.2);">
-                            Action needed
-                        </span>
+                @if($followupsToday > 0 || $overdueFollowups > 0)
+                <div class="tc-greeting-meta-item" style="background:rgba(239,68,68,0.22);">
+                    <span class="material-icons" style="font-size:15px;">notifications_active</span>
+                    @if($overdueFollowups > 0)
+                        {{ $overdueFollowups }} overdue follow-up{{ $overdueFollowups > 1 ? 's' : '' }}
+                    @else
+                        {{ $followupsToday }} follow-up{{ $followupsToday > 1 ? 's' : '' }} today
                     @endif
                 </div>
-                <div class="d-flex flex-column gap-2" id="missedCallbackList" style="max-height:240px;overflow-y:auto;">
-                    @forelse($missedCallbacks as $item)
-                        <div class="d-flex align-items-center gap-3 p-3 rounded-3"
-                             style="background:#fef2f2;border:1px solid rgba(239,68,68,0.15);">
-                            <div style="width:34px;height:34px;min-width:34px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#f87171);display:flex;align-items:center;justify-content:center;">
-                                <span class="material-icons" style="font-size:17px;color:#fff;">phone_missed</span>
+                @endif
+            </div>
+        </div>
+
+        {{-- Today's snapshot ring --}}
+        <div class="tc-greeting-rings" style="position:relative;z-index:1;">
+            <div class="tc-ring-group">
+                <div class="tc-ring-item">
+                    <svg width="72" height="72" viewBox="0 0 72 72">
+                        <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="6"/>
+                        <circle cx="36" cy="36" r="28" fill="none" stroke="#fff" stroke-width="6"
+                            stroke-dasharray="175.9"
+                            stroke-dashoffset="{{ max(0, 175.9 - (min(1, $totalCallsToday / max(1,20)) * 175.9)) }}"
+                            stroke-linecap="round" transform="rotate(-90 36 36)" id="ringCalls"/>
+                    </svg>
+                    <div class="tc-ring-label">
+                        <span class="tc-ring-val" id="ringCallsVal">{{ $totalCallsToday }}</span>
+                        <span class="tc-ring-sub">Calls</span>
+                    </div>
+                </div>
+                <div class="tc-ring-item">
+                    <svg width="72" height="72" viewBox="0 0 72 72">
+                        <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="6"/>
+                        <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="6"
+                            stroke-dasharray="175.9"
+                            stroke-dashoffset="{{ max(0, 175.9 - (min(1, $followupsToday / max(1,10)) * 175.9)) }}"
+                            stroke-linecap="round" transform="rotate(-90 36 36)" id="ringFollowups"/>
+                    </svg>
+                    <div class="tc-ring-label">
+                        <span class="tc-ring-val" id="ringFollowupsVal">{{ $followupsToday }}</span>
+                        <span class="tc-ring-sub">Due</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{-- ── Row 1 — Lead & Follow-up Stats ───────────────────────────────────── --}}
+<div class="row g-3 mb-3">
+    <div class="col-6 col-md-3">
+        <div class="stat-card stat-card-v2">
+            <div class="d-flex align-items-start justify-content-between">
+                <div>
+                    <div class="stat-label">Assigned Leads</div>
+                    <div class="stat-value" id="totalAssignedLeads">{{ $totalAssignedLeads }}</div>
+                </div>
+                <div class="stat-icon blue"><span class="material-icons" style="font-size:21px;">assignment_ind</span></div>
+            </div>
+            <div class="stat-card-bar" style="--bar-color:var(--primary-color);--bar-pct:{{ min(100, ($totalAssignedLeads / max(1,50))*100) }}%"></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card stat-card-v2">
+            <div class="d-flex align-items-start justify-content-between">
+                <div>
+                    <div class="stat-label">New Leads</div>
+                    <div class="stat-value" id="newLeads">{{ $newLeads }}</div>
+                </div>
+                <div class="stat-icon green"><span class="material-icons" style="font-size:21px;">fiber_new</span></div>
+            </div>
+            <div class="stat-card-bar" style="--bar-color:#10b981;--bar-pct:{{ min(100, ($newLeads / max(1,20))*100) }}%"></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card stat-card-v2">
+            <div class="d-flex align-items-start justify-content-between">
+                <div>
+                    <div class="stat-label">Follow-ups Today</div>
+                    <div class="stat-value" id="followupsToday">{{ $followupsToday }}</div>
+                </div>
+                <div class="stat-icon amber"><span class="material-icons" style="font-size:21px;">event</span></div>
+            </div>
+            <div class="stat-card-bar" style="--bar-color:#f59e0b;--bar-pct:{{ min(100, ($followupsToday / max(1,10))*100) }}%"></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="stat-card stat-card-v2 {{ $overdueFollowups > 0 ? 'highlight-danger' : '' }}">
+            <div class="d-flex align-items-start justify-content-between">
+                <div>
+                    <div class="stat-label">Overdue Follow-ups</div>
+                    <div class="stat-value" id="overdueFollowups">{{ $overdueFollowups }}</div>
+                </div>
+                <div class="stat-icon red"><span class="material-icons" style="font-size:21px;">warning_amber</span></div>
+            </div>
+            <div class="stat-card-bar" style="--bar-color:#ef4444;--bar-pct:{{ min(100, ($overdueFollowups / max(1,5))*100) }}%"></div>
+        </div>
+    </div>
+</div>
+
+{{-- ── Row 2 — Call Stats ─────────────────────────────────────────────────── --}}
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-4">
+        <div class="stat-card stat-card-v2">
+            <div class="d-flex align-items-start justify-content-between">
+                <div>
+                    <div class="stat-label">Calls Today</div>
+                    <div class="stat-value" id="totalCallsToday">{{ $totalCallsToday }}</div>
+                </div>
+                <div class="stat-icon purple"><span class="material-icons" style="font-size:21px;">call</span></div>
+            </div>
+            <div class="stat-card-bar" style="--bar-color:#8b5cf6;--bar-pct:{{ min(100, ($totalCallsToday / max(1,30))*100) }}%"></div>
+        </div>
+    </div>
+    <div class="col-6 col-md-4">
+        <div class="stat-card stat-card-v2">
+            <div class="d-flex align-items-start justify-content-between">
+                <div>
+                    <div class="stat-label">Talk Time</div>
+                    <div class="stat-value" id="talkTimeToday" style="font-size:22px;letter-spacing:-0.5px;">
+                        {{ gmdate('H:i:s', max(0, (int) $talkTimeTodaySeconds)) }}
+                    </div>
+                </div>
+                <div class="stat-icon cyan"><span class="material-icons" style="font-size:21px;">timer</span></div>
+            </div>
+            <div class="stat-card-bar" style="--bar-color:#06b6d4;--bar-pct:{{ min(100, ($talkTimeTodaySeconds / max(1,3600))*100) }}%"></div>
+        </div>
+    </div>
+    <div class="col-12 col-md-4">
+        <div class="stat-card stat-card-v2 {{ $missedCallbacks->count() > 0 ? 'highlight-danger' : '' }}">
+            <div class="d-flex align-items-start justify-content-between">
+                <div>
+                    <div class="stat-label">Missed Callbacks</div>
+                    <div class="stat-value" id="missedCallAlerts">{{ $missedCallbacks->count() }}</div>
+                </div>
+                <div class="stat-icon red"><span class="material-icons" style="font-size:21px;">phone_missed</span></div>
+            </div>
+            <div class="stat-card-bar" style="--bar-color:#ef4444;--bar-pct:{{ min(100, ($missedCallbacks->count() / max(1,5))*100) }}%"></div>
+        </div>
+    </div>
+</div>
+
+{{-- ── Row 3 — Quick Actions + Missed Callbacks ───────────────────────── --}}
+<div class="row g-3 mb-4">
+
+    {{-- Quick Actions --}}
+    <div class="col-lg-8">
+        <div class="chart-card h-100" style="margin-bottom:0;">
+            <div class="tc-section-head mb-3">
+                <h3 class="tc-section-title">
+                    <span class="material-icons">bolt</span>
+                    Quick Actions
+                </h3>
+                <span class="badge rounded-pill text-bg-light border" style="font-size:11px;font-weight:600;">Daily Workflow</span>
+            </div>
+
+            <div class="tc-qa-grid">
+                <a href="{{ route('telecaller.leads', ['status' => 'new']) }}" class="tc-qa-card tc-qa-primary">
+                    <div class="tc-qa-icon"><span class="material-icons">new_releases</span></div>
+                    <div>
+                        <div class="tc-qa-label">New Leads</div>
+                        <div class="tc-qa-hint">Freshly assigned</div>
+                    </div>
+                </a>
+                <a href="{{ route('telecaller.leads', ['status' => 'follow_up']) }}" class="tc-qa-card tc-qa-warning">
+                    <div class="tc-qa-icon"><span class="material-icons">event_note</span></div>
+                    <div>
+                        <div class="tc-qa-label">Follow-ups Due</div>
+                        <div class="tc-qa-hint">Pending today</div>
+                    </div>
+                </a>
+                <button type="button" class="tc-qa-card tc-qa-danger" id="jumpMissedCallbacks">
+                    <div class="tc-qa-icon"><span class="material-icons">phone_missed</span></div>
+                    <div>
+                        <div class="tc-qa-label">Missed Callbacks</div>
+                        <div class="tc-qa-hint">Needs attention</div>
+                    </div>
+                </button>
+                <a href="{{ route('telecaller.calls.outbound') }}" class="tc-qa-card tc-qa-success">
+                    <div class="tc-qa-icon"><span class="material-icons">call</span></div>
+                    <div>
+                        <div class="tc-qa-label">Outbound Calls</div>
+                        <div class="tc-qa-hint">Start calling</div>
+                    </div>
+                </a>
+            </div>
+
+            {{-- Performance mini strip --}}
+            <div class="tc-perf-strip mt-3">
+                <div class="tc-perf-item">
+                    <div class="tc-perf-dot" style="background:var(--primary-color);"></div>
+                    <div>
+                        <div class="tc-perf-val" id="miniAssigned">{{ $totalAssignedLeads }}</div>
+                        <div class="tc-perf-key">Leads</div>
+                    </div>
+                </div>
+                <div class="tc-perf-divider"></div>
+                <div class="tc-perf-item">
+                    <div class="tc-perf-dot" style="background:#8b5cf6;"></div>
+                    <div>
+                        <div class="tc-perf-val" id="miniCalls">{{ $totalCallsToday }}</div>
+                        <div class="tc-perf-key">Calls</div>
+                    </div>
+                </div>
+                <div class="tc-perf-divider"></div>
+                <div class="tc-perf-item">
+                    <div class="tc-perf-dot" style="background:#f59e0b;"></div>
+                    <div>
+                        <div class="tc-perf-val" id="miniFollowups">{{ $followupsToday }}</div>
+                        <div class="tc-perf-key">Due Today</div>
+                    </div>
+                </div>
+                <div class="ms-auto">
+                    <button type="button" class="btn btn-sm btn-light d-flex align-items-center gap-1" id="refreshTelecallerPanel" style="font-size:12px;border-radius:8px;">
+                        <span class="material-icons" style="font-size:15px;">refresh</span> Refresh
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- Missed Callbacks Panel --}}
+    <div class="col-lg-4" id="missedCallbacksPanel">
+        <div class="chart-card h-100" style="margin-bottom:0;">
+            <div class="tc-section-head mb-2">
+                <h3 class="tc-section-title">
+                    <span class="material-icons" style="color:#ef4444;">phone_missed</span>
+                    Missed Callbacks
+                </h3>
+                <span class="badge bg-danger rounded-pill" style="font-size:11px;" id="missedCallbackCountBadge">{{ $missedCallbacks->count() }}</span>
+            </div>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+                <span id="missedCallbackCount">{{ $missedCallbacks->count() }}</span> pending callback(s)
+            </p>
+            <div class="d-flex flex-column gap-2" id="missedCallbackList" style="max-height:260px;overflow-y:auto;">
+                @forelse($missedCallbacks as $item)
+                    <div class="tc-callback-item tc-callback-item-v2">
+                        <div class="tc-callback-avatar-v2">
+                            {{ strtoupper(substr($item->lead->name ?? 'U', 0, 1)) }}
+                        </div>
+                        <div style="flex:1;min-width:0;">
+                            <div class="fw-semibold" style="font-size:13px;color:var(--text-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                                {{ $item->lead->name ?? 'Unknown Lead' }}
                             </div>
-                            <div style="flex:1;min-width:0;">
-                                <div style="font-size:13px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                    {{ $item->lead->name ?? 'Unknown Lead' }}
-                                </div>
-                                <div style="font-size:11px;color:#64748b;margin-top:1px;">
-                                    {{ $item->lead->lead_code ?? '-' }} · {{ $item->lead->phone ?? $item->customer_number }}
-                                </div>
+                            <div style="font-size:11.5px;color:var(--text-muted);margin-top:1px;display:flex;align-items:center;gap:4px;">
+                                <span class="material-icons" style="font-size:12px;">tag</span>{{ $item->lead->lead_code ?? '-' }}
+                                <span style="opacity:.4;">•</span>
+                                <span class="material-icons" style="font-size:12px;">phone</span>{{ $item->lead->phone ?? $item->customer_number }}
                             </div>
                             @if ($item->lead_id)
                                 <a href="{{ route('telecaller.leads.show', encrypt($item->lead_id)) }}"
-                                   class="btn btn-sm"
-                                   style="background:#ef4444;color:#fff;font-size:11px;font-weight:700;padding:5px 12px;border:none;border-radius:7px;white-space:nowrap;">
-                                    Call Back
+                                    class="tc-callback-cta mt-2">
+                                    <span class="material-icons" style="font-size:13px;">call</span> Call Back
                                 </a>
                             @endif
                         </div>
-                    @empty
-                        <div class="d-flex flex-column align-items-center justify-content-center py-4 gap-2"
-                             style="color:#94a3b8;">
-                            <span class="material-icons" style="font-size:36px;opacity:.4;">check_circle</span>
-                            <span style="font-size:12px;font-weight:600;">No missed callbacks</span>
-                        </div>
-                    @endforelse
-                </div>
+                    </div>
+                @empty
+                    <div class="tc-empty-state">
+                        <span class="material-icons tc-empty-icon">check_circle</span>
+                        <span>No missed callbacks</span>
+                    </div>
+                @endforelse
             </div>
         </div>
     </div>
 
-    {{-- ── Follow-up Calendar ── --}}
-    <div class="row g-3">
-        <div class="col-12">
-            <x-followup-calendar
-                :calendarData="$followupCalendar"
-                :fetchUrl="route('telecaller.followups.calendar-data')"
-                :todayUrl="route('telecaller.followups.today')"
-                :overdueUrl="route('telecaller.followups.overdue')"
-                :upcomingUrl="route('telecaller.followups.upcoming')"
-                title="My Follow-Up Calendar"
-                uid="tc"
-            />
-        </div>
+</div>
+
+{{-- ── Row 4 — Follow-up Calendar ─────────────────────────────────────── --}}
+<div class="row g-4">
+    <div class="col-12">
+        <x-followup-calendar
+            :calendarData="$followupCalendar"
+            :fetchUrl="route('telecaller.followups.calendar-data')"
+            :todayUrl="route('telecaller.followups.today')"
+            :overdueUrl="route('telecaller.followups.overdue')"
+            :upcomingUrl="route('telecaller.followups.upcoming')"
+            title="My Follow-Up Calendar"
+            uid="tc"
+        />
     </div>
+</div>
 
-    <script>
-        (function() {
-            const csrfToken = @json(csrf_token());
-            const snapshotUrl = @json(route('telecaller.panel.snapshot'));
+<script>
+(function () {
+    /* ── Greeting & date ────────────────────────────────────────────── */
+    (function () {
+        const h = new Date().getHours();
+        const greet = h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening';
+        const el = document.getElementById('greetingTitle');
+        if (el) el.textContent = greet + ', {{ auth()->user()->name }}';
+        const dateEl = document.getElementById('greetingDate');
+        if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+    })();
 
-            const realtimeCallStatus   = document.getElementById('realtimeCallStatus');
-            const activeCallBadge      = document.getElementById('activeCallBadge');
-            const activeCallCount      = document.getElementById('activeCallCount');
-            const totalAssignedLeads   = document.getElementById('totalAssignedLeads');
-            const newLeads             = document.getElementById('newLeads');
-            const followupsToday       = document.getElementById('followupsToday');
-            const overdueFollowups     = document.getElementById('overdueFollowups');
-            const totalCallsToday      = document.getElementById('totalCallsToday');
-            const talkTimeToday        = document.getElementById('talkTimeToday');
-            const missedCallAlerts     = document.getElementById('missedCallAlerts');
-            const missedCallbackCount  = document.getElementById('missedCallbackCount');
-            const missedCallbackList   = document.getElementById('missedCallbackList');
-            const refreshBtn           = document.getElementById('refreshTelecallerPanel');
-            const jumpMissedCallbacks  = document.getElementById('jumpMissedCallbacks');
-            const todayFollowupCount   = document.getElementById('todayFollowupCount');
-            const overdueFollowupCount = document.getElementById('overdueFollowupCount');
+    /* ── DOM refs ───────────────────────────────────────────────────── */
+    const totalAssignedLeads  = document.getElementById('totalAssignedLeads');
+    const newLeads            = document.getElementById('newLeads');
+    const followupsTodayEl    = document.getElementById('followupsToday');
+    const overdueFollowupsEl  = document.getElementById('overdueFollowups');
+    const totalCallsTodayEl   = document.getElementById('totalCallsToday');
+    const talkTimeTodayEl     = document.getElementById('talkTimeToday');
+    const missedCallAlertsEl  = document.getElementById('missedCallAlerts');
+    const missedCallbackCount = document.getElementById('missedCallbackCount');
+    const missedCallbackCountBadge = document.getElementById('missedCallbackCountBadge');
+    const missedCallbackList  = document.getElementById('missedCallbackList');
+    const refreshBtn          = document.getElementById('refreshTelecallerPanel');
+    const jumpMissedCallbacks = document.getElementById('jumpMissedCallbacks');
+    const lastRefreshed       = document.getElementById('lastRefreshed');
+    const miniAssigned        = document.getElementById('miniAssigned');
+    const miniCalls           = document.getElementById('miniCalls');
+    const miniFollowups       = document.getElementById('miniFollowups');
+    const ringCallsEl         = document.getElementById('ringCalls');
+    const ringCallsValEl      = document.getElementById('ringCallsVal');
+    const ringFollowupsEl     = document.getElementById('ringFollowups');
+    const ringFollowupsValEl  = document.getElementById('ringFollowupsVal');
 
-            function toTimeLabel(totalSeconds) {
-                const sec = Number(totalSeconds || 0);
-                const h = Math.floor(sec / 3600);
-                const m = Math.floor((sec % 3600) / 60);
-                const s = sec % 60;
-                return [h, m, s].map(v => String(v).padStart(2, '0')).join(':');
-            }
+    const snapshotUrl = @json(route('telecaller.panel.snapshot'));
+    const CIRCUMFERENCE = 175.9;
 
-            function renderMissedCallbacks(callbacks) {
-                if (!missedCallbackList) return;
-                if (!callbacks || !callbacks.length) {
-                    missedCallbackList.innerHTML = `
-                        <div class="d-flex flex-column align-items-center justify-content-center py-4 gap-2" style="color:#94a3b8;">
-                            <span class="material-icons" style="font-size:36px;opacity:.4;">check_circle</span>
-                            <span style="font-size:12px;font-weight:600;">No missed callbacks</span>
-                        </div>`;
-                    return;
-                }
-                missedCallbackList.innerHTML = callbacks.map(item => {
-                    const hasLead = !!item.encrypted_lead_id;
-                    const target  = hasLead ? `{{ url('telecaller/leads') }}/${encodeURIComponent(item.encrypted_lead_id)}` : '#';
-                    return `
-                        <div class="d-flex align-items-center gap-3 p-3 rounded-3" style="background:#fef2f2;border:1px solid rgba(239,68,68,0.15);">
-                            <div style="width:34px;height:34px;min-width:34px;border-radius:50%;background:linear-gradient(135deg,#ef4444,#f87171);display:flex;align-items:center;justify-content:center;">
-                                <span class="material-icons" style="font-size:17px;color:#fff;">phone_missed</span>
-                            </div>
-                            <div style="flex:1;min-width:0;">
-                                <div style="font-size:13px;font-weight:700;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.lead_name || 'Unknown Lead'}</div>
-                                <div style="font-size:11px;color:#64748b;margin-top:1px;">${item.lead_code || '-'} · ${item.phone || '-'}</div>
-                            </div>
-                            ${hasLead ? `<a href="${target}" class="btn btn-sm" style="background:#ef4444;color:#fff;font-size:11px;font-weight:700;padding:5px 12px;border:none;border-radius:7px;white-space:nowrap;">Call Back</a>` : ''}
-                        </div>`;
-                }).join('');
-            }
+    function toTimeLabel(s) {
+        s = Number(s || 0);
+        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+        return [h, m, sec].map(v => String(v).padStart(2, '0')).join(':');
+    }
 
-            function renderSnapshot(data) {
-                if (!data || !data.ok) return;
-                const calls = Number(data.active_call_count || 0);
+    function setRing(el, val, max) {
+        if (!el) return;
+        const pct = Math.min(1, val / Math.max(1, max));
+        el.setAttribute('stroke-dashoffset', Math.max(0, CIRCUMFERENCE - pct * CIRCUMFERENCE));
+    }
 
-                activeCallCount.textContent = calls;
-                realtimeCallStatus.textContent = data.call_status || (calls > 0 ? 'On Call' : 'Idle');
-                activeCallBadge.classList.remove('bg-danger', 'bg-success');
-                activeCallBadge.classList.add(calls > 0 ? 'bg-danger' : 'bg-success');
+    function renderMissedCallbacks(callbacks) {
+        if (!missedCallbackList) return;
+        if (!callbacks || !callbacks.length) {
+            missedCallbackList.innerHTML = '<div class="tc-empty-state"><span class="material-icons tc-empty-icon">check_circle</span><span>No missed callbacks</span></div>';
+            return;
+        }
+        missedCallbackList.innerHTML = callbacks.map(item => {
+            const hasLead = !!item.encrypted_lead_id;
+            const initial = (item.lead_name || 'U').charAt(0).toUpperCase();
+            const callLink = hasLead
+                ? `<a href="{{ url('telecaller/leads') }}/${encodeURIComponent(item.encrypted_lead_id)}" class="tc-callback-cta mt-2" style="text-decoration:none;">
+                      <span class="material-icons" style="font-size:13px;">call</span> Call Back
+                   </a>`
+                : '';
+            return `<div class="tc-callback-item tc-callback-item-v2">
+                <div class="tc-callback-avatar-v2">${initial}</div>
+                <div style="flex:1;min-width:0;">
+                    <div class="fw-semibold" style="font-size:13px;color:var(--text-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.lead_name || 'Unknown Lead'}</div>
+                    <div style="font-size:11.5px;color:var(--text-muted);margin-top:1px;display:flex;align-items:center;gap:4px;">
+                        <span class="material-icons" style="font-size:12px;">tag</span>${item.lead_code || '-'}
+                        <span style="opacity:.4;">•</span>
+                        <span class="material-icons" style="font-size:12px;">phone</span>${item.phone || '-'}
+                    </div>
+                    ${callLink}
+                </div>
+            </div>`;
+        }).join('');
+    }
 
-                totalAssignedLeads.textContent = Number(data.total_assigned_leads || 0);
-                newLeads.textContent           = Number(data.new_leads || 0);
-                followupsToday.textContent     = Number(data.today_followup_count || 0);
-                overdueFollowups.textContent   = Number(data.overdue_followup_count || 0);
-                totalCallsToday.textContent    = Number(data.total_calls_today || 0);
-                talkTimeToday.textContent      = toTimeLabel(Number(data.talk_time_today_seconds || 0));
+    function renderSnapshot(data) {
+        if (!data || !data.ok) return;
+        const n = v => Number(v || 0);
+        totalAssignedLeads.textContent = n(data.total_assigned_leads);
+        newLeads.textContent           = n(data.new_leads);
+        followupsTodayEl.textContent   = n(data.today_followup_count);
+        overdueFollowupsEl.textContent = n(data.overdue_followup_count);
+        totalCallsTodayEl.textContent  = n(data.total_calls_today);
+        talkTimeTodayEl.textContent    = toTimeLabel(n(data.talk_time_today_seconds));
 
-                const missed = Number(data.missed_callback_count || 0);
-                missedCallAlerts.textContent  = missed;
-                missedCallbackCount.textContent = missed;
+        const missed = n(data.missed_callback_count);
+        missedCallAlertsEl.textContent  = missed;
+        missedCallbackCount.textContent = missed;
+        if (missedCallbackCountBadge) missedCallbackCountBadge.textContent = missed;
 
-                if (todayFollowupCount)   todayFollowupCount.textContent   = Number(data.today_followup_count || 0);
-                if (overdueFollowupCount) overdueFollowupCount.textContent = Number(data.overdue_followup_count || 0);
+        if (miniAssigned)  miniAssigned.textContent  = n(data.total_assigned_leads);
+        if (miniCalls)     miniCalls.textContent     = n(data.total_calls_today);
+        if (miniFollowups) miniFollowups.textContent = n(data.today_followup_count);
 
-                renderMissedCallbacks(data.missed_callbacks || []);
-            }
+        setRing(ringCallsEl, n(data.total_calls_today), 20);
+        if (ringCallsValEl) ringCallsValEl.textContent = n(data.total_calls_today);
+        setRing(ringFollowupsEl, n(data.today_followup_count), 10);
+        if (ringFollowupsValEl) ringFollowupsValEl.textContent = n(data.today_followup_count);
 
-            async function fetchSnapshot() {
-                try {
-                    const res  = await fetch(snapshotUrl, { headers: { 'Accept': 'application/json' } });
-                    const data = await res.json();
-                    renderSnapshot(data);
-                } catch (e) {}
-            }
+        renderMissedCallbacks(data.missed_callbacks || []);
 
-            refreshBtn?.addEventListener('click', fetchSnapshot);
-            jumpMissedCallbacks?.addEventListener('click', function () {
-                document.getElementById('missedCallbacksPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            });
+        if (lastRefreshed) {
+            lastRefreshed.textContent = new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit' });
+        }
+    }
 
-            fetchSnapshot();
-            setInterval(fetchSnapshot, 45000);
-        })();
-    </script>
+    async function fetchSnapshot() {
+        try {
+            const res  = await fetch(snapshotUrl, { headers: { 'Accept': 'application/json' } });
+            renderSnapshot(await res.json());
+        } catch (e) {}
+    }
+
+    refreshBtn?.addEventListener('click', function () {
+        const icon = this.querySelector('.material-icons');
+        if (icon) { icon.style.animation = 'spin .6s linear'; setTimeout(() => icon.style.animation = '', 700); }
+        fetchSnapshot();
+    });
+
+    jumpMissedCallbacks?.addEventListener('click', function () {
+        document.getElementById('missedCallbacksPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    fetchSnapshot();
+    setInterval(fetchSnapshot, 45000);
+})();
+</script>
+
+<style>
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Greeting Ring Layout ───────────────────────── */
+.tc-greeting-inner { display: flex; align-items: center; gap: 24px; }
+.tc-greeting-rings { display: flex; align-items: center; flex-shrink: 0; }
+.tc-ring-group { display: flex; gap: 16px; }
+.tc-ring-item {
+    position: relative; width: 72px; height: 72px;
+    display: flex; align-items: center; justify-content: center;
+}
+.tc-ring-label {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.tc-ring-val { font-size: 16px; font-weight: 800; color: #fff; line-height: 1; }
+.tc-ring-sub { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.75); text-transform: uppercase; letter-spacing: .4px; }
+
+/* ── Stat Card V2 ───────────────────────────────── */
+.stat-card-v2 .stat-icon { margin-bottom: 0; }
+.stat-card-bar {
+    height: 3px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--bar-color), color-mix(in srgb, var(--bar-color) 60%, transparent));
+    width: var(--bar-pct, 50%);
+    margin-top: 12px;
+    transition: width .6s ease;
+}
+
+/* ── Quick Actions Grid ─────────────────────────── */
+.tc-qa-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.tc-qa-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px;
+    border-radius: 12px;
+    text-decoration: none;
+    cursor: pointer; border: none;
+    transition: all .18s ease;
+    text-align: left;
+}
+.tc-qa-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.12); }
+.tc-qa-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(255,255,255,0.22);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.tc-qa-icon .material-icons { font-size: 20px; }
+.tc-qa-label { font-size: 13px; font-weight: 700; }
+.tc-qa-hint  { font-size: 11px; opacity: .75; margin-top: 1px; }
+
+.tc-qa-primary { background: var(--grad-primary); color: #fff; box-shadow: 0 3px 10px rgba(99,102,241,0.28); }
+.tc-qa-warning { background: var(--grad-warning); color: #fff; box-shadow: 0 3px 10px rgba(245,158,11,0.25); }
+.tc-qa-danger  { background: var(--grad-danger);  color: #fff; box-shadow: 0 3px 10px rgba(239,68,68,0.25);  }
+.tc-qa-success { background: var(--grad-success); color: #fff; box-shadow: 0 3px 10px rgba(16,185,129,0.25); }
+
+/* ── Performance Strip ──────────────────────────── */
+.tc-perf-strip {
+    display: flex; align-items: center; gap: 20px;
+    background: var(--background-light);
+    border-radius: 10px; padding: 10px 16px;
+}
+.tc-perf-item { display: flex; align-items: center; gap: 10px; }
+.tc-perf-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.tc-perf-val { font-size: 17px; font-weight: 800; color: var(--text-dark); line-height: 1; }
+.tc-perf-key { font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 1px; }
+.tc-perf-divider { width: 1px; height: 28px; background: var(--border-color); }
+
+/* ── Callback Items V2 ──────────────────────────── */
+.tc-callback-item-v2 {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: #fff;
+    transition: box-shadow .15s;
+}
+.tc-callback-item-v2:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.07); }
+.tc-callback-avatar-v2 {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: var(--grad-danger); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 800; flex-shrink: 0;
+}
+.tc-callback-cta {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 6px;
+    font-size: 11.5px; font-weight: 600;
+    background: var(--grad-danger); color: #fff;
+    text-decoration: none; border: none; cursor: pointer;
+    transition: opacity .15s;
+}
+.tc-callback-cta:hover { opacity: .88; color: #fff; }
+
+/* ── Empty State ────────────────────────────────── */
+.tc-empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 6px; padding: 28px 0; color: var(--text-muted);
+    font-size: 12.5px; font-weight: 500;
+}
+.tc-empty-icon { font-size: 38px !important; opacity: .35; }
+
+@media (max-width: 480px) {
+    .tc-greeting-rings { display: none; }
+    .tc-qa-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
 @endsection

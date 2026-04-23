@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'tcn') }}">
+    <meta name="call-provider" content="tcn">
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
     <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
 
@@ -19,7 +19,7 @@
     @endif
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="{{ asset('css/style.css') }}" rel="stylesheet">
 
@@ -149,11 +149,117 @@
         });
     })();
     </script>
-    {{-- TCN softphone container --}}{{-- Navigation Warning Modal (shown when user clicks a link during an active call) --}}
-    <div class="modal fade" id="gcNavWarningModal" tabindex="-1" aria-hidden="true">
+    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
+    {{--
+        Softphone iframe for managers — persistent iframe architecture.
+        data-turbo-permanent on the wrapper div ensures Turbo Drive NEVER
+        destroys/recreates this element during navigation — the SIP session
+        and WebRTC audio survive across all page transitions.
+        The iframe loads once; TcnService.init() runs once inside it.
+    --}}
+    <div id="tcnMgrWidget" data-turbo-permanent>
+        <iframe id="tcnSoftphoneFrame"
+            src="/softphone"
+            allow="microphone"
+            style="position:fixed;bottom:80px;right:20px;width:300px;height:480px;border:none;z-index:1065;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;transition:height .2s,width .2s;">
+        </iframe>
+        {{-- Toggle button — always visible once layout renders. Lets managers
+             open the softphone even when TCN_READY hasn't fired yet. --}}
+        <button id="tcnMgrToggleBtn" title="TCN Softphone"
+            style="position:fixed;bottom:20px;right:20px;z-index:1066;
+                   width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+                   background:#64748b;color:#fff;display:flex;
+                   align-items:center;justify-content:center;
+                   box-shadow:0 4px 20px rgba(0,0,0,.22);transition:background .25s;">
+            <span class="material-icons" style="font-size:24px;pointer-events:none;" id="tcnMgrToggleIco">phone</span>
+        </button>
+    </div>
+    {{--
+        data-turbo-eval="false" — this script runs ONCE on the first hard page load.
+        Turbo navigations do NOT re-execute it, preventing duplicate window message
+        handlers from accumulating across page visits.
+    --}}
+    <script data-turbo-eval="false">
+    (function () {
+        var _frame   = null;
+        var _btn     = document.getElementById('tcnMgrToggleBtn');
+        var _ico     = document.getElementById('tcnMgrToggleIco');
+        var _visible = false;
+
+        function frame() {
+            if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame');
+            return _frame;
+        }
+
+        function showFrame() {
+            var f = frame(); if (!f) return;
+            f.style.display = 'block'; f.style.height = '480px'; f.style.width = '300px';
+            f.style.bottom = '80px'; f.style.borderRadius = '14px';
+            _visible = true;
+            if (_ico) _ico.textContent = 'close';
+        }
+
+        function hideFrame() {
+            var f = frame(); if (!f) return;
+            f.style.display = 'none';
+            _visible = false;
+            if (_ico) _ico.textContent = 'phone';
+        }
+
+        // Toggle button click.
+        if (_btn) {
+            _btn.addEventListener('click', function () {
+                if (_visible) hideFrame(); else showFrame();
+            });
+        }
+
+        // Forward [data-phone] clicks to the softphone iframe.
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest('[data-phone]');
+            if (!el) return;
+            var f = frame(); if (!f) return;
+            var phone = el.getAttribute('data-phone');
+            if (phone) {
+                showFrame();
+                f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
+            }
+        }, true);
+
+        // Receive status messages from the softphone iframe.
+        // Runs for the lifetime of the tab; persists across Turbo navigations.
+        window.addEventListener('message', function (ev) {
+            var d = ev.data; if (!d || typeof d !== 'object') return;
+            var f = frame(); if (!f) return;
+            if (d.type === 'SP_MINIMIZE')       { f.style.height = '44px';  f.style.width = '170px'; f.style.borderRadius = '22px'; }
+            else if (d.type === 'SP_EXPAND')    { f.style.height = '480px'; f.style.width = '300px'; f.style.borderRadius = '14px'; }
+            else if (d.type === 'TCN_READY') {
+                if (_btn) { _btn.style.background = '#10b981'; }
+            }
+            else if (d.type === 'TCN_CALL_STARTED' || d.type === 'TCN_CALL_ANSWERED') {
+                showFrame(); f.style.bottom = '80px';
+                if (_btn) { _btn.style.background = d.type === 'TCN_CALL_ANSWERED' ? '#ef4444' : '#6366f1'; }
+            }
+            else if (d.type === 'TCN_CALL_ENDED') {
+                f.style.bottom = '80px';
+                if (_btn) { _btn.style.background = '#10b981'; }
+            }
+            else if (d.type === 'TCN_LOGGED_OUT') {
+                if (_btn) { _btn.style.background = '#64748b'; }
+            }
+            else if (d.type === 'TCN_SIP_DROPPED') {
+                if (_btn) { _btn.style.background = '#f59e0b'; }
+            }
+        });
+    })();
+    </script>
+    <style>@keyframes tcnMgrBtnPulse{0%,100%{opacity:1}50%{opacity:.55}}</style>
+    @endif
+
+    {{-- Navigation warning modal — shown when manager clicks a link during an active call --}}
+    <div class="modal fade" id="gcNavWarningModal" tabindex="-1" aria-hidden="true" data-turbo-permanent>
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background:#dc2626; color:#fff;">
+                <div class="modal-header" style="background:#dc2626;color:#fff;">
                     <h5 class="modal-title d-flex align-items-center gap-2">
                         <span class="material-icons">warning</span> Call in Progress
                     </h5>
@@ -166,56 +272,33 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Stay on Call</button>
                     <button type="button" class="btn btn-danger" id="gcNavProceedBtn">
-                        <span class="material-icons me-1" style="font-size:16px; vertical-align:middle;">call_end</span>End &amp; Navigate
+                        <span class="material-icons me-1" style="font-size:16px;vertical-align:middle;">call_end</span>End &amp; Navigate
                     </button>
                 </div>
             </div>
         </div>
-    </div>@if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
-    {{-- SIP Client iframe — same persistent softphone widget as in app.blade.php. --}}
-    <div id="sipClientWrapper"
-         style="position:fixed;bottom:20px;right:20px;z-index:1066;
-                width:300px;height:460px;
-                border-radius:16px;overflow:hidden;
-                box-shadow:0 8px 32px rgba(0,0,0,0.18);
-                transition:height .2s ease;">
-        <iframe id="sipClientFrame"
-                src="{{ route('sip.client') }}"
-                allow="microphone; autoplay; camera"
-                style="width:100%;height:100%;border:none;display:block;background:#fff;"
-                title="TCN Softphone">
-        </iframe>
     </div>
-    {{-- DO NOT load tcn-softphone.js here — it lives only inside the iframe. --}}
-    <script src="{{ asset('js/tcn-widget.js') }}"></script>
-    <script>
+
+    {{-- data-turbo-eval="false" keeps GC as a true singleton across Turbo navigations --}}
+    <script src="{{ asset('js/global-call.js') }}" data-turbo-eval="false"></script>
+
+    {{-- GC lifecycle helpers — once per session --}}
+    <script data-turbo-eval="false">
     (function () {
         document.addEventListener('DOMContentLoaded', function () {
-            if (window.TCNWidget) {
-                window.TCNWidget.init({
-                    frameId:   'sipClientFrame',
-                    wrapperId: 'sipClientWrapper',
-                });
+            if (window.GC && typeof window.GC.initDevice === 'function') {
+                window.GC.initDevice();
             }
         });
-        document.addEventListener('DOMContentLoaded', function () {
-            document.querySelectorAll('form[action*="logout"]').forEach(function (form) {
-                form.addEventListener('submit', function () {
-                    var frame = document.getElementById('sipClientFrame');
-                    if (frame && frame.contentWindow) {
-                        try { frame.contentWindow.postMessage({ type: 'LOGOUT' }, window.location.origin); } catch (_) {}
-                    }
-                });
-            });
+
+        document.addEventListener('turbo:load', function () {
+            var m = document.querySelector('meta[name="csrf-token"]');
+            if (m && window.GC) {
+                window.GC._csrf = m.getAttribute('content');
+            }
         });
     })();
     </script>
-    <style>
-        @keyframes tcnWidgetPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
-        #sipClientWrapper { transition: height .2s ease; }
-    </style>
-    @endif
-    <script src="{{ asset('js/global-call.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
@@ -231,7 +314,6 @@
         <script>
             (function() {
                 const snapshotUrl  = @json(route('manager.notifications.snapshot'));
-                const streamUrl    = @json(route('manager.notifications.stream'));
                 const markReadUrl  = @json(route('manager.notifications.read-all'));
                 const csrfToken    = @json(csrf_token());
 
@@ -260,83 +342,59 @@
                     }
                 }
 
-                function applySnapshotData(data) {
-                    if (!data || !data.ok) return;
-
-                    const waItems  = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
-                    const sysItems = Array.isArray(data.system_notifications)   ? data.system_notifications   : [];
-                    const count    = Number(data.badge_count || 0);
-
-                    if (count > previousCount) {
-                        // light beep for new notifications
-                        try {
-                            const ac = new (window.AudioContext || window.webkitAudioContext)();
-                            const osc = ac.createOscillator();
-                            const g = ac.createGain();
-                            osc.type = 'sine';
-                            osc.frequency.setValueAtTime(880, ac.currentTime);
-                            g.gain.setValueAtTime(0.001, ac.currentTime);
-                            g.gain.exponentialRampToValueAtTime(0.15, ac.currentTime + 0.01);
-                            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.2);
-                            osc.connect(g); g.connect(ac.destination);
-                            osc.start(); osc.stop(ac.currentTime + 0.22);
-                        } catch(e) {}
-                    }
-                    previousCount = count;
-                    updateBadge(count);
-
-                    waWrap.innerHTML = renderList(
-                        waItems,
-                        function(item) {
-                            return '<div class="py-1 border-bottom">' +
-                                '<a href="' + (item.link || '#') + '" class="fw-semibold text-decoration-none d-block">' + (item.title || 'WhatsApp') + '</a>' +
-                                '<div class="text-muted">' + (item.message || '') + '</div>' +
-                                '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
-                                '</div>';
-                        },
-                        'No WhatsApp messages.'
-                    );
-
-                    systemWrap.innerHTML = renderList(
-                        sysItems,
-                        function(item) {
-                            return '<div class="py-1 border-bottom">' +
-                                '<div class="fw-semibold">' + (item.title || 'Notification') + '</div>' +
-                                '<div class="text-muted">' + (item.message || '') + '</div>' +
-                                '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
-                                '</div>';
-                        },
-                        'No system notifications.'
-                    );
-                }
-
                 async function fetchNotifications() {
                     try {
                         const res = await fetch(snapshotUrl, { headers: { 'Accept': 'application/json' } });
                         if (!res.ok) return;
                         const data = await res.json();
-                        applySnapshotData(data);
+                        if (!data || !data.ok) return;
+
+                        const waItems     = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
+                        const sysItems    = Array.isArray(data.system_notifications)   ? data.system_notifications   : [];
+                        const count       = Number(data.badge_count || 0);
+
+                        if (count > previousCount) {
+                            // light beep for new notifications
+                            try {
+                                const ac = new (window.AudioContext || window.webkitAudioContext)();
+                                const osc = ac.createOscillator();
+                                const g = ac.createGain();
+                                osc.type = 'sine';
+                                osc.frequency.setValueAtTime(880, ac.currentTime);
+                                g.gain.setValueAtTime(0.001, ac.currentTime);
+                                g.gain.exponentialRampToValueAtTime(0.15, ac.currentTime + 0.01);
+                                g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.2);
+                                osc.connect(g); g.connect(ac.destination);
+                                osc.start(); osc.stop(ac.currentTime + 0.22);
+                            } catch(e) {}
+                        }
+                        previousCount = count;
+                        updateBadge(count);
+
+                        waWrap.innerHTML = renderList(
+                            waItems,
+                            function(item) {
+                                return '<div class="py-1 border-bottom">' +
+                                    '<a href="' + (item.link || '#') + '" class="fw-semibold text-decoration-none d-block">' + (item.title || 'WhatsApp') + '</a>' +
+                                    '<div class="text-muted">' + (item.message || '') + '</div>' +
+                                    '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
+                                    '</div>';
+                            },
+                            'No WhatsApp messages.'
+                        );
+
+                        systemWrap.innerHTML = renderList(
+                            sysItems,
+                            function(item) {
+                                return '<div class="py-1 border-bottom">' +
+                                    '<div class="fw-semibold">' + (item.title || 'Notification') + '</div>' +
+                                    '<div class="text-muted">' + (item.message || '') + '</div>' +
+                                    '<div class="text-muted" style="font-size:11px;">' + (item.time || '') + '</div>' +
+                                    '</div>';
+                            },
+                            'No system notifications.'
+                        );
                     } catch (e) {}
-                }
-
-                function startNotificationsStream() {
-                    if (!window.EventSource) return false;
-
-                    let es = new EventSource(streamUrl);
-                    es.addEventListener('notifications', function (event) {
-                        try {
-                            const data = JSON.parse(event.data || '{}');
-                            applySnapshotData(data);
-                        } catch (_) {}
-                    });
-
-                    es.onerror = function () {
-                        try { es.close(); } catch (_) {}
-                        setTimeout(fetchNotifications, 2000);
-                        setTimeout(startNotificationsStream, 5000);
-                    };
-
-                    return true;
                 }
 
                 markReadBtn?.addEventListener('click', async function() {
@@ -350,9 +408,7 @@
                 });
 
                 fetchNotifications();
-                if (!startNotificationsStream()) {
-                    setInterval(fetchNotifications, 60000);
-                }
+                setInterval(fetchNotifications, 60000);
             })();
         </script>
 
@@ -386,7 +442,7 @@
     <script>
         document.addEventListener('DOMContentLoaded', function () {
             if (typeof Chart !== 'undefined') {
-                Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
+                Chart.defaults.font.family    = "'Manrope', sans-serif";
                 Chart.defaults.font.size      = 12;
                 Chart.defaults.color          = '#64748b';
                 Chart.defaults.plugins.legend.labels.usePointStyle = true;
@@ -612,7 +668,3 @@
 </body>
 
 </html>
-
-
-
-

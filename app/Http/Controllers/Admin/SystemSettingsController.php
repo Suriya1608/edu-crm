@@ -69,7 +69,7 @@ class SystemSettingsController extends Controller
     {
         $data = $request->validate([
             'sms_enabled' => 'nullable|boolean',
-            'sms_provider' => 'required|in:msg91,textlocal,custom',
+            'sms_provider' => 'required|in:twilio,msg91,textlocal,custom',
             'sms_sender_id' => 'nullable|string|max:50',
             'sms_api_key' => 'nullable|string|max:255',
             'sms_api_secret' => 'nullable|string|max:255',
@@ -117,7 +117,8 @@ class SystemSettingsController extends Controller
 
         return back()->with('success', 'WhatsApp settings saved successfully.');
     }
-    // Call settings (TCN only)
+
+    // ── Call Settings (TCN) ───────────────────────────────────────────────────
 
     public function callSettings()
     {
@@ -127,6 +128,7 @@ class SystemSettingsController extends Controller
     public function updateCallSettings(Request $request)
     {
         $data = $request->validate([
+            // TCN
             'tcn_client_id'     => 'nullable|string|max:255',
             'tcn_client_secret' => 'nullable|string|max:255',
             'tcn_refresh_token' => 'nullable|string|max:500',
@@ -136,6 +138,7 @@ class SystemSettingsController extends Controller
 
         Setting::set('primary_call_provider', 'tcn');
 
+        // TCN — blank means "keep existing secret"
         if (!empty($data['tcn_client_id'])) {
             Setting::setSecure('tcn_client_id', $data['tcn_client_id']);
         }
@@ -150,6 +153,7 @@ class SystemSettingsController extends Controller
 
         return back()->with('success', 'Call settings saved.');
     }
+
     public function businessHours()
     {
         return view('admin.settings.business-hours');
@@ -294,5 +298,3 @@ class SystemSettingsController extends Controller
         return back()->with('success', 'Notification settings updated successfully.');
     }
 }
-
-

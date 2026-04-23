@@ -10,6 +10,7 @@ use App\Models\LeadActivity;
 use Illuminate\Support\Facades\Crypt;
 use App\Models\Followup;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Schema;
 use App\Notifications\LeadAssignmentNotification;
 use App\Services\AuditLogService;
 use App\Services\LeadDefaults;
+use Inertia\Inertia;
 class LeadController extends Controller
 {
 
@@ -93,18 +95,31 @@ class LeadController extends Controller
         $assignedLeads = (int) $leadCounts->assigned_count;
         $followupToday = Followup::whereDate('next_followup', now())->whereIn('lead_id', $myLeadsSubquery)->count();
 
+        $leadsData = $leads->through(fn($lead) => [
+            'id'            => $lead->id,
+            'encrypted_id'  => encrypt($lead->id),
+            'lead_code'     => $lead->lead_code,
+            'name'          => $lead->name,
+            'phone'         => $lead->phone,
+            'email'         => $lead->email,
+            'source'        => $lead->source,
+            'course'        => $lead->course,
+            'status'        => $lead->status,
+            'assigned_user' => $lead->assignedUser?->name,
+            'days_aged'     => $lead->days_aged,
+            'is_duplicate'  => $lead->is_duplicate,
+            'next_followup' => $lead->followups->sortByDesc('next_followup')->first()?->next_followup,
+        ]);
 
-        return view(
-            'manager.leads.index',
-            compact(
-                'leads',
-                'telecallers',
-                'totalLeads',
-                'newLeads',
-                'assignedLeads',
-                'followupToday'
-            )
-        );
+        return Inertia::render('Manager/Leads/Index', [
+            'leads'         => $leadsData,
+            'telecallers'   => $telecallers->map(fn($t) => ['id' => $t->id, 'name' => $t->name])->values(),
+            'totalLeads'    => $totalLeads,
+            'newLeads'      => $newLeads,
+            'assignedLeads' => $assignedLeads,
+            'followupToday' => $followupToday,
+            'filters'       => request()->only(['search', 'telecaller', 'status', 'date_range']),
+        ]);
     }
 
     public function assign(Request $request, $id)
@@ -154,7 +169,10 @@ class LeadController extends Controller
     {
         $courses = \App\Models\Course::active()->orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
 
-        return view('manager.leads.create', compact('courses'));
+        return Inertia::render('Manager/Leads/Create', [
+            'courses'   => $courses->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
+            'store_url' => route('manager.leads.store'),
+        ]);
     }
 
     public function store(Request $request)
@@ -257,7 +275,24 @@ class LeadController extends Controller
 
         $leads = $query->orderBy('id', 'desc')->paginate(15)->withQueryString();
 
-        return view('manager.leads.duplicates', compact('leads'));
+        $leadsData = $leads->through(fn($lead) => [
+            'id'            => $lead->id,
+            'encrypted_id'  => encrypt($lead->id),
+            'lead_code'     => $lead->lead_code,
+            'name'          => $lead->name,
+            'phone'         => $lead->phone,
+            'email'         => $lead->email,
+            'source'        => $lead->source,
+            'status'        => $lead->status,
+            'assigned_user' => $lead->assignedUser?->name,
+            'days_aged'     => $lead->days_aged,
+            'created_at'    => $lead->created_at->format('d M Y'),
+        ]);
+
+        return Inertia::render('Manager/Leads/Duplicates', [
+            'leads'   => $leadsData,
+            'filters' => request()->only(['search']),
+        ]);
     }
 
     public function show($id)
@@ -277,13 +312,57 @@ class LeadController extends Controller
         ])->findOrFail($id);
 
         $telecallers = User::where('role', 'telecaller')->get();
-        $provider = Setting::get('primary_call_provider', 'tcn');
         $whatsappMessages = Schema::hasTable('whatsapp_messages')
             ? WhatsAppMessage::where('lead_id', $lead->id)->orderBy('created_at')->get()
             : collect();
         $waTemplateName = Setting::get('meta_whatsapp_template_name', 'welcome_template');
 
-        return view('manager.leads.show', compact('lead', 'telecallers', 'provider', 'whatsappMessages', 'waTemplateName'));
+        $encId = encrypt($lead->id);
+
+        return Inertia::render('Manager/Leads/Show', [
+            'lead' => [
+                'id'            => $lead->id,
+                'lead_code'     => $lead->lead_code,
+                'name'          => $lead->name,
+                'phone'         => $lead->phone,
+                'email'         => $lead->email,
+                'course'        => $lead->course,
+                'status'        => $lead->status,
+                'assigned_to'   => $lead->assigned_to,
+                'assigned_user' => $lead->assignedUser?->name,
+                'is_duplicate'  => $lead->is_duplicate,
+                'activities'    => $lead->activities->map(fn($a) => [
+                    'id'          => $a->id,
+                    'type'        => $a->type,
+                    'description' => $a->description,
+                    'user'        => $a->user?->name,
+                    'time'        => $a->created_at->diffForHumans(),
+                ])->values(),
+            ],
+            'telecallers'       => $telecallers->map(fn($t) => ['id' => $t->id, 'name' => $t->name])->values(),
+            'whatsapp_messages' => $whatsappMessages->map(fn($m) => [
+                'id'             => $m->id,
+                'direction'      => $m->direction,
+                'body'           => $m->message_body,
+                'time'           => $m->created_at?->format('h:i A'),
+                'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
+                'media_type'     => $m->media_type,
+                'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
+                'media_filename' => $m->media_filename,
+            ])->values(),
+            'wa_template_name'  => $waTemplateName,
+            'urls' => [
+                'assign'         => route('manager.assign', $encId),
+                'change_status'  => route('manager.leads.changeStatus', $encId),
+                'add_note'       => route('manager.leads.addNote', $encId),
+                'wa_store'       => route('manager.leads.whatsapp.store', $encId),
+                'wa_template'    => route('manager.leads.whatsapp.template', $encId),
+                'wa_media'       => route('manager.leads.whatsapp.media', $encId),
+                'wa_fetch'       => route('manager.leads.whatsapp.fetch', $encId),
+                'call_outcome'   => route('call.outcome'),
+                'back'           => route('manager.leads'),
+            ],
+        ]);
     }
 
     public function changeStatus(Request $request, $encryptedId)
@@ -366,28 +445,6 @@ class LeadController extends Controller
         return back()->with('success', 'Note added successfully');
     }
 
-    public function makeCall(Request $request)
-    {
-        try {
-
-            $leadId = decrypt($request->lead_id);
-            $lead = Lead::findOrFail($leadId);
-
-            // Kept as a lightweight placeholder endpoint.
-
-            return response()->json([
-                'success' => true
-            ]);
-        } catch (\Exception $e) {
-
-            Log::error('Manager makeCall error: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
     // ─── Pipeline (Kanban Board) ────────────────────────────────────────────────
 
     public function pipeline(Request $request)
@@ -441,7 +498,39 @@ class LeadController extends Controller
             ->whereIn('id', Lead::where('assigned_by', $managerId)->whereNotNull('assigned_to')->distinct()->pluck('assigned_to'))
             ->get();
 
-        return view('manager.leads.pipeline', compact('columns', 'columnTotals', 'telecallers'));
+        $mapLead = fn($lead) => [
+            'id'            => $lead->id,
+            'encrypted_id'  => encrypt($lead->id),
+            'lead_code'     => $lead->lead_code,
+            'name'          => $lead->name,
+            'phone'         => $lead->phone,
+            'course'        => $lead->course,
+            'assigned_user' => $lead->assignedUser?->name,
+            'is_duplicate'  => $lead->is_duplicate,
+            'days_aged'     => $lead->days_aged,
+            'next_followup' => $lead->followups->sortByDesc('next_followup')->first()?->next_followup,
+            'created_at'    => $lead->created_at->format('d M'),
+        ];
+
+        $columnsData = [];
+        foreach ($statuses as $status) {
+            $columnsData[$status] = $columns[$status]->map($mapLead)->values();
+        }
+
+        return Inertia::render('Manager/Leads/Pipeline', [
+            'columns'      => $columnsData,
+            'columnTotals' => $columnTotals,
+            'telecallers'  => $telecallers->map(fn($t) => [
+                'id'           => $t->id,
+                'encrypted_id' => encrypt($t->id),
+                'name'         => $t->name,
+            ])->values(),
+            'filters' => request()->only(['search', 'telecaller', 'date_range']),
+            'urls'    => [
+                'pipeline_status' => route('manager.leads.pipeline.status'),
+                'pipeline_more'   => route('manager.leads.pipeline.more'),
+            ],
+        ]);
     }
 
     public function pipelineMore(Request $request)
@@ -480,10 +569,22 @@ class LeadController extends Controller
         $leads  = $statusBase->latest()->limit(20)->offset((int) $request->offset)->get();
         $loaded = (int) $request->offset + $leads->count();
 
-        $cards = $leads->map(fn($lead) => view('manager.leads._pipeline-card', compact('lead'))->render())->values();
+        $leadsData = $leads->map(fn($lead) => [
+            'id'            => $lead->id,
+            'encrypted_id'  => encrypt($lead->id),
+            'lead_code'     => $lead->lead_code,
+            'name'          => $lead->name,
+            'phone'         => $lead->phone,
+            'course'        => $lead->course,
+            'assigned_user' => $lead->assignedUser?->name,
+            'is_duplicate'  => $lead->is_duplicate,
+            'days_aged'     => $lead->days_aged,
+            'next_followup' => $lead->followups->sortByDesc('next_followup')->first()?->next_followup,
+            'created_at'    => $lead->created_at->format('d M'),
+        ])->values();
 
         return response()->json([
-            'cards'    => $cards,
+            'leads'    => $leadsData,
             'has_more' => $loaded < $total,
             'loaded'   => $loaded,
             'total'    => $total,
@@ -625,4 +726,3 @@ class LeadController extends Controller
         ]);
     }
 }
-

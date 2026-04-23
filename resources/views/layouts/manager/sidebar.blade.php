@@ -1,4 +1,4 @@
-<aside class="sidebar" id="sidebar" style="background-color:#0f172a!important;">
+<aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
         <div class="sidebar-logo">
             @php $siteLogo = \App\Models\Setting::get('site_logo'); @endphp
@@ -35,7 +35,7 @@
         {{-- ── People ── --}}
         <div class="nav-section-label">People</div>
 
-        <button class="nav-item w-100 border-0 {{ $leadsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+        <button class="nav-item w-100 border-0 {{ $leadsActive ? 'active' : 'bg-transparent' }}" type="button"
             data-bs-toggle="collapse" data-bs-target="#managerLeadsMenu"
             aria-expanded="{{ $leadsActive ? 'true' : 'false' }}" aria-controls="managerLeadsMenu">
             <span class="material-icons">person_add</span>
@@ -61,7 +61,7 @@
         {{-- ── Outreach ── --}}
         <div class="nav-section-label">Outreach</div>
 
-        <button class="nav-item w-100 border-0 {{ $campaignsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+        <button class="nav-item w-100 border-0 {{ $campaignsActive ? 'active' : 'bg-transparent' }}" type="button"
             data-bs-toggle="collapse" data-bs-target="#managerCampaignsMenu"
             aria-expanded="{{ $campaignsActive ? 'true' : 'false' }}" aria-controls="managerCampaignsMenu">
             <span class="material-icons">campaign</span>
@@ -113,7 +113,7 @@
         {{-- ── Activity ── --}}
         <div class="nav-section-label">Activity</div>
 
-        <button class="nav-item w-100 border-0 {{ $followupsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+        <button class="nav-item w-100 border-0 {{ $followupsActive ? 'active' : 'bg-transparent' }}" type="button"
             data-bs-toggle="collapse" data-bs-target="#managerFollowupMenu"
             aria-expanded="{{ $followupsActive ? 'true' : 'false' }}" aria-controls="managerFollowupMenu">
             <span class="material-icons">event_note</span>
@@ -136,7 +136,7 @@
                 style="padding:8px 12px 8px 36px;font-size:13px;">Missed by Telecaller</a>
         </div>
 
-        <button class="nav-item w-100 border-0 {{ $callLogsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+        <button class="nav-item w-100 border-0 {{ $callLogsActive ? 'active' : 'bg-transparent' }}" type="button"
             data-bs-toggle="collapse" data-bs-target="#managerCallLogsMenu"
             aria-expanded="{{ $callLogsActive ? 'true' : 'false' }}" aria-controls="managerCallLogsMenu">
             <span class="material-icons">call</span>
@@ -162,7 +162,7 @@
         {{-- ── Analytics ── --}}
         <div class="nav-section-label">Analytics</div>
 
-        <button class="nav-item w-100 border-0 {{ $reportsActive ? 'active' : 'crm-nav-inactive' }}" type="button"
+        <button class="nav-item w-100 border-0 {{ $reportsActive ? 'active' : 'bg-transparent' }}" type="button"
             data-bs-toggle="collapse" data-bs-target="#managerReportsMenu"
             aria-expanded="{{ $reportsActive ? 'true' : 'false' }}" aria-controls="managerReportsMenu">
             <span class="material-icons">bar_chart</span>
@@ -217,9 +217,9 @@
             </form>
 
             {{-- User popup menu --}}
-            <div id="mgrUserMenu" style="display:none;position:absolute;bottom:60px;left:0;right:0;background:#1e293b;border:1px solid rgba(255,255,255,0.1);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;overflow:hidden;">
-                <a href="{{ route('password.change') }}" class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none" style="color:#cbd5e1;font-size:13px;font-weight:500;" onmouseover="this.style.background='rgba(99,102,241,0.15)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='#cbd5e1'">
-                    <span class="material-icons" style="font-size:18px;color:#a5b4fc;">lock_reset</span>
+            <div id="mgrUserMenu" style="display:none;position:absolute;bottom:60px;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);z-index:9999;overflow:hidden;">
+                <a href="{{ route('password.change') }}" class="d-flex align-items-center gap-2 px-3 py-2 text-decoration-none" style="color:#0f172a;font-size:13px;font-weight:500;" onmouseover="this.style.background='#f6f7f8'" onmouseout="this.style.background='transparent'">
+                    <span class="material-icons" style="font-size:18px;color:#137fec;">lock_reset</span>
                     Change Password
                 </a>
             </div>

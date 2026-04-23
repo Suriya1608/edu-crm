@@ -451,15 +451,15 @@
 
         // ── Call button — use global GC call bar ────────────────────────────────
         window.addEventListener('load', function () {
-            window.GC.initDevice();
+            GC.initDevice();
         });
 
         document.addEventListener('click', async function (e) {
             var btn = e.target.closest('.call-btn');
             if (!btn) return;
 
-            if (window.GC.isActive()) {
-                window.GC.endCall();
+            if (GC.isActive()) {
+                GC.endCall();
                 return;
             }
 
@@ -467,7 +467,7 @@
             btn.querySelector('.call-text').textContent = 'Connecting...';
 
             try {
-                await window.GC.startCall(btn.dataset.phone, null);
+                await GC.startCall(btn.dataset.phone, null);
             } catch (err) {
                 btn.disabled = false;
                 btn.querySelector('.call-text').textContent = 'Call Now';
@@ -664,42 +664,14 @@
                 }
             }
 
-            let pollTimer = null;
-            let pollInFlight = false;
-            let pollBackoffMs = 0;
-
-            function nextPollDelay() {
-                const ACTIVE_MS = 15000;
-                const HIDDEN_MS = 60000;
-                const jitter = Math.floor(Math.random() * 1500);
-                return (document.hidden ? HIDDEN_MS : ACTIVE_MS) + jitter;
-            }
-
-            function schedulePoll(delayMs) {
-                if (pollTimer) clearTimeout(pollTimer);
-                pollTimer = setTimeout(poll, Math.max(500, Number(delayMs) || nextPollDelay()));
-            }
-
-            document.addEventListener('visibilitychange', function () {
-                if (!document.hidden) schedulePoll(1000);
-            });
-
-            schedulePoll(1000);
+            const pollTimer = setInterval(poll, 7000);
+            document.addEventListener('visibilitychange', () => { if (document.hidden) clearInterval(pollTimer); });
 
             async function poll() {
-                if (pollInFlight) {
-                    schedulePoll(2000);
-                    return;
-                }
-                pollInFlight = true;
                 try {
                     const res  = await fetch(FETCH_URL + '?after=' + lastMsgId, { headers: { 'Accept': 'application/json' } });
-                    if (!res.ok) {
-                        pollBackoffMs = Math.min(pollBackoffMs ? pollBackoffMs * 2 : 15000, 120000);
-                        return;
-                    }
+                    if (!res.ok) return;
                     const data = await res.json();
-                    pollBackoffMs = 0;
                     if (data.messages?.length > 0) {
                         document.getElementById('waEmptyPlaceholder')?.remove();
                         data.messages.forEach(m => {
@@ -716,12 +688,7 @@
                             if (tick) tick.className = 'wa-tick ' + (status === 'read' ? 'wa-tick-read' : status === 'delivered' ? 'wa-tick-delivered' : 'wa-tick-sent');
                         });
                     }
-                } catch (_) {
-                    pollBackoffMs = Math.min(pollBackoffMs ? pollBackoffMs * 2 : 15000, 120000);
-                } finally {
-                    pollInFlight = false;
-                    schedulePoll(pollBackoffMs || nextPollDelay());
-                }
+                } catch (_) {}
             }
 
             function appendBubble({ id, body, direction, time, status, media_type, media_url, media_filename }) {

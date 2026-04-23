@@ -223,8 +223,8 @@
         (function () {
             var activeBtn = null;
 
-            // Initialize calling via GC on page load
-            window.GC.initDevice();
+            // Initialize TCN softphone via GC on page load
+            GC.initDevice();
 
             function resetButton(btn) {
                 btn.disabled = false;
@@ -238,8 +238,8 @@
                 var btn = e.target.closest('.integrated-call-btn');
                 if (!btn) return;
 
-                if (window.GC.isActive()) {
-                    window.GC.endCall();
+                if (GC.isActive()) {
+                    GC.endCall();
                     return;
                 }
 
@@ -250,7 +250,7 @@
                 btn.innerHTML = '<span class="material-icons" style="font-size:16px;">ring_volume</span>';
 
                 try {
-                    await window.GC.startCall(btn.dataset.phone, btn.dataset.leadId || null);
+                    await GC.startCall(btn.dataset.phone, btn.dataset.leadId || null);
                 } catch (err) {
                     resetButton(btn);
                     activeBtn = null;

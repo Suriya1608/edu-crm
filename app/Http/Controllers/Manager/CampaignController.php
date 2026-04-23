@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Setting;
 use Maatwebsite\Excel\Facades\Excel;
+use Inertia\Inertia;
 
 class CampaignController extends Controller
 {
@@ -34,16 +35,26 @@ class CampaignController extends Controller
         $campaigns = Campaign::where('created_by', Auth::id())
             ->withCount('contacts')
             ->latest()
-            ->paginate(15);
+            ->paginate(15)
+            ->withQueryString()
+            ->through(fn($c) => [
+                'id'             => $c->id,
+                'encrypted_id'   => encrypt($c->id),
+                'name'           => $c->name,
+                'description'    => $c->description,
+                'status'         => $c->status,
+                'contacts_count' => $c->contacts_count,
+                'created_at'     => $c->created_at->format('d M Y'),
+            ]);
 
-        return view('manager.campaigns.index', compact('campaigns', 'totalStats'));
+        return Inertia::render('Manager/Campaigns/Index', compact('campaigns', 'totalStats'));
     }
 
     // ─── Create Campaign Form ─────────────────────────────────────────────────
 
     public function create()
     {
-        return view('manager.campaigns.create');
+        return Inertia::render('Manager/Campaigns/Create');
     }
 
     // ─── Store New Campaign ───────────────────────────────────────────────────
@@ -90,8 +101,24 @@ class CampaignController extends Controller
             });
         }
 
-        $contacts    = $query->latest()->paginate(25)->withQueryString();
-        $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
+        $contacts    = $query->latest()->paginate(25)->withQueryString()
+            ->through(fn($c) => [
+                'id'            => $c->id,
+                'encrypted_id'  => encrypt($c->id),
+                'name'          => $c->name,
+                'phone'         => $c->phone,
+                'email'         => $c->email,
+                'course'        => $c->course,
+                'city'          => $c->city,
+                'status'        => $c->status,
+                'assigned_to'   => $c->assigned_to,
+                'assigned_user' => $c->assignedUser?->name,
+                'next_followup' => $c->next_followup?->format('d M Y'),
+                'followup_time' => $c->followup_time ? date('h:i A', strtotime($c->followup_time)) : null,
+                'call_count'    => $c->call_count,
+            ]);
+
+        $telecallers = User::where('role', 'telecaller')->orderBy('name')->get(['id', 'name']);
 
         $contactCounts = $campaign->contacts()
             ->selectRaw('status, COUNT(*) as cnt')
@@ -106,7 +133,39 @@ class CampaignController extends Controller
             'called'     => $totalContacts - (int) $contactCounts->get('pending', 0),
         ];
 
-        return view('manager.campaigns.show', compact('campaign', 'contacts', 'telecallers', 'stats'));
+        $unassignedCount = $campaign->contacts()->whereNull('assigned_to')->count();
+
+        $assignmentSummary = $campaign->contacts()
+            ->selectRaw('assigned_to, count(*) as cnt')
+            ->with('assignedUser:id,name')
+            ->groupBy('assigned_to')
+            ->get()
+            ->map(fn($r) => [
+                'name' => $r->assignedUser?->name ?? 'Unassigned',
+                'cnt'  => $r->cnt,
+            ]);
+
+        $campaignData = [
+            'id'           => $campaign->id,
+            'encrypted_id' => encrypt($campaign->id),
+            'name'         => $campaign->name,
+            'description'  => $campaign->description,
+            'status'       => $campaign->status,
+            'created_at'   => $campaign->created_at->format('d M Y'),
+            'import_url'   => route('manager.campaigns.import', encrypt($campaign->id)),
+            'status_url'   => route('manager.campaigns.status', encrypt($campaign->id)),
+            'distribute_url' => route('manager.campaigns.distribute', encrypt($campaign->id)),
+        ];
+
+        return Inertia::render('Manager/Campaigns/Show', [
+            'campaign'          => $campaignData,
+            'contacts'          => $contacts,
+            'telecallers'       => $telecallers,
+            'stats'             => $stats,
+            'unassigned_count'  => $unassignedCount,
+            'assignment_summary'=> $assignmentSummary,
+            'filters'           => $request->only(['status', 'telecaller', 'search']),
+        ]);
     }
 
     // ─── Import Form ──────────────────────────────────────────────────────────
@@ -371,7 +430,7 @@ class CampaignController extends Controller
         $contactMessages = WhatsAppMessage::where('campaign_contact_id', $contact->id)
             ->latest()->limit(50)->get()->reverse()->values();
 
-        $provider    = Setting::get('primary_call_provider', 'tcn');
+        $provider    = 'tcn';
         $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
 
         return view('manager.campaigns.contact', compact('campaign', 'contact', 'activities', 'contactMessages', 'provider', 'telecallers'));
@@ -634,10 +693,13 @@ class CampaignController extends Controller
             $stats['converted']         += $campStats['converted'];
         }
 
-        return view('manager.campaigns.performance', compact(
-            'campaigns', 'telecallers', 'stats', 'perCampaign'
-        ));
+        return Inertia::render('Manager/Campaigns/Performance', [
+            'campaigns'   => $campaigns->map(fn($c) => ['id' => $c->id, 'name' => $c->name, 'status' => $c->status]),
+            'telecallers' => $telecallers->map(fn($t) => ['id' => $t->id, 'name' => $t->name]),
+            'stats'       => $stats,
+            'perCampaign' => $perCampaign,
+            'filters'     => $request->only(['campaign', 'telecaller', 'date_from', 'date_to']),
+        ]);
     }
 
 }
-
