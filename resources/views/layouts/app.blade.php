@@ -410,7 +410,7 @@
           • The iframe loads once; SIP connects once; calls never drop on nav.
           • data-turbo-eval="false" on the script prevents duplicate event listeners.
     --}}
-    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn' && auth()->user()->role !== 'admin')
+    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn' && auth()->user()->role === 'telecaller')
     <div id="tcnWidget" data-turbo-permanent>
         <iframe id="tcnSoftphoneFrame"
             src="/softphone"

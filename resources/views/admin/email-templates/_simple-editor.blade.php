@@ -7,6 +7,7 @@
     $fbUrl = \App\Models\Setting::get('social_facebook', '');
     $igUrl = \App\Models\Setting::get('social_instagram', '');
     $liUrl = \App\Models\Setting::get('social_linkedin', '');
+    $existingAttachments = isset($emailTemplate) ? ($emailTemplate->attachments ?? []) : [];
 @endphp
 
 <div id="simpleEditorSection">
@@ -59,6 +60,16 @@
                 </span>
             </div>
             <div class="d-flex align-items-center gap-2">
+                {{-- Insert Image --}}
+                <button type="button" id="btnInsertImage"
+                        class="btn btn-sm btn-outline-secondary"
+                        style="font-size:12px;padding:4px 12px;"
+                        title="Upload an image and insert it at cursor">
+                    <span class="material-icons me-1" style="font-size:14px;vertical-align:middle;">image</span>Insert Image
+                </button>
+                <input type="file" id="imageFileInput" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none;">
+
+                {{-- Preview --}}
                 <button type="button" id="btnSimplePreview"
                         class="btn btn-sm btn-outline-secondary"
                         style="font-size:12px;padding:4px 12px;"
@@ -87,6 +98,38 @@
                 Write only the email body. The site header, footer and logo are added automatically when sent.
                 You may use <code style="font-size:10px;">&lt;a href="@{{link}}"&gt;text&lt;/a&gt;</code> for links.
             </span>
+        </div>
+    </div>
+
+    {{-- ── Attachments section ──────────────────────────────────────────────── --}}
+    <div class="chart-card mb-3" style="padding:16px 20px;">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+            <div class="d-flex align-items-center gap-2">
+                <span class="material-icons" style="font-size:16px;color:#94a3b8;">attach_file</span>
+                <span style="font-size:12px;font-weight:600;color:#64748b;">Email Attachments</span>
+                <span class="badge rounded-pill" style="background:#f1f5f9;color:#64748b;font-size:10px;font-weight:600;">
+                    Sent with every email from this template
+                </span>
+            </div>
+            <button type="button" id="btnAttachFile"
+                    class="btn btn-sm btn-outline-primary"
+                    style="font-size:12px;padding:4px 12px;">
+                <span class="material-icons me-1" style="font-size:14px;vertical-align:middle;">upload_file</span>Add File
+            </button>
+            <input type="file" id="attachFileInput"
+                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.zip"
+                   style="display:none;">
+        </div>
+
+        {{-- File list --}}
+        <div id="attachmentList"></div>
+
+        {{-- Hidden field submitted with the form --}}
+        <input type="hidden" name="attachments_json" id="attachmentsJson" value="{{ json_encode($existingAttachments) }}">
+
+        <div style="font-size:11px;color:#94a3b8;margin-top:8px;">
+            <span class="material-icons align-middle" style="font-size:13px;">info</span>
+            Accepted: PDF, Word, Excel, PowerPoint, images, CSV, ZIP &mdash; max 10 MB each.
         </div>
     </div>
 
@@ -312,6 +355,124 @@ if (templateForm) {
         document.getElementById('hiddenBody').value = content.replace(/\n/g, '<br>');
     });
 }
+
+// ── Insert Image ──────────────────────────────────────────────────────────────
+const btnInsertImage  = document.getElementById('btnInsertImage');
+const imageFileInput  = document.getElementById('imageFileInput');
+const uploadImageUrl  = '{{ route("admin.email-templates.upload-image") }}';
+
+if (btnInsertImage) {
+    btnInsertImage.addEventListener('click', () => imageFileInput.click());
+
+    imageFileInput.addEventListener('change', function () {
+        const file = this.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('_token', '{{ csrf_token() }}');
+
+        btnInsertImage.disabled = true;
+        btnInsertImage.innerHTML = '<span class="material-icons" style="font-size:14px;vertical-align:middle;">hourglass_empty</span> Uploading…';
+
+        fetch(uploadImageUrl, { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if (data.url) {
+                    simpleInsertVar(`<img src="${data.url}" alt="" style="max-width:100%;height:auto;border-radius:4px;">`);
+                } else {
+                    alert('Image upload failed.');
+                }
+            })
+            .catch(() => alert('Image upload failed. Please try again.'))
+            .finally(() => {
+                btnInsertImage.disabled = false;
+                btnInsertImage.innerHTML = '<span class="material-icons me-1" style="font-size:14px;vertical-align:middle;">image</span>Insert Image';
+                imageFileInput.value = '';
+            });
+    });
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+let attachments        = @json($existingAttachments);
+const attachmentsInput = document.getElementById('attachmentsJson');
+const attachmentList   = document.getElementById('attachmentList');
+const btnAttachFile    = document.getElementById('btnAttachFile');
+const attachFileInput  = document.getElementById('attachFileInput');
+const uploadAttachUrl  = '{{ route("admin.email-templates.upload-attachment") }}';
+
+function formatBytes(bytes) {
+    if (bytes < 1024)        return bytes + ' B';
+    if (bytes < 1048576)     return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function renderAttachments() {
+    attachmentsInput.value = JSON.stringify(attachments);
+
+    if (attachments.length === 0) {
+        attachmentList.innerHTML =
+            '<p style="font-size:12px;color:#94a3b8;margin:0;">No attachments added yet.</p>';
+        return;
+    }
+
+    attachmentList.innerHTML = '';
+    attachments.forEach(function (att, i) {
+        const row = document.createElement('div');
+        row.className = 'd-flex align-items-center gap-2 py-2';
+        row.style.cssText = 'border-bottom:1px solid #f1f5f9;';
+        row.innerHTML = `
+            <span class="material-icons" style="font-size:18px;color:#6366f1;flex-shrink:0;">insert_drive_file</span>
+            <span style="font-size:13px;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${att.name}">${att.name}</span>
+            <span style="font-size:11px;color:#94a3b8;flex-shrink:0;">${formatBytes(att.size || 0)}</span>
+            <button type="button" onclick="removeAttachment(${i})"
+                    class="btn btn-sm" style="padding:2px 6px;line-height:1;flex-shrink:0;"
+                    title="Remove attachment">
+                <span class="material-icons" style="font-size:16px;color:#ef4444;">delete</span>
+            </button>`;
+        attachmentList.appendChild(row);
+    });
+}
+
+window.removeAttachment = function (index) {
+    attachments.splice(index, 1);
+    renderAttachments();
+};
+
+if (btnAttachFile) {
+    btnAttachFile.addEventListener('click', () => attachFileInput.click());
+
+    attachFileInput.addEventListener('change', function () {
+        const file = this.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('_token', '{{ csrf_token() }}');
+
+        btnAttachFile.disabled = true;
+        btnAttachFile.innerHTML = '<span class="material-icons" style="font-size:14px;vertical-align:middle;">hourglass_empty</span> Uploading…';
+
+        fetch(uploadAttachUrl, { method: 'POST', body: formData })
+            .then(r => {
+                if (!r.ok) return r.json().then(e => { throw new Error(e.message || 'Upload failed'); });
+                return r.json();
+            })
+            .then(data => {
+                attachments.push({ path: data.path, name: data.name, size: data.size });
+                renderAttachments();
+            })
+            .catch(err => alert('Attachment upload failed: ' + err.message))
+            .finally(() => {
+                btnAttachFile.disabled = false;
+                btnAttachFile.innerHTML = '<span class="material-icons me-1" style="font-size:14px;vertical-align:middle;">upload_file</span>Add File';
+                attachFileInput.value = '';
+            });
+    });
+}
+
+// Render on page load
+renderAttachments();
 
 })();
 </script>

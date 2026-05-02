@@ -7,7 +7,7 @@ use App\Models\Course;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Notifications\LeadAssignmentNotification;
-use App\Services\ManagerLeadAllocator;
+use App\Services\LeadAssignmentService;
 use App\Services\LeadDefaults;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Auth;
 
 class LeadApiController extends Controller
 {
-    public function __construct(private ManagerLeadAllocator $managerLeadAllocator)
+    public function __construct(private LeadAssignmentService $leadAssignment)
     {
     }
 
@@ -103,32 +103,37 @@ class LeadApiController extends Controller
             ]);
         }
 
-        $managerId = $this->managerLeadAllocator->resolveManagerIdForIncomingLead();
-
         $courseId = $request->filled('course')
             ? Course::where('name', trim($request->course))->value('id')
             : null;
 
         $lead = Lead::create([
-            'lead_code' => $this->generateLeadCode(),
-            'name' => $request->name,
-            'phone' => $request->phone,
-            'email' => $request->email,
-            'course_id' => $courseId,
-            'source' => $request->source ?? 'landing_page',
-            'assigned_by' => $managerId,
-            'status' => LeadDefaults::defaultStatus(),
+            'lead_code'       => $this->generateLeadCode(),
+            'name'            => $request->name,
+            'phone'           => $request->phone,
+            'email'           => $request->email,
+            'course_id'       => $courseId,
+            'academic_year_id'=> \App\Models\AcademicYear::current()?->id,
+            'quota'           => 'counselling',
+            'source'          => $request->source ?? 'landing_page',
+            'source_type'     => 'landing_page',
+            'source_category' => $request->input('source_category', 'other_digital'),
+            'source_detail'   => $request->input('source_detail'),
+            'status'          => LeadDefaults::defaultStatus(),
         ]);
 
+        $this->leadAssignment->assignIncomingLead($lead);
+
         LeadActivity::create([
-            'lead_id' => $lead->id,
-            'user_id' => null,
-            'type' => 'note',
-            'description' => 'Lead captured from API',
-            'meta_data' => null,
+            'lead_id'       => $lead->id,
+            'user_id'       => null,
+            'type'          => 'note',
+            'description'   => 'Lead captured from API',
+            'meta_data'     => null,
             'activity_time' => now(),
         ]);
 
+        $managerId = $lead->assigned_by;
         if ($managerId) {
             $manager = \App\Models\User::find($managerId);
             if ($manager) {
@@ -141,11 +146,11 @@ class LeadApiController extends Controller
             }
 
             LeadActivity::create([
-                'lead_id' => $lead->id,
-                'user_id' => null,
-                'type' => 'assignment',
-                'description' => "Auto-assigned to manager #{$managerId}",
-                'meta_data' => ['manager_id' => $managerId],
+                'lead_id'       => $lead->id,
+                'user_id'       => null,
+                'type'          => 'assignment',
+                'description'   => "Auto-assigned to manager #{$managerId}",
+                'meta_data'     => ['manager_id' => $managerId],
                 'activity_time' => now(),
             ]);
         }

@@ -294,6 +294,110 @@
         } catch (_) { }
     }
 
+    // Deep-search an object for a field in keys[] whose value is a non-zero numeric string.
+    function deepFindNumeric(obj, keys, depth) {
+        if (!obj || typeof obj !== 'object' || (depth || 0) > 6) return null;
+        for (var i = 0; i < keys.length; i++) {
+            var v = obj[keys[i]];
+            if (v !== undefined && v !== null && /^\d+$/.test(String(v)) && String(v) !== '0') return String(v);
+        }
+        for (var k in obj) {
+            if (typeof obj[k] === 'object') {
+                var found = deepFindNumeric(obj[k], keys, (depth || 0) + 1);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    // Deep-search an object for a field in keys[] whose value is a non-empty string.
+    function deepFindString(obj, keys, depth) {
+        if (!obj || typeof obj !== 'object' || (depth || 0) > 6) return null;
+        for (var i = 0; i < keys.length; i++) {
+            var v = obj[keys[i]];
+            if (v !== undefined && v !== null && typeof v === 'string' && v.trim() !== '') return v.trim();
+        }
+        for (var k in obj) {
+            if (typeof obj[k] === 'object') {
+                var found = deepFindString(obj[k], keys, (depth || 0) + 1);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    var _SID_KEYS = ['callSid', 'callId', 'call_sid', 'sessionCallSid', 'p3CallSid',
+                     'taskCallSid', 'inboundCallSid', 'activeCallSid', 'currentCallSid'];
+    var _ANI_KEYS = ['ani', 'callerAni', 'callerPhone', 'callerNumber', 'fromNumber',
+                     'from', 'cid', 'phoneNumber', 'caller', 'phone', 'customerNumber'];
+
+    // Calls /tcn/current-session (TCN getcurrentsession) at ring time.
+    // Returns { callSid, voiceSessionSid, ani } — callSid/ani may be null.
+    // voiceSessionSid is always extracted when available and used as fallback
+    // for agentgetcalldetail to resolve ANI when P3 callSid is absent.
+    // Non-fatal — never throws.
+    async function fetchCurrentSession() {
+        try {
+            var data = await proxy('/tcn/current-session', {});
+            console.log('[TCN] getcurrentsession full response:', JSON.stringify(data));
+
+            var body = (data && data.body) ? data.body : data;
+
+            // Server already extracted P3 callSid/ANI; deep-scan body as fallback
+            var sid = (data && data.callSid) ? String(data.callSid) : null;
+            if (!sid || !/^\d+$/.test(sid) || sid === '0') {
+                sid = deepFindNumeric(body, _SID_KEYS);
+            }
+
+            // Extract voiceSessionSid from voiceSession object — used as sessionSid
+            // for agentgetcalldetail when P3 callSid is not available
+            var voiceSid = null;
+            if (body && body.voiceSession && body.voiceSession.voiceSessionSid) {
+                voiceSid = String(body.voiceSession.voiceSessionSid);
+            }
+            if (!voiceSid) voiceSid = deepFindNumeric(body, ['voiceSessionSid', 'asmSessionSid']);
+
+            var ani = (data && data.ani) ? String(data.ani) : null;
+            if (!ani) ani = deepFindString(body, _ANI_KEYS);
+            if (ani && _BLANK_LABELS.includes(ani.toLowerCase())) ani = null;
+
+            console.log('[TCN] getcurrentsession extracted — callSid:', sid, 'voiceSessionSid:', voiceSid, 'ani:', ani);
+            return { callSid: sid || null, voiceSessionSid: voiceSid || null, ani: ani || null };
+        } catch (e) {
+            console.warn('[TCN] fetchCurrentSession failed:', e && e.message);
+            return { callSid: null, voiceSessionSid: null, ani: null };
+        }
+    }
+
+    // Calls /tcn/incoming-caller (TCN prescribed 3-step flow: agentgetconnectedparty →
+    // getclientinfodata with call_sid+call_type+task_sid) to get the real caller number.
+    // Should be called as early as possible at ring time — non-fatal, never throws.
+    // Returns the resolved phone string or null.
+    async function lookupIncomingCaller(sessionSid, logId) {
+        if (!sessionSid) return null;
+        try {
+            var payload = { sessionSid: String(sessionSid) };
+            if (logId) payload.call_log_id = logId;
+            var data = await proxy('/tcn/incoming-caller', payload);
+            console.log('[TCN] incoming-caller response:', JSON.stringify(data));
+            if (data && data.ok && data.phone) {
+                var phone = String(data.phone);
+                TCN._activePhone = phone;
+                if (data.call_sid && !TCN._activeCallSid) {
+                    TCN._activeCallSid = String(data.call_sid);
+                    if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { call_sid: data.call_sid });
+                }
+                fire('tcn:phoneResolved', { phone: phone, name: data.name || null, leadId: data.lead_id || null, leadCode: data.lead_code || null });
+                var _lid = logId || TCN._activeLogId;
+                if (_lid) patchCallLog(_lid, { customer_number: phone });
+                return phone;
+            }
+        } catch (e) {
+            console.warn('[TCN] lookupIncomingCaller failed (non-fatal):', e && e.message);
+        }
+        return null;
+    }
+
     // Calls /tcn/caller-info (TCN getclientinfodata) to resolve the real caller phone
     // from the integer callSid. Updates TCN._activePhone, the DB call log, and fires
     // tcn:phoneResolved so the widget can update the incoming number display in real-time.
@@ -319,7 +423,7 @@
                 if (data.phone) {
                     var phone = String(data.phone);
                     TCN._activePhone = phone;
-                    fire('tcn:phoneResolved', { phone: phone, name: data.name || null });
+                    fire('tcn:phoneResolved', { phone: phone, name: data.name || null, leadId: data.lead_id || null, leadCode: data.lead_code || null });
                     log('Caller resolved', { phone: phone, callSid: callSid });
                 } else {
                     log('caller-info returned no phone (check Laravel log for TCN response body)', { callSid: callSid });
@@ -352,8 +456,8 @@
                     var _effectiveLogId = logId || TCN._activeLogId;
                     if (_effectiveLogId) _payload.call_log_id = _effectiveLogId;
                     var _data = await proxy('/tcn/caller-info', _payload);
-                    console.log('[TCN] caller-info response (attempt ' + (_i + 1) + '/' + retries + ')',
-                        { callSid: callSid, logId: _effectiveLogId, response: _data });
+                    // Log as JSON string so _detail_body (agentgetcalldetail raw body) is visible inline
+                    console.log('[TCN] caller-info response (attempt ' + (_i + 1) + '/' + retries + ') ' + JSON.stringify(_data));
                     if (_data && _data.ok) {
                         if (_data.call_sid && !TCN._activeCallSid) {
                             TCN._activeCallSid = String(_data.call_sid);
@@ -361,7 +465,7 @@
                         if (_data.phone) {
                             var _resolvedPhone = String(_data.phone);
                             TCN._activePhone = _resolvedPhone;
-                            fire('tcn:phoneResolved', { phone: _resolvedPhone, name: _data.name || null });
+                            fire('tcn:phoneResolved', { phone: _resolvedPhone, name: _data.name || null, leadId: _data.lead_id || null, leadCode: _data.lead_code || null });
                             console.log('[TCN] Resolved number:', _resolvedPhone);
                             log('Caller resolved (attempt ' + (_i + 1) + ')', { phone: _resolvedPhone, callSid: callSid });
                             // Re-read logId — it may have been set by createInboundCallLog between retries
@@ -742,7 +846,7 @@
                 delegate: {
                     onInvite: function (invitation) {
 
-                        console.log('[TCN] Incoming call detected — callSid NOT available at this stage (only after approve-call)', invitation);
+                        console.log('[TCN] Incoming SIP INVITE — fetching callSid via getcurrentsession', invitation);
 
                         // 🚫 If already on call → reject immediately
                         if (TCN._callActive || TCN._isIncoming) {
@@ -805,24 +909,46 @@
                         } catch (_) {}
 
                         TCN._activePhone = phone;
-                        // callSid is NOT stored at ring time — approve-call returns the real callSid.
-                        // Even if X-Cid headers carry an integer, we wait for approve-call to confirm it.
-                        TCN._activeCallSid = null;
+                        // Seed with SIP header callSid if present; getcurrentsession will overwrite.
+                        TCN._activeCallSid = tcnIntegerCallSid || null;
 
-                        console.log('[TCN] Incoming phone:', phone, 'sipCallId:',
+                        console.log('[TCN] Incoming phone:', phone, 'headerCallSid:', tcnIntegerCallSid, 'sipCallId:',
                                     (function(){ try{ return invitation.request.callId; }catch(_){return null;} })());
 
-                        // Create DB log with status=ringing and no call_sid (call_sid is set after approve-call).
+                        // Create DB log with status=ringing.
                         createInboundCallLog(phone);
 
-                        // ✅ Start lightweight ANI-resolution poll (SIP INVITE mode).
-                        // TCN's agentgetstatus returns the real ANI + integer callSid when
-                        // the agent status transitions to INCALL. This poll captures that data
-                        // and updates the UI + DB without waiting for the full keepalive cycle.
-                        var _needsAni = !phone || _BLANK_LABELS.includes(String(phone || '').toLowerCase());
-                        if (_needsAni) {
-                            TCN._startSipAniPoll();
-                        }
+                        // ── TCN prescribed flow: agentgetconnectedparty → getclientinfodata ──
+                        var _sipInviteSid = String(TCN._voiceSessionSid || TCN._asmSessionSid || '');
+                        (async function _sipResolveIncomingCaller() {
+                            var _resolved = _sipInviteSid
+                                ? await lookupIncomingCaller(_sipInviteSid, TCN._activeLogId)
+                                : null;
+                            if (!_resolved) {
+                                // Fallback: getcurrentsession → resolveCallerWithRetry
+                                var _cs = await fetchCurrentSession();
+                                if (_cs.callSid) {
+                                    console.log('[TCN] SIP getcurrentsession → callSid:', _cs.callSid);
+                                    TCN._activeCallSid = _cs.callSid;
+                                    if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { call_sid: _cs.callSid });
+                                }
+                                if (_cs.ani) {
+                                    TCN._activePhone = _cs.ani;
+                                    fire('tcn:phoneResolved', { phone: _cs.ani });
+                                    if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { customer_number: _cs.ani });
+                                } else if (_cs.callSid) {
+                                    var _noPhone = !TCN._activePhone || _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
+                                    if (_noPhone) resolveCallerWithRetry(_cs.callSid, TCN._activeLogId, 5);
+                                } else {
+                                    console.log('[TCN] getcurrentsession gave no data — falling back to SIP header / status poll');
+                                    var _needsAni = !phone || _BLANK_LABELS.includes(String(phone || '').toLowerCase());
+                                    if (_needsAni) {
+                                        TCN._startSipAniPoll();
+                                        if (tcnIntegerCallSid) resolveCallerFromCallSid(tcnIntegerCallSid, null);
+                                    }
+                                }
+                            }
+                        })();
 
                         // ✅ FIRE EVENT TO UI
                         window.dispatchEvent(new CustomEvent('tcn:incomingCall', {
@@ -832,7 +958,7 @@
                         console.log('[TCN] Incoming event fired → UI should show now');
 
                         // ✅ AUTO REJECT AFTER 15s
-                        TCN._incomingTimeout = setTimeout(function () {
+                        TCN._incomingTimeout = setTimeout(async function () {
                             if (TCN._incomingSession) {
                                 console.log('[TCN] Auto rejecting (timeout)');
 
@@ -843,7 +969,7 @@
 
                                 var missedPatch = { status: 'missed', ended_at: new Date().toISOString(), ended_by: 'system' };
                                 if (TCN._activeLogId) {
-                                    patchCallLog(TCN._activeLogId, missedPatch);
+                                    await patchCallLog(TCN._activeLogId, missedPatch);
                                     TCN._activeLogId = null;
                                 } else {
                                     TCN._pendingIncomingDisposition = missedPatch;
@@ -1023,18 +1149,36 @@
                     log('Incoming call detected via PBX_POPUP_LOCKED');
                     TCN._isIncoming = true;
                     TCN._activeLogId = null;
-                    TCN._callerResolutionPending = false; // reset for fresh call
-                    // Extract caller ANI from TCN response — try all known field names
-                    var callerPhone = (data && (data.ani || data.callerAni || data.callerPhone || data.callerNumber || data.fromNumber || data.from || data.cid)) || null;
-                    // callSid is NOT available at ring time — only approve-call returns the real callSid.
-                    // Store null here; acceptIncomingCall() will set TCN._activeCallSid after approve-call.
+                    TCN._callerResolutionPending = false;
+                    var callerPhone = (data && (data.ani || data.callerAni || data.callerPhone || data.callerNumber || data.fromNumber || data.from || data.cid || data.phoneNumber)) || null;
                     TCN._activePhone = callerPhone;
                     TCN._activeCallSid = null;
                     createInboundCallLog(callerPhone);
                     fire('tcn:incomingCall', { phone: callerPhone });
-                    // Start fast 2s poll so we detect INCALL (accepted) or READY
-                    // (rejected/timed-out) without waiting 30s for the next keep-alive.
                     TCN._startIncomingPoll();
+                    // TCN prescribed flow: agentgetconnectedparty → getclientinfodata → phoneNumber
+                    var _pbxSid = String(TCN._voiceSessionSid || TCN._asmSessionSid || '');
+                    if (_pbxSid) {
+                        (async function _pbxLookup() {
+                            var _resolved = await lookupIncomingCaller(_pbxSid, TCN._activeLogId);
+                            if (!_resolved) {
+                                // Fallback: getcurrentsession → resolveCallerWithRetry
+                                var _cs = await fetchCurrentSession();
+                                if (_cs.callSid) {
+                                    TCN._activeCallSid = _cs.callSid;
+                                    if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { call_sid: _cs.callSid });
+                                }
+                                if (_cs.ani) {
+                                    TCN._activePhone = _cs.ani;
+                                    fire('tcn:phoneResolved', { phone: _cs.ani });
+                                    if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { customer_number: _cs.ani });
+                                } else if (_cs.callSid) {
+                                    var _noPhone = !TCN._activePhone || _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
+                                    if (_noPhone) resolveCallerWithRetry(_cs.callSid, TCN._activeLogId, 5);
+                                }
+                            }
+                        })();
+                    }
                 }
 
                 // WRAPUP with no active call means the agent is stuck post-call.
@@ -1166,13 +1310,16 @@
                 }
                 // Capture TCN's real callSid from poll data if not yet set.
                 // Do NOT fall back to currentSessionId — that is a sessionSid, not a callSid.
-                // Do NOT call resolveCallerWithRetry here — this runs BEFORE approve-call.
-                // callSid from approve-call is the authoritative value; resolution happens in acceptIncomingCall().
                 var pollCallSid = data && (data.callSid || data.callId);
                 if (pollCallSid && !TCN._activeCallSid) {
                     TCN._activeCallSid = String(pollCallSid);
                     if (TCN._activeLogId) {
                         patchCallLog(TCN._activeLogId, { call_sid: String(pollCallSid) });
+                    }
+                    // Resolve ANI via callSid during ringing so number shows before answer.
+                    var _noPhoneNow = !TCN._activePhone || _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
+                    if (_noPhoneNow) {
+                        resolveCallerFromCallSid(String(pollCallSid), TCN._activeLogId);
                     }
                 }
 
@@ -1208,7 +1355,7 @@
                     // Caller hung up / rejected / timed out before agent accepted
                     TCN._stopIncomingPoll();
                     if (TCN._activeLogId) {
-                        patchCallLog(TCN._activeLogId, { status: 'missed', ended_at: new Date().toISOString(), ended_by: 'lead' });
+                        await patchCallLog(TCN._activeLogId, { status: 'missed', ended_at: new Date().toISOString(), ended_by: 'lead' });
                         TCN._activeLogId = null;
                     } else {
                         // createInboundCallLog may still be in flight — record missed when it resolves
@@ -1300,6 +1447,9 @@
                     callSid: realCallSidStr || null,
                 });
 
+                var needsPhone = !TCN._activePhone ||
+                    _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
+
                 // Update callSid if we got a real integer one and don't have one yet
                 if (isIntegerSid && (!TCN._activeCallSid || !/^\d+$/.test(TCN._activeCallSid))) {
                     TCN._activeCallSid = realCallSidStr;
@@ -1307,10 +1457,11 @@
                         patchCallLog(TCN._activeLogId, { call_sid: realCallSidStr });
                     }
                     log('SIP ANI poll: captured real callSid=' + realCallSidStr);
+                    // Resolve ANI via callSid now so number shows during ringing.
+                    if (needsPhone) {
+                        resolveCallerFromCallSid(realCallSidStr, TCN._activeLogId);
+                    }
                 }
-
-                var needsPhone = !TCN._activePhone ||
-                    _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
 
                 if (ani && needsPhone) {
                     // ANI found directly in agentgetstatus response
@@ -1323,10 +1474,6 @@
                     TCN._stopSipAniPoll();
                     return;
                 }
-
-                // Do NOT call resolveCallerWithRetry here — this poll runs BEFORE approve-call.
-                // callSid captured above is stored in TCN._activeCallSid and will be used
-                // by acceptIncomingCall() AFTER approve-call confirms the real callSid.
 
             } catch (e) {
                 log('SIP ANI poll error (non-fatal)', e.message);
@@ -1364,18 +1511,38 @@
                 var status = ((data && data.statusDesc) || '').toUpperCase();
                 if (status === 'PBX_POPUP_LOCKED' && !TCN._isIncoming && !TCN._callActive) {
                     TCN._stopIdlePoll();
-                    log('Idle poll: PBX_POPUP_LOCKED detected');
+                    log('Idle poll: PBX_POPUP_LOCKED — incoming call detected');
                     TCN._isIncoming = true;
                     TCN._activeLogId = null;
-                    TCN._callerResolutionPending = false; // reset for fresh call
-                    var callerPhone = (data && (data.ani || data.callerAni || data.callerPhone || data.callerNumber || data.fromNumber || data.from || data.cid)) || null;
-                    // callSid is NOT available at ring time — only approve-call returns the real callSid.
-                    // Store null here; acceptIncomingCall() will set TCN._activeCallSid after approve-call.
+                    TCN._callerResolutionPending = false;
+                    var callerPhone = (data && (data.ani || data.callerAni || data.callerPhone || data.callerNumber || data.fromNumber || data.from || data.cid || data.phoneNumber)) || null;
                     TCN._activePhone = callerPhone;
                     TCN._activeCallSid = null;
                     createInboundCallLog(callerPhone);
                     fire('tcn:incomingCall', { phone: callerPhone });
                     TCN._startIncomingPoll();
+                    // TCN prescribed flow: agentgetconnectedparty → getclientinfodata → phoneNumber
+                    var _idleSid = String(TCN._voiceSessionSid || TCN._asmSessionSid || '');
+                    if (_idleSid) {
+                        (async function _idleLookup() {
+                            var _resolved = await lookupIncomingCaller(_idleSid, TCN._activeLogId);
+                            if (!_resolved) {
+                                var _cs = await fetchCurrentSession();
+                                if (_cs.callSid) {
+                                    TCN._activeCallSid = _cs.callSid;
+                                    if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { call_sid: _cs.callSid });
+                                }
+                                if (_cs.ani) {
+                                    TCN._activePhone = _cs.ani;
+                                    fire('tcn:phoneResolved', { phone: _cs.ani });
+                                    if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { customer_number: _cs.ani });
+                                } else if (_cs.callSid) {
+                                    var _noPhone = !TCN._activePhone || _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
+                                    if (_noPhone) resolveCallerWithRetry(_cs.callSid, TCN._activeLogId, 5);
+                                }
+                            }
+                        })();
+                    }
                 }
             } catch (_) {}
         }, 3000);
@@ -1647,7 +1814,7 @@
 
         log('Manual Dial — sessionSid=' + TCN._callVoiceSessionSid + ', phone=' + e164Display + ' (digits=' + digits + ')');
 
-        fire('tcn:callStarted', { phone: phone, callLogId: callLogId });
+        fire('tcn:callStarted', { phone: phone, callLogId: callLogId, leadId: TCN._activeLeadId });
 
         // Keep-alive on the ACD session during the call
         TCN._startCallKeepAlive(TCN._callVoiceSessionSid);
@@ -1993,6 +2160,13 @@
                 // Require INCALL_CONFIRM (2) consecutive INCALL polls before treating
                 // it as answered. A single INCALL poll during ringing must not start
                 // the call timer — that is Bug 1.
+                // On the very first poll, try to resolve ANI via currentSessionId.
+                // This fires regardless of _callEstablishedAt (which PBX mode sets
+                // immediately in acceptIncomingCall before the poll runs).
+                // NOTE: currentSessionId (ACD, 43M range) ≠ P3 callSid (38M range).
+                // getclientinfodata returns 404 for ACD session IDs.
+                // ANI resolution requires the P3 callSid from TCN — pending TCN support response.
+
                 if ((status === 'INCALL' || status === 'TALKING' || status === 'PEERED') && !TCN._callEstablishedAt) {
                     wrapupCount = 0;
 
@@ -2230,11 +2404,13 @@
         var endedCallSid = TCN._activeCallSid;
 
         TCN._callActive = false;
+        TCN._isIncoming = false;
         TCN._callStartTime = 0;
         TCN._callEstablishedAt = 0;
         TCN._activePhone = null;
         TCN._activeLogId = null;
         TCN._activeLeadId = null;
+        TCN._activeCallSid = null;
         TCN._callVoiceSessionSid = null;
         TCN._onHold = false;
 
@@ -2325,7 +2501,7 @@
                 log('P3 callSid from approve-call: ' + TCN._activeCallSid);
                 console.log('[TCN] ✅ CallSid after approve:', TCN._activeCallSid);
             } else {
-                console.warn('[TCN] approve-call returned no callSid — caller info cannot be resolved');
+                console.warn('[TCN] approve-call returned no callSid — will try getcurrentsession + agentgetcalldetail');
             }
 
             var approvedAni = approveResult && (approveResult.ani || approveResult.callerAni || approveResult.callerPhone || approveResult.callerNumber || approveResult.fromNumber || approveResult.from || approveResult.cid);
@@ -2334,10 +2510,37 @@
                 TCN._activePhone = phone;
                 console.log('[TCN] Resolved number (from approve-call ANI):', phone);
                 fire('tcn:phoneResolved', { phone: phone });
-            } else if (TCN._activeCallSid) {
-                // phone still unknown — resolve with retry now that callSid is confirmed from approve-call
-                console.log('[TCN] No ANI in approve-call response — resolving via callSid:', TCN._activeCallSid);
-                resolveCallerWithRetry(TCN._activeCallSid, TCN._activeLogId);
+            } else {
+                // approve-call gave no ANI — call getcurrentsession NOW (call is INCALL,
+                // so voiceSession may have updated fields) then resolve via agentgetcalldetail
+                (async function _postApproveSessionResolve() {
+                    var _noPhone = !TCN._activePhone || _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
+                    var _cs = await fetchCurrentSession();
+                    console.log('[TCN] Post-approve getcurrentsession:', JSON.stringify(_cs));
+                    // If P3 callSid came back now (INCALL state), use it
+                    if (_cs.callSid) {
+                        TCN._activeCallSid = _cs.callSid;
+                        if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { call_sid: _cs.callSid });
+                    }
+                    if (_cs.ani) {
+                        // ANI directly in getcurrentsession response
+                        TCN._activePhone = _cs.ani;
+                        fire('tcn:phoneResolved', { phone: _cs.ani });
+                        if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { customer_number: _cs.ani });
+                        console.log('[TCN] ANI from post-approve getcurrentsession:', _cs.ani);
+                    } else {
+                        // Use voiceSessionSid as sessionSid for agentgetcalldetail —
+                        // that API returns ANI directly for inbound calls even without P3 callSid.
+                        var _resolveSid = TCN._activeCallSid || _cs.voiceSessionSid
+                            || String(TCN._voiceSessionSid || TCN._asmSessionSid || '');
+                        if (_resolveSid && _noPhone) {
+                            console.log('[TCN] Resolving ANI via agentgetcalldetail, sid:', _resolveSid);
+                            resolveCallerWithRetry(_resolveSid, TCN._activeLogId, 5);
+                        } else if (TCN._activeCallSid && _noPhone) {
+                            resolveCallerWithRetry(TCN._activeCallSid, TCN._activeLogId, 5);
+                        }
+                    }
+                })();
             }
         } catch (e) {
             console.error('[TCN] Approve call API failed:', e);
@@ -2428,11 +2631,18 @@
                         fire('tcn:phoneResolved', { phone: String(stAni), name: null });
                         if (TCN._activeLogId) patchCallLog(TCN._activeLogId, { customer_number: String(stAni) });
                         console.log('[TCN] Post-approve poll: ANI resolved =', String(stAni));
-                    } else if (TCN._activeCallSid) {
-                        // No ANI in status but callSid is confirmed — fetch via getclientinfodata
-                        resolveCallerWithRetry(TCN._activeCallSid, TCN._activeLogId);
-                    } else if (attemptsLeft > 1) {
-                        _postApproveAniPoll(attemptsLeft - 1);
+                    } else {
+                        // No ANI from agentgetstatus — try agentgetcalldetail via /tcn/caller-info.
+                        // Use P3 callSid if available, otherwise fall back to voiceSessionSid.
+                        // agentgetcalldetail accepts the ACD sessionSid and often returns ANI
+                        // directly for inbound calls, even when getclientinfodata returns 404.
+                        var _fallbackSid = TCN._activeCallSid
+                            || String(TCN._voiceSessionSid || TCN._asmSessionSid || '');
+                        var _stillNoPhone = !TCN._activePhone || _BLANK_LABELS.includes(String(TCN._activePhone || '').toLowerCase());
+                        if (_fallbackSid && _stillNoPhone) {
+                            console.log('[TCN] Post-approve poll: trying agentgetcalldetail with sid:', _fallbackSid);
+                            resolveCallerWithRetry(_fallbackSid, TCN._activeLogId, 3);
+                        }
                     }
                 } catch (_) {
                     if (attemptsLeft > 1) _postApproveAniPoll(attemptsLeft - 1);
@@ -2456,11 +2666,12 @@
 
         TCN._incomingSession = null;
         TCN._isIncoming = false;
+        var _rjPhone = TCN._activePhone;
         TCN._activePhone = null;
 
         var rejectedPatch = { status: 'rejected', ended_at: new Date().toISOString(), ended_by: agentRole() };
         if (TCN._activeLogId) {
-            patchCallLog(TCN._activeLogId, rejectedPatch);
+            await patchCallLog(TCN._activeLogId, rejectedPatch);
             TCN._activeLogId = null;
         } else {
             // Log not yet created (race condition) — apply when createInboundCallLog resolves

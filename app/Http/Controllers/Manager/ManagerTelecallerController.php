@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use App\Helpers\IdHasher;
 use Inertia\Inertia;
 
 class ManagerTelecallerController extends Controller
@@ -169,6 +170,7 @@ class ManagerTelecallerController extends Controller
 
         $teleData = $telecallers->map(fn($tele) => [
             'id'                   => $tele->id,
+            'encoded_id'           => IdHasher::encode($tele->id),
             'name'                 => $tele->name,
             'phone'                => $tele->phone ?? null,
             'status'               => $tele->status,

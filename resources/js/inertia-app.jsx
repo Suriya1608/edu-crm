@@ -18,6 +18,40 @@ import { Component, createElement, useEffect } from 'react';
 // and header links can call router.visit() without waiting for setup() to run.
 window._inertiaRouter = router;
 
+// ─── Blade-page redirect guard ────────────────────────────────────────────────
+// Inertia v2 intercepts ALL same-origin <a> clicks globally, including links
+// to pages that use the Blade layout (not React components). When that happens
+// the Blade HTML gets injected into the Inertia container, creating a nested
+// double-layout overlay on top of the current page.
+//
+// Fix: cancel any Inertia navigation whose URL is NOT a known Inertia React
+// route, and let the browser do a proper full page load instead.
+(function () {
+    var INERTIA_PATTERNS = [
+        /\/manager\/dashboard/,
+        /\/manager\/leads/,
+        /\/manager\/telecallers/,
+        /\/telecaller\//,
+        /\/report-viewer\/dashboard/,
+    ];
+
+    router.on('before', function (event) {
+        try {
+            var visit = event.detail && event.detail.visit;
+            if (!visit) return;
+            var raw = visit.url;
+            var href = raw instanceof URL ? raw.href : String(raw || '');
+            if (!href) return;
+
+            var isInertiaRoute = INERTIA_PATTERNS.some(function (p) { return p.test(href); });
+            if (!isInertiaRoute) {
+                event.preventDefault();       // cancel the SPA navigation
+                window.location.href = href;  // full browser load instead
+            }
+        } catch (_) {}
+    });
+})();
+
 // ─── Error Boundary ───────────────────────────────────────────────────────────
 // Catches React render errors and shows them instead of a blank page.
 // Remove this once the blank-page issue is diagnosed and fixed.

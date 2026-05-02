@@ -1,4 +1,4 @@
-<aside class="sidebar" id="sidebar">
+<aside class="sidebar {{ auth()->user()->role === 'telecaller' ? 'sidebar-telecaller' : '' }}" id="sidebar">
     <div class="sidebar-header">
         <div class="sidebar-logo">
             @php $siteLogo = \App\Models\Setting::get('site_logo'); @endphp
@@ -197,6 +197,18 @@
                 <span>Courses</span>
             </a>
 
+            <a href="{{ route('admin.academic-years.index') }}"
+                class="nav-item {{ request()->routeIs('admin.academic-years*') ? 'active' : '' }}">
+                <span class="material-icons">calendar_month</span>
+                <span>Academic Years</span>
+            </a>
+
+            <a href="{{ route('admin.course-intakes.index') }}"
+                class="nav-item {{ request()->routeIs('admin.course-intakes*') ? 'active' : '' }}">
+                <span class="material-icons">event_seat</span>
+                <span>Course Intakes</span>
+            </a>
+
             <a href="{{ route('admin.documents') }}"
                 class="nav-item {{ request()->routeIs('admin.documents*') ? 'active' : '' }}">
                 <span class="material-icons">folder_open</span>
@@ -248,6 +260,12 @@
                 <a href="{{ route('admin.settings.pages') }}"
                     class="nav-item {{ request()->routeIs('admin.settings.pages') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Pages</a>
+                <a href="{{ route('admin.settings.google-meet') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.google-meet') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Google Meet</a>
+                <a href="{{ route('admin.settings.zoom') }}"
+                    class="nav-item {{ request()->routeIs('admin.settings.zoom') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Zoom</a>
             </div>
         @endif
 
@@ -255,7 +273,7 @@
         {{-- MANAGER MENU --}}
         @if (auth()->user()->role == 'manager')
             @php
-                $mgrLeadsActive     = request()->routeIs('manager.leads*');
+                $mgrLeadsActive     = request()->routeIs('manager.leads*') || request()->routeIs('manager.leads.pool');
                 $mgrCampaignsActive = request()->routeIs('manager.campaigns.*');
                 $mgrEmailCampActive = request()->routeIs('manager.email-campaigns*');
                 $mgrReportsActive   = request()->routeIs('manager.reports.*');
@@ -292,6 +310,11 @@
                     onclick="inertiaVisit(event, this.href)"
                     class="nav-item {{ request()->routeIs('manager.leads.duplicates') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Duplicate Leads</a>
+                <a href="{{ route('manager.leads.pool') }}"
+                    class="nav-item {{ request()->routeIs('manager.leads.pool') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">
+                    Open Pool
+                </a>
             </div>
 
             <a href="{{ route('manager.telecallers') }}"
@@ -438,6 +461,60 @@
         @endif
 
 
+        {{-- REPORT VIEWER MENU (Principal / Director) --}}
+        @if (auth()->user()->role == 'report_viewer')
+            @php
+                $rvReportsActive = request()->routeIs('report_viewer.reports.*');
+            @endphp
+
+            {{-- Dashboard (Inertia) --}}
+            <a href="{{ route('report_viewer.dashboard') }}"
+                onclick="inertiaVisit(event, this.href)"
+                class="nav-item {{ request()->routeIs('report_viewer.dashboard') ? 'active' : '' }}">
+                <span class="material-icons">dashboard</span>
+                <span>Dashboard</span>
+            </a>
+
+            {{-- ── Analytics ── --}}
+            <div class="nav-section-label">Analytics</div>
+
+            <button class="nav-item w-100 border-0 {{ $rvReportsActive ? 'active' : 'bg-transparent' }}"
+                type="button" data-bs-toggle="collapse" data-bs-target="#rvReportsMenu"
+                aria-expanded="{{ $rvReportsActive ? 'true' : 'false' }}" aria-controls="rvReportsMenu">
+                <span class="material-icons">bar_chart</span>
+                <span class="flex-grow-1 text-start">Reports</span>
+                <span class="material-icons" style="font-size:18px;">expand_more</span>
+            </button>
+            <div id="rvReportsMenu" class="collapse {{ $rvReportsActive ? 'show' : '' }}"
+                style="padding-left:12px;margin-top:-2px;margin-bottom:8px;">
+                <a href="{{ route('report_viewer.reports.telecaller-performance') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.telecaller-performance') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Telecaller Performance</a>
+                <a href="{{ route('report_viewer.reports.manager-performance') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.manager-performance') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Manager Performance</a>
+                <a href="{{ route('report_viewer.reports.conversion') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.conversion') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Conversion Report</a>
+                <a href="{{ route('report_viewer.reports.lead-source') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.lead-source') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Lead Source</a>
+                <a href="{{ route('report_viewer.reports.period') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.period') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Period Report</a>
+                <a href="{{ route('report_viewer.reports.call-efficiency') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.call-efficiency') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Call Efficiency</a>
+                <a href="{{ route('report_viewer.reports.response-time') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.response-time') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Response Time</a>
+                <a href="{{ route('report_viewer.reports.escalation-matrix') }}"
+                    class="nav-item {{ request()->routeIs('report_viewer.reports.escalation-matrix') ? 'active' : '' }}"
+                    style="padding:8px 12px 8px 36px;font-size:13px;">Escalation Matrix</a>
+            </div>
+        @endif
+
+
         {{-- TELECALLER MENU --}}
         @if (auth()->user()->role == 'telecaller')
             @php
@@ -486,6 +563,14 @@
                 class="nav-item {{ request()->routeIs('telecaller.campaigns*') ? 'active' : '' }}">
                 <span class="material-icons">campaign</span>
                 <span>My Campaigns</span>
+            </a>
+
+            {{-- Availability Calendar --}}
+            <a href="{{ route('telecaller.availability') }}"
+                onclick="inertiaVisit(event, this.href)"
+                class="nav-item {{ request()->routeIs('telecaller.availability*') ? 'active' : '' }}">
+                <span class="material-icons">event_available</span>
+                <span>My Availability</span>
             </a>
 
             {{-- ── Messaging ── --}}

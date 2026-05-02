@@ -4,19 +4,20 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\ActivityType;
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\Course;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Notifications\LeadAssignmentNotification;
 use App\Services\LeadCodeGenerator;
 use App\Services\LeadDefaults;
-use App\Services\ManagerLeadAllocator;
+use App\Services\LeadAssignmentService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class LeadCaptureController extends Controller
 {
-    public function __construct(private ManagerLeadAllocator $managerLeadAllocator) {}
+    public function __construct(private LeadAssignmentService $leadAssignment) {}
 
     public function store(Request $request)
     {
@@ -27,25 +28,29 @@ class LeadCaptureController extends Controller
             'course' => 'required|string|max:255',
         ]);
 
-        $managerId = $this->managerLeadAllocator->resolveManagerIdForIncomingLead();
-
         // Exact match — LIKE '%...%' prevents index use and is injection-prone
         $courseId = Course::where('name', trim($request->course))->value('id');
 
         // Two-step creation: placeholder first, then derive code from actual ID
         $lead = Lead::create([
-            'lead_code'   => LeadCodeGenerator::placeholder(),
-            'name'        => $request->name,
-            'email'       => $request->email,
-            'phone'       => $request->phone,
-            'course_id'   => $courseId,
-            'source'      => 'Landing Page',
-            'assigned_by' => $managerId,
-            'status'      => LeadDefaults::defaultStatus(),
+            'lead_code'       => LeadCodeGenerator::placeholder(),
+            'name'            => $request->name,
+            'email'           => $request->email,
+            'phone'           => $request->phone,
+            'course_id'       => $courseId,
+            'academic_year_id'=> AcademicYear::current()?->id,
+            'quota'           => 'counselling',
+            'source'          => 'Landing Page',
+            'source_type'     => 'landing_page',
+            'source_category' => 'website',
+            'source_detail'   => $request->input('utm_source'),
+            'status'          => LeadDefaults::defaultStatus(),
         ]);
 
         // Derive final code from auto-increment ID — race-condition free
         LeadCodeGenerator::assignCode($lead);
+
+        $this->leadAssignment->assignIncomingLead($lead);
 
         LeadActivity::create([
             'lead_id'       => $lead->id,
@@ -56,6 +61,7 @@ class LeadCaptureController extends Controller
             'activity_time' => Carbon::now('Asia/Kolkata')->format('Y-m-d H:i:s'),
         ]);
 
+        $managerId = $lead->assigned_by;
         if ($managerId) {
             $manager = \App\Models\User::find($managerId);
             if ($manager) {

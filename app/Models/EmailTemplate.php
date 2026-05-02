@@ -9,11 +9,12 @@ use Illuminate\Contracts\Encryption\DecryptException;
 class EmailTemplate extends Model
 {
     protected $fillable = [
-        'name', 'subject', 'body', 'blocks_json', 'template_type', 'status', 'created_by',
+        'name', 'subject', 'body', 'blocks_json', 'template_type', 'status', 'created_by', 'attachments',
     ];
 
     protected $casts = [
-        'blocks_json' => 'array',
+        'blocks_json'  => 'array',
+        'attachments'  => 'array',
     ];
 
     // ── Encrypted Route Binding ───────────────────────────────────────────────

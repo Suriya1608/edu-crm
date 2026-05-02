@@ -14,6 +14,12 @@
 
     @inertiaHead
 
+    {{-- Tell Turbo Drive to do a full page reload when navigating here from
+         a Turbo-enabled page (e.g. the login page). Without this, Turbo's
+         body-swap runs before the @inertia div exists, so createInertiaApp
+         finds null and React never mounts — causing a blank dashboard. --}}
+    <meta name="turbo-visit-control" content="reload">
+
     @if ($siteFavicon)
         <link rel="icon" type="image/png" href="{{ asset('storage/' . $siteFavicon) }}">
     @else
@@ -24,7 +30,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
     {{-- Fonts --}}
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
     {{-- App styles --}}
@@ -234,6 +240,142 @@
             });
         })();
         </script>
+
+        {{-- Notification bell polling --}}
+        <script data-turbo-eval="false">
+        (function() {
+            const snapshotUrl = @json(route('telecaller.notifications.snapshot'));
+            const markReadUrl = @json(route('telecaller.notifications.read-all'));
+            const csrfToken = @json(csrf_token());
+            const soundKey = 'telecaller_notify_sound_enabled';
+            const seenMissedKey = 'telecaller_seen_missed_call_ids';
+            const seenFollowupKey = 'telecaller_seen_followup_ids';
+
+            const badge = document.getElementById('teleNotifBadge');
+            const missedWrap = document.getElementById('teleNotifMissedCalls');
+            const followupWrap = document.getElementById('teleNotifFollowups');
+            const waWrap = document.getElementById('teleNotifWhatsapp');
+            const systemWrap = document.getElementById('teleNotifSystem');
+            const soundToggle = document.getElementById('teleNotifSoundToggle');
+            const markReadBtn = document.getElementById('teleNotifMarkRead');
+
+            if (!badge || !missedWrap || !followupWrap || !systemWrap) return;
+
+            let previousCount = 0;
+
+            function getSoundEnabled() { return localStorage.getItem(soundKey) !== '0'; }
+            function setSoundEnabled(v) {
+                localStorage.setItem(soundKey, v ? '1' : '0');
+                if (soundToggle) soundToggle.checked = !!v;
+            }
+
+            function playBeep() {
+                if (!getSoundEnabled()) return;
+                try {
+                    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(880, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.001, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+                    osc.connect(gain); gain.connect(ctx.destination);
+                    osc.start(); osc.stop(ctx.currentTime + 0.22);
+                } catch (e) {}
+            }
+
+            function renderList(items, renderer, emptyText) {
+                if (!items || !items.length) return `<div class="small text-muted">${emptyText}</div>`;
+                return items.map(renderer).join('');
+            }
+
+            function getSeenIds(key) {
+                try { const r = localStorage.getItem(key); const p = r ? JSON.parse(r) : []; return Array.isArray(p) ? p.map(Number) : []; } catch (e) { return []; }
+            }
+            function setSeenIds(key, ids) {
+                localStorage.setItem(key, JSON.stringify(Array.from(new Set(ids.map(Number)))));
+            }
+
+            function updateBadge(count) {
+                if (count > 0) { badge.style.display = 'inline-block'; badge.textContent = count > 99 ? '99+' : String(count); }
+                else { badge.style.display = 'none'; }
+            }
+
+            async function fetchNotifications() {
+                try {
+                    const res = await fetch(snapshotUrl, { headers: { 'Accept': 'application/json' } });
+                    const data = await res.json();
+                    if (!data || !data.ok) return;
+
+                    const seenMissed = getSeenIds(seenMissedKey);
+                    const seenFollowups = getSeenIds(seenFollowupKey);
+                    const rawMissed = Array.isArray(data.missed_calls) ? data.missed_calls : [];
+                    const rawFollowups = Array.isArray(data.followup_reminders) ? data.followup_reminders : [];
+                    const rawWhatsapp = Array.isArray(data.whatsapp_notifications) ? data.whatsapp_notifications : [];
+                    const rawSystem = Array.isArray(data.system_notifications) ? data.system_notifications : [];
+
+                    const missedCalls = rawMissed.filter(item => !seenMissed.includes(Number(item.id)));
+                    const followupReminders = rawFollowups.filter(item => !seenFollowups.includes(Number(item.id)));
+
+                    const count = missedCalls.length + followupReminders.length + rawWhatsapp.length + rawSystem.length;
+                    if (count > previousCount) playBeep();
+                    previousCount = count;
+                    updateBadge(count);
+
+                    missedWrap.innerHTML = renderList(missedCalls, (item) => {
+                        const link = item.lead_url ? `<a href="${item.lead_url}" class="small fw-semibold text-decoration-none">Open</a>` : '';
+                        return `<div class="py-1 border-bottom">
+                            <div class="fw-semibold">${item.lead_name}</div>
+                            <div class="text-muted">${item.lead_code} | ${item.phone || '-'} ${item.time ? '| ' + item.time : ''}</div>
+                            ${link}</div>`;
+                    }, 'No missed calls.');
+
+                    followupWrap.innerHTML = renderList(followupReminders, (item) =>
+                        `<div class="py-1 border-bottom">
+                            <div class="fw-semibold">${item.lead_name}</div>
+                            <div class="text-muted">${item.lead_code} | ${item.next_followup || '-'}</div>
+                            <span class="badge ${item.type === 'overdue' ? 'bg-danger' : 'bg-warning text-dark'} mt-1">${item.type}</span>
+                        </div>`, 'No reminders.');
+
+                    if (waWrap) waWrap.innerHTML = renderList(rawWhatsapp, (item) =>
+                        `<div class="py-1 border-bottom">
+                            <a href="${item.link || '#'}" class="fw-semibold text-decoration-none d-block">${item.title || 'WhatsApp'}</a>
+                            <div class="text-muted">${item.message || ''}</div>
+                            <div class="text-muted" style="font-size:11px;">${item.time || ''}</div>
+                        </div>`, 'No WhatsApp messages.');
+
+                    systemWrap.innerHTML = renderList(rawSystem, (item) =>
+                        `<div class="py-1 border-bottom">
+                            <div>${item.message}</div>
+                            <div class="text-muted">${item.time || ''}</div>
+                        </div>`, 'No system notifications.');
+                } catch (e) {}
+            }
+
+            soundToggle?.addEventListener('change', function() { setSoundEnabled(!!this.checked); });
+
+            markReadBtn?.addEventListener('click', async function() {
+                try {
+                    const res = await fetch(snapshotUrl, { headers: { 'Accept': 'application/json' } });
+                    const snap = await res.json();
+                    setSeenIds(seenMissedKey, [...getSeenIds(seenMissedKey), ...(snap.missed_calls || []).map(i => Number(i.id)).filter(Boolean)]);
+                    setSeenIds(seenFollowupKey, [...getSeenIds(seenFollowupKey), ...(snap.followup_reminders || []).map(i => Number(i.id)).filter(Boolean)]);
+                    await fetch(markReadUrl, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken }, body: JSON.stringify({}) });
+                    await fetchNotifications();
+                } catch (e) {}
+            });
+
+            setSoundEnabled(getSoundEnabled());
+            fetchNotifications();
+            setInterval(fetchNotifications, 60000);
+
+            // Refresh immediately when a missed call occurs (fired by global-call.js after TCN_INCOMING_REJECTED)
+            window.addEventListener('gc:missedCall', function () {
+                fetchNotifications();
+            });
+        })();
+        </script>
     @endif
 
     {{-- Documents Quick Access Modal --}}
@@ -313,60 +455,31 @@
         }
     </script>
 
-    {{-- Intercept Blade-rendered link clicks (sidebar, header) so they use
-         Inertia SPA navigation instead of a full page reload.
-         window._inertiaRouter is set by inertia-app.jsx on boot. --}}
-    <script>
-    (function () {
-        document.addEventListener('click', function (e) {
-            // Only act on plain <a> tags that have not been handled by Inertia's
-            // own React <Link> component (those call preventDefault themselves).
-            var link = e.target.closest('a[href]');
-            if (!link) return;
-            if (e.defaultPrevented) return;
-
-            var href = link.getAttribute('href');
-            if (!href) return;
-
-            // Skip external URLs, hash-only anchors, mailto:, tel:, etc.
-            if (/^(https?:\/\/|mailto:|tel:|#|javascript:)/i.test(href)) return;
-
-            // Skip links that open a new tab / trigger download
-            if (link.target === '_blank' || link.hasAttribute('download')) return;
-
-            // Skip Bootstrap modal triggers and other data- driven links
-            if (link.dataset.bsToggle || link.dataset.bsDismiss) return;
-
-            var router = window._inertiaRouter;
-            if (!router) return; // Inertia not booted yet — let browser handle it
-
-            e.preventDefault();
-            router.visit(href);
-        });
-    })();
-    </script>
+    {{-- The Blade-sidebar link guard lives in inertia-app.jsx (router.on('before')).
+         No custom click interceptor needed here — Inertia's global handler plus
+         the before-hook covers all navigation cases correctly. --}}
 
     {{-- Sync document.title → header <h2> so each React page can drive the header title
          via <Head title="..."/>.  A MutationObserver on <title> fires on every Inertia
          navigation; no polling, no race conditions. --}}
     <script>
     (function () {
-        var titleEl = document.querySelector('title');
-        if (!titleEl) return;
-
         function syncTitle() {
             var raw = document.title || '';
-            // Strip the app-name suffix set by createInertiaApp title callback
             var page = raw.replace(/\s*[—–-]\s*Admission CRM\s*$/i, '').trim();
             var h2 = document.getElementById('pageHeaderTitle');
             if (h2 && page) h2.textContent = page;
         }
 
-        // Run once on first mount (React sets <title> synchronously before paint)
-        syncTitle();
-
-        // Re-run on every subsequent Inertia navigation
-        new MutationObserver(syncTitle).observe(titleEl, { childList: true });
+        // Observe <head> directly — on non-SSR Inertia there is no <title> in the
+        // initial HTML, so watching a specific titleEl would bail out immediately.
+        // Watching <head> catches: new <title> inserted (childList) and any text-node
+        // change inside it (characterData + subtree).
+        new MutationObserver(syncTitle).observe(document.head, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+        });
     })();
     </script>
 

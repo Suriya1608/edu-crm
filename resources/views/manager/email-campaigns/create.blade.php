@@ -24,7 +24,7 @@
         </div>
     @endif
 
-    <form action="{{ route('manager.email-campaigns.store') }}" method="POST" id="ecForm">
+    <form action="{{ route('manager.email-campaigns.store') }}" method="POST" id="ecForm" data-turbo="false">
         @csrf
 
         <div class="row g-4">
@@ -55,7 +55,7 @@
                             @foreach ($templates as $tpl)
                                 <option value="{{ $tpl->id }}"
                                     data-subject="{{ $tpl->subject }}"
-                                    data-body="{{ htmlspecialchars($tpl->body, ENT_QUOTES) }}"
+                                    data-body="{{ $tpl->body }}"
                                     {{ old('template_id') == $tpl->id ? 'selected' : '' }}>
                                     {{ $tpl->name }}
                                 </option>
@@ -118,6 +118,31 @@
                         <div class="alert alert-danger py-2 mb-3" style="font-size:13px;">{{ $message }}</div>
                     @enderror
 
+                    {{-- Excel import --}}
+                    <div class="mb-3 p-3 rounded" style="background:#f8fafc;border:1px dashed #cbd5e1;">
+                        <div class="d-flex align-items-center flex-wrap gap-2">
+                            <span class="material-icons" style="font-size:20px;color:#6366f1;">upload_file</span>
+                            <div>
+                                <span class="fw-semibold" style="font-size:13px;">Import from Excel / CSV</span>
+                                <span class="d-block text-muted" style="font-size:11px;">
+                                    Columns: <code>email</code> (required), <code>name</code> (optional). First row can be a header or raw emails.
+                                </span>
+                            </div>
+                            <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+                                <a href="{{ route('manager.email-campaigns.sample-excel') }}"
+                                   class="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1"
+                                   style="font-size:12px;white-space:nowrap;" title="Download sample CSV">
+                                    <span class="material-icons" style="font-size:15px;">download</span>
+                                    Sample File
+                                </a>
+                                <input type="file" id="excelFile" accept=".xlsx,.xls,.csv"
+                                    class="form-control form-control-sm" style="max-width:210px;"
+                                    onchange="importExcel(this)">
+                                <span id="excelStatus"></span>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="mb-2">
                         <input type="text" id="emailSearch" class="form-control form-control-sm"
                             placeholder="Search emails..." oninput="filterEmailList(this.value)">
@@ -163,7 +188,9 @@
 
 @push('scripts')
 <script>
-    const EMAILS_URL = '{{ route('manager.email-campaigns.email-list') }}';
+    const EMAILS_URL       = '{{ route('manager.email-campaigns.email-list') }}';
+    const PARSE_EXCEL_URL  = '{{ route('manager.email-campaigns.parse-excel') }}';
+    const CSRF_TOKEN       = '{{ csrf_token() }}';
     let allContacts  = [];
     let selected     = new Set();
 
@@ -195,7 +222,46 @@
         if (source === 'Lead') {
             return '<span class="badge" style="background:#dbeafe;color:#1d4ed8;font-weight:600;font-size:11px;">Lead</span>';
         }
+        if (source === 'Excel') {
+            return '<span class="badge" style="background:#dcfce7;color:#15803d;font-weight:600;font-size:11px;">Excel</span>';
+        }
         return '<span class="badge" style="background:#ede9fe;color:#6d28d9;font-weight:600;font-size:11px;">Campaign</span>';
+    }
+
+    function importExcel(input) {
+        if (!input.files.length) return;
+        const status = document.getElementById('excelStatus');
+        status.innerHTML = '<span class="spinner-border spinner-border-sm text-primary"></span>';
+
+        const fd = new FormData();
+        fd.append('file', input.files[0]);
+        fd.append('_token', CSRF_TOKEN);
+
+        fetch(PARSE_EXCEL_URL, { method: 'POST', body: fd })
+            .then(async r => {
+                const data = await r.json();
+                if (!r.ok) {
+                    status.innerHTML = `<span class="text-danger" style="font-size:12px;">${data.error || 'Error parsing file.'}</span>`;
+                    return;
+                }
+                const existingEmails = new Set(allContacts.map(c => c.email));
+                let added = 0;
+                data.forEach(c => {
+                    if (!existingEmails.has(c.email)) {
+                        allContacts.push(c);
+                        existingEmails.add(c.email);
+                        added++;
+                    }
+                    selected.add(c.email);
+                });
+                renderTable(allContacts);
+                updateCount();
+                status.innerHTML = `<span class="badge" style="background:#d1fae5;color:#065f46;font-size:12px;">${data.length} found, ${added} new added</span>`;
+                input.value = '';
+            })
+            .catch(() => {
+                status.innerHTML = '<span class="text-danger" style="font-size:12px;">Upload failed.</span>';
+            });
     }
 
     function renderTable(contacts) {
@@ -251,9 +317,11 @@
     function buildHiddenInputs() {
         const container = document.getElementById('hiddenInputs');
         container.innerHTML = '';
+        // Seed from allContacts so Excel-imported names are included
         const nameMap = {};
+        allContacts.forEach(c => { nameMap[c.email] = c.name || ''; });
         document.querySelectorAll('.row-check').forEach(cb => {
-            nameMap[cb.value] = cb.dataset.name || '';
+            if (cb.dataset.name) nameMap[cb.value] = cb.dataset.name;
         });
         [...selected].forEach(email => {
             container.innerHTML +=

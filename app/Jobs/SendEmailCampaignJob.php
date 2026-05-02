@@ -6,6 +6,7 @@ use App\Mail\CampaignMail;
 use App\Models\EmailBounce;
 use App\Models\EmailCampaign;
 use App\Models\EmailClick;
+use App\Models\EmailTemplate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -19,16 +20,13 @@ class SendEmailCampaignJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public string $queue = 'emails';
-
-    public int $tries = 2;
-
-    public int $timeout = 300;
-
     public int $tries   = 3;
     public int $timeout = 600;
 
-    public function __construct(public int $emailCampaignId) {}
+    public function __construct(public int $emailCampaignId)
+    {
+        $this->onQueue('emails');
+    }
 
     /**
      * Exponential backoff: retry after 30 s, then 2 min.
@@ -50,8 +48,9 @@ class SendEmailCampaignJob implements ShouldQueue
         $recipients = $campaign->recipients()->where('status', 'pending')->get();
 
         // Resolve once — identical for every recipient in this campaign
-        $appUrl   = rtrim(config('app.url'), '/');
-        $siteName = config('app.name');
+        $appUrl      = rtrim(config('app.url'), '/');
+        $siteName    = config('app.name');
+        $templateAttachments = EmailTemplate::find($campaign->template_id)?->attachments ?? [];
 
         // Pre-fetch all hard-bounced emails in one query instead of one per recipient
         $hardBouncedEmails = EmailBounce::whereIn('email', $recipients->pluck('email'))
@@ -111,6 +110,7 @@ class SendEmailCampaignJob implements ShouldQueue
                         $campaign->template_subject,
                         $bodyWithTracking,
                         $recipient->name ?? '',
+                        $templateAttachments,
                     ));
 
                 $recipient->update(['status' => 'sent', 'sent_at' => now()]);

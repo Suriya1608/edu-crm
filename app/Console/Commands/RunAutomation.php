@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\AutoAssignLeadToTelecaller;
 use App\Jobs\DispatchEscalations;
 use App\Jobs\DispatchFollowupReminders;
 use Illuminate\Console\Command;
@@ -29,6 +30,7 @@ class RunAutomation extends Command
 
         DispatchEscalations::dispatch();
         DispatchFollowupReminders::dispatch();
+        AutoAssignLeadToTelecaller::dispatch();
 
         $this->info('Automation jobs dispatched successfully.');
         return self::SUCCESS;

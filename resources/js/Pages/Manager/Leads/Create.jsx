@@ -1,18 +1,34 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 
-export default function Create({ courses, store_url }) {
+const MANUAL_CATEGORIES = [
+    { value: 'social_media', label: 'Social Media', detailPlaceholder: 'e.g. Facebook, Instagram, LinkedIn' },
+    { value: 'newspaper',    label: 'Newspaper',    detailPlaceholder: 'e.g. The Hindu, Times of India' },
+    { value: 'tv',           label: 'TV Advertisement', detailPlaceholder: 'e.g. Sun TV, Vijay TV' },
+    { value: 'referral',     label: 'Referral',     detailPlaceholder: 'Referrer name & contact (e.g. John Doe – 9876543210)' },
+    { value: 'walk_in',      label: 'Walk-in / Self', detailPlaceholder: null },
+    { value: 'other',        label: 'Other',        detailPlaceholder: 'Please specify' },
+];
+
+export default function Create({ courses, academic_years, store_url }) {
     const form = useForm({
-        name:      '',
-        phone:     '',
-        email:     '',
-        course_id: '',
-        source:    'manual',
+        name:             '',
+        phone:            '',
+        email:            '',
+        course_id:        '',
+        academic_year_id: '',
+        quota:            '',
+        source_category:  '',
+        source_detail:    '',
     });
 
     function submit(e) {
         e.preventDefault();
         form.post(store_url);
     }
+
+    const activeYear      = academic_years?.find(y => y.is_active);
+    const selectedCat     = MANUAL_CATEGORIES.find(c => c.value === form.data.source_category);
+    const showDetailField = selectedCat && selectedCat.detailPlaceholder !== null;
 
     return (
         <>
@@ -29,6 +45,8 @@ export default function Create({ courses, store_url }) {
             <div className="card p-4">
                 <form onSubmit={submit}>
                     <div className="row g-3">
+
+                        {/* ── Contact ── */}
                         <div className="col-md-6">
                             <label className="form-label">Name *</label>
                             <input type="text" className={`form-control${form.errors.name ? ' is-invalid' : ''}`}
@@ -56,6 +74,23 @@ export default function Create({ courses, store_url }) {
                             {form.errors.email && <div className="invalid-feedback">{form.errors.email}</div>}
                         </div>
 
+                        {/* ── Enrolment ── */}
+                        <div className="col-md-6">
+                            <label className="form-label">Academic Year</label>
+                            <select className="form-select" value={form.data.academic_year_id}
+                                onChange={e => form.setData('academic_year_id', e.target.value)}>
+                                <option value="">— Select Year —</option>
+                                {(academic_years || []).map(y => (
+                                    <option key={y.id} value={y.id}>
+                                        {y.name}{y.is_active ? ' (Current)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {activeYear && !form.data.academic_year_id && (
+                                <div className="form-text">Current year: <strong>{activeYear.name}</strong></div>
+                            )}
+                        </div>
+
                         <div className="col-md-6">
                             <label className="form-label">Course</label>
                             <select className="form-select" value={form.data.course_id}
@@ -68,10 +103,54 @@ export default function Create({ courses, store_url }) {
                         </div>
 
                         <div className="col-md-6">
-                            <label className="form-label">Source</label>
-                            <input type="text" className="form-control"
-                                value={form.data.source} onChange={e => form.setData('source', e.target.value)} />
+                            <label className="form-label">Quota</label>
+                            <select className={`form-select${form.errors.quota ? ' is-invalid' : ''}`}
+                                value={form.data.quota}
+                                onChange={e => form.setData('quota', e.target.value)}>
+                                <option value="">— Select Quota —</option>
+                                <option value="management">Management</option>
+                                <option value="counselling">Counselling</option>
+                            </select>
+                            {form.errors.quota && <div className="invalid-feedback">{form.errors.quota}</div>}
                         </div>
+
+                        {/* ── Source ── */}
+                        <div className="col-12">
+                            <hr className="my-1" />
+                            <p className="fw-semibold mb-2" style={{ fontSize: 13, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                                Lead Source
+                            </p>
+                        </div>
+
+                        <div className="col-md-6">
+                            <label className="form-label">Source Category</label>
+                            <select className={`form-select${form.errors.source_category ? ' is-invalid' : ''}`}
+                                value={form.data.source_category}
+                                onChange={e => {
+                                    form.setData('source_category', e.target.value);
+                                    form.setData('source_detail', '');
+                                }}>
+                                <option value="">— Select Source —</option>
+                                {MANUAL_CATEGORIES.map(c => (
+                                    <option key={c.value} value={c.value}>{c.label}</option>
+                                ))}
+                            </select>
+                            {form.errors.source_category && <div className="invalid-feedback">{form.errors.source_category}</div>}
+                        </div>
+
+                        {showDetailField && (
+                            <div className="col-md-6">
+                                <label className="form-label">
+                                    {form.data.source_category === 'referral' ? 'Referrer Details' : 'Specify'}
+                                </label>
+                                <input type="text"
+                                    className={`form-control${form.errors.source_detail ? ' is-invalid' : ''}`}
+                                    placeholder={selectedCat.detailPlaceholder}
+                                    value={form.data.source_detail}
+                                    onChange={e => form.setData('source_detail', e.target.value)} />
+                                {form.errors.source_detail && <div className="invalid-feedback">{form.errors.source_detail}</div>}
+                            </div>
+                        )}
                     </div>
 
                     <div className="mt-4 d-flex gap-2">

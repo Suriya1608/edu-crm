@@ -47,6 +47,10 @@
                         {{ $user->role == 'telecaller' ? 'selected' : '' }}>
                         Telecaller
                     </option>
+                    <option value="report_viewer"
+                        {{ $user->role == 'report_viewer' ? 'selected' : '' }}>
+                        Report Viewer (Principal / Director)
+                    </option>
                 </select>
             </div>
 

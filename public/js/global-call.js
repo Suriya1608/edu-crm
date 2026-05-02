@@ -147,12 +147,12 @@
 
                     // ── Incoming call popup (manual-answer mode, not auto-answer) ──
                     case "TCN_INCOMING_CALL":
-                        self._showIncomingCallPopup(d.phone || "Unknown");
+                        self._showIncomingCallPopup(d.phone || "Unknown", d.name || null, d.leadCode || null);
                         break;
 
                     case "TCN_INCOMING_REJECTED":
                         self._hideIncomingCallPopup();
-                        self._showMissedCallToast(d.phone || null, d.callLogId || null);
+                        self._showMissedCallToast(d.phone || null, d.callLogId || null, d.name || null, d.leadCode || null);
                         window.dispatchEvent(new CustomEvent('gc:missedCall', {
                             detail: { phone: d.phone || null, callLogId: d.callLogId || null }
                         }));
@@ -161,7 +161,7 @@
                     case "TCN_PHONE_RESOLVED":
                         if (d.phone) {
                             self._updatePhone(d.phone);
-                            self._showIncomingCallPopup(d.phone);
+                            self._showIncomingCallPopup(d.phone, d.name || null, d.leadCode || null);
                         }
                         break;
 
@@ -260,7 +260,9 @@
         // ── Enabling / disabling calling mode ──────────────────────
         enableCallingMode: async function () {
             this._persistSip(true);
-            this._showTcnFrame();
+            // Do NOT auto-show the frame here — SIP reconnects silently in the
+            // background. The manager opens the softphone manually via the toggle
+            // button; calls auto-open it via the TCN_CALL_STARTED message handler.
             var f = this._tcnFrame();
             if (!f) return;
 
@@ -456,7 +458,7 @@
         },
 
         // ── Incoming call popup (manual-answer mode only) ─────────
-        _showIncomingCallPopup: function (phone) {
+        _showIncomingCallPopup: function (phone, name, leadCode) {
             var self = this;
             var popup = document.getElementById('gcIncomingCallPopup');
 
@@ -483,8 +485,10 @@
 
                 popup.innerHTML = [
                     '<div style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;padding:12px 14px;">',
-                    '  <div style="font-size:11px;font-weight:600;opacity:.75;margin-bottom:3px;letter-spacing:.5px;text-transform:uppercase;">Incoming Call</div>',
-                    '  <div id="gcIncomingPhone" style="font-size:17px;font-weight:800;letter-spacing:.5px;"></div>',
+                    '  <div style="font-size:11px;font-weight:600;opacity:.75;margin-bottom:4px;letter-spacing:.5px;text-transform:uppercase;">Incoming Call</div>',
+                    '  <div id="gcIncomingName" style="font-size:15px;font-weight:800;letter-spacing:.2px;display:none;"></div>',
+                    '  <div id="gcIncomingCode" style="font-size:11px;font-weight:600;opacity:.75;display:none;"></div>',
+                    '  <div id="gcIncomingPhone" style="font-size:13px;font-weight:600;opacity:.9;letter-spacing:.5px;margin-top:1px;"></div>',
                     '</div>',
                     '<div style="padding:12px 14px;display:flex;gap:8px;">',
                     '  <button id="gcAcceptCallBtn" style="flex:1;height:38px;border:none;border-radius:9px;',
@@ -518,7 +522,11 @@
             }
 
             var phoneEl = document.getElementById('gcIncomingPhone');
-            if (phoneEl) phoneEl.textContent = phone;
+            var nameEl  = document.getElementById('gcIncomingName');
+            var codeEl  = document.getElementById('gcIncomingCode');
+            if (phoneEl) phoneEl.textContent = phone || '';
+            if (nameEl)  { nameEl.textContent = name || ''; nameEl.style.display = name ? 'block' : 'none'; }
+            if (codeEl)  { codeEl.textContent = leadCode || ''; codeEl.style.display = leadCode ? 'block' : 'none'; }
             popup.style.display = 'block';
         },
 
@@ -528,7 +536,7 @@
         },
 
         // ── Missed call toast ──────────────────────────────────────
-        _showMissedCallToast: function (phone, callLogId) {
+        _showMissedCallToast: function (phone, callLogId, name, leadCode) {
             var self = this;
 
             // Play a distinct double-beep missed-call sound
@@ -556,6 +564,12 @@
             var logLink = callLogId
                 ? ' <a href="/telecaller/call-logs" style="color:#fca5a5;font-weight:700;text-decoration:underline;">View log</a>'
                 : '';
+            var nameRow = name
+                ? '<div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:1px;">' + name + '</div>'
+                : '';
+            var codeRow = leadCode
+                ? '<div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:2px;letter-spacing:.3px;">' + leadCode + '</div>'
+                : '';
 
             var toast = document.createElement('div');
             toast.id = toastId;
@@ -571,10 +585,12 @@
                 '@keyframes gcToastIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}',
                 '</style>',
                 '<div style="background:#dc2626;padding:10px 14px 12px;">',
-                '  <div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">',
+                '  <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">',
                 '    <span class="material-icons" style="font-size:17px;color:#fff;flex-shrink:0;">phone_missed</span>',
                 '    <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.6px;">Missed Call</span>',
                 '  </div>',
+                nameRow,
+                codeRow,
                 '  <div style="font-size:16px;font-weight:800;color:#fff;letter-spacing:.5px;">' + displayPhone + '</div>',
                 '  <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:3px;">Caller hung up before you could answer.' + logLink + '</div>',
                 '</div>',

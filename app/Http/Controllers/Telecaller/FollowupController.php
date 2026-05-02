@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers\Telecaller;
 
+use App\Exports\ArrayExport;
 use App\Http\Controllers\Controller;
 use App\Models\Followup;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
 
 class FollowupController extends Controller
 {
@@ -218,6 +221,75 @@ class FollowupController extends Controller
             'month' => $month,
             'days'  => $days,
         ]);
+    }
+
+    public function export(Request $request, string $scope)
+    {
+        $format = $request->input('format', 'excel');
+        $titles = [
+            'today'     => 'Today Followups',
+            'overdue'   => 'Overdue Followups',
+            'upcoming'  => 'Upcoming Followups',
+            'completed' => 'Completed Followups',
+        ];
+        $title = $titles[$scope] ?? 'Followups';
+
+        $query = Followup::with(['lead:id,name,lead_code,phone'])
+            ->whereHas('lead', fn($q) => $q->where('assigned_to', Auth::id()));
+
+        $hasCompleted = Schema::hasColumn('followups', 'completed_at');
+        if ($scope !== 'completed' && $hasCompleted) {
+            $query->whereNull('completed_at');
+        }
+
+        $nowTime = now()->format('H:i:s');
+        if ($scope === 'today') {
+            $query->whereDate('next_followup', today());
+        } elseif ($scope === 'overdue') {
+            $query->where(function ($q) use ($nowTime) {
+                $q->whereDate('next_followup', '<', today())
+                  ->orWhere(function ($q2) use ($nowTime) {
+                      $q2->whereDate('next_followup', today())
+                         ->whereNotNull('followup_time')
+                         ->whereRaw('followup_time < ?', [$nowTime]);
+                  });
+            });
+        } elseif ($scope === 'upcoming') {
+            $query->where(function ($q) use ($nowTime) {
+                $q->whereDate('next_followup', '>', today())
+                  ->orWhere(function ($q2) use ($nowTime) {
+                      $q2->whereDate('next_followup', today())
+                         ->where(fn($q3) => $q3->whereNull('followup_time')->orWhereRaw('followup_time >= ?', [$nowTime]));
+                  });
+            });
+        } elseif ($scope === 'completed') {
+            $hasCompleted ? $query->whereNotNull('completed_at') : $query->whereRaw('1 = 0');
+        }
+
+        $followups = $query->orderBy('next_followup')->get()->values()->map(function ($fu, $idx) use ($scope) {
+            return [
+                'sno'       => $idx + 1,
+                'date'      => $fu->next_followup?->format('d M Y') ?? '—',
+                'time'      => $fu->followup_time ? Carbon::parse($fu->followup_time)->format('h:i A') : '',
+                'lead_name' => $fu->lead?->name ?? '—',
+                'lead_code' => $fu->lead?->lead_code ?? '—',
+                'phone'     => $fu->lead?->phone ?? '—',
+                'remarks'   => $fu->remarks ?? '',
+                'scope'     => $scope,
+            ];
+        })->toArray();
+
+        $filename = strtolower(str_replace(' ', '-', $title)) . '-' . now()->format('Ymd-His');
+        $meta = ['userName' => Auth::user()->name, 'generatedAt' => now()->format('d M Y, h:i A'), 'title' => $title];
+
+        if ($format === 'pdf') {
+            $pdf = Pdf::loadView('exports.telecaller.followups', array_merge($meta, ['followups' => $followups]))
+                ->setPaper('a4', 'landscape');
+            return $pdf->download($filename . '.pdf');
+        }
+
+        $headings = ['S.No', 'Date', 'Time', 'Lead Name', 'Lead Code', 'Phone', 'Remarks', 'Status'];
+        return Excel::download(new ArrayExport($followups, $headings, $title), $filename . '.xlsx');
     }
 
     private function editableFollowup($id): Followup

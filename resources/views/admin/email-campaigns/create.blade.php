@@ -55,7 +55,7 @@
                             @foreach ($templates as $tpl)
                                 <option value="{{ $tpl->id }}"
                                     data-subject="{{ $tpl->subject }}"
-                                    data-body="{{ htmlspecialchars($tpl->body, ENT_QUOTES) }}"
+                                    data-body="{{ $tpl->body }}"
                                     {{ old('template_id') == $tpl->id ? 'selected' : '' }}>
                                     {{ $tpl->name }}
                                 </option>

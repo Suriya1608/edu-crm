@@ -22,6 +22,10 @@
         .sp-dot{width:9px;height:9px;border-radius:50%;background:#64748b;flex-shrink:0;transition:background .25s;}
         .sp-status-txt{font-size:12px;font-weight:600;color:#64748b;transition:color .25s;}
 
+        /* Error message banner */
+        .sp-err-bar{display:none;padding:5px 14px 6px;background:#fef2f2;border-bottom:1px solid #fecaca;flex-shrink:0;}
+        .sp-err-bar-txt{font-size:11px;font-weight:600;color:#dc2626;line-height:1.4;word-break:break-word;}
+
         /* Phone display */
         .sp-phone{padding:8px 14px 4px;font-size:21px;font-weight:800;color:#0f172a;letter-spacing:1.2px;min-height:46px;font-variant-numeric:tabular-nums;word-break:break-all;}
         .sp-phone.empty{color:#94a3b8;}
@@ -71,8 +75,10 @@
 
         /* Incoming call banner */
         #spIncoming{flex-shrink:0;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;padding:12px 14px;}
-        #spIncoming .sp-inc-label{font-size:11px;font-weight:600;opacity:.75;margin-bottom:3px;letter-spacing:.5px;text-transform:uppercase;}
-        #spIncoming .sp-inc-phone{font-size:18px;font-weight:800;letter-spacing:.8px;margin-bottom:10px;}
+        #spIncoming .sp-inc-label{font-size:11px;font-weight:600;opacity:.75;margin-bottom:4px;letter-spacing:.5px;text-transform:uppercase;}
+        #spIncoming .sp-inc-name{font-size:16px;font-weight:800;letter-spacing:.3px;margin-bottom:1px;}
+        #spIncoming .sp-inc-code{font-size:11px;font-weight:600;opacity:.75;margin-bottom:2px;}
+        #spIncoming .sp-inc-phone{font-size:13px;font-weight:600;opacity:.9;letter-spacing:.5px;margin-bottom:10px;}
         #spIncoming .sp-inc-btns{display:flex;gap:8px;}
         .sp-inc-btn{flex:1;height:38px;border:none;border-radius:9px;font-family:'Plus Jakarta Sans',sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:opacity .15s;}
         .sp-inc-btn:hover{opacity:.88;}
@@ -98,6 +104,8 @@
 {{-- Incoming Call Banner (hidden until an invite arrives) --}}
 <div id="spIncoming" style="display:none;">
     <div class="sp-inc-label">Incoming Call</div>
+    <div class="sp-inc-name" id="spIncomingName" style="display:none;"></div>
+    <div class="sp-inc-code" id="spIncomingCode" style="display:none;"></div>
     <div class="sp-inc-phone" id="spIncomingPhone">Unknown</div>
     <div class="sp-inc-btns">
         <button class="sp-inc-btn accept" id="spAcceptBtn">
@@ -113,6 +121,11 @@
 <div class="sp-status">
     <span class="sp-dot" id="spDot"></span>
     <span class="sp-status-txt" id="spStatusTxt">Connecting&hellip;</span>
+</div>
+
+{{-- Error message banner (shown on tcn:error, cleared on ready) --}}
+<div class="sp-err-bar" id="spErrBar">
+    <span class="sp-err-bar-txt" id="spErrTxt"></span>
 </div>
 
 {{-- Phone display --}}
@@ -228,8 +241,11 @@
         logoutBtn: g('spLogoutBtn'),
         minBtn:  g('spMinBtn'), minIco: g('spMinIcon'),
         uncfg:   g('spUncfg'),
+        errBar:  g('spErrBar'),  errTxt: g('spErrTxt'),
         // Incoming call
         incoming:      g('spIncoming'),
+        incomingName:  g('spIncomingName'),
+        incomingCode:  g('spIncomingCode'),
         incomingPhone: g('spIncomingPhone'),
         acceptBtn:     g('spAcceptBtn'),
         rejectBtn:     g('spRejectBtn'),
@@ -282,6 +298,9 @@
 
         // Pulsing tab icon while calling
         D.dot.style.animation = (_state === 'calling') ? 'sp-pulse 1s ease-in-out infinite' : '';
+
+        // Clear error banner when leaving error state
+        if (_state !== 'error' && D.errBar) D.errBar.style.display = 'none';
     }
 
     function setState(s) { _state = s; render(); }
@@ -385,10 +404,20 @@
     }
 
     // ── Incoming call helpers ────────────────────────────────────
-    function _showIncoming(phone) {
+    function _showIncoming(phone, name, code) {
         D.incomingPhone.textContent = phone || 'Unknown';
+        if (D.incomingName) {
+            D.incomingName.textContent = name || '';
+            D.incomingName.style.display = name ? 'block' : 'none';
+        }
+        if (D.incomingCode) {
+            D.incomingCode.textContent = code || '';
+            D.incomingCode.style.display = code ? 'block' : 'none';
+        }
         D.incoming.style.display = 'block';
         D.incoming.classList.add('ringing');
+        // Hide dialer so only the incoming call UI shows
+        if (D.dialSec) D.dialSec.style.display = 'none';
         _startRingtone();
     }
 
@@ -396,6 +425,8 @@
         _stopRingtone();
         D.incoming.style.display = 'none';
         D.incoming.classList.remove('ringing');
+        // Restore dialer visibility
+        if (D.dialSec) D.dialSec.style.display = '';
     }
 
     // ── postMessage to parent ────────────────────────────────────
@@ -414,7 +445,9 @@
 
     // ── TCN events → forward to parent ──────────────────────────
     window.addEventListener('tcn:ready', function () {
-        _paused = false; setState('ready');
+        _paused = false;
+        if (D.errBar) D.errBar.style.display = 'none';
+        setState('ready');
         toParent({ type: 'TCN_READY' });
     });
     window.addEventListener('tcn:callStarted', function (e) {
@@ -438,13 +471,15 @@
     });
     window.addEventListener('tcn:callEnded', function (e) {
         var d = e.detail || {};
+        var endedPhone = _phone;  // capture before clearing
         stopTimer(); _muted = false; _onHold = false; _dtmfOpen = false;
-        _hideIncoming();   // dismiss any lingering incoming banner
+        _hideIncoming();   // dismiss any lingering incoming banner, restores dialer
         resetMute();
         D.dtmfPad.className = 'sp-dtmf-pad';
         D.dtmfToggle.innerHTML = '<span class="material-icons" style="font-size:14px;">dialpad</span> Keypad';
+        _phone = '';      // clear dialer so the number doesn't persist after call ends
         setState(_paused ? 'paused' : 'ready');
-        toParent({ type: 'TCN_CALL_ENDED', phone: _phone, callLogId: d.callLogId, duration: d.duration, status: d.status || 'completed' });
+        toParent({ type: 'TCN_CALL_ENDED', phone: endedPhone, callLogId: d.callLogId, duration: d.duration, status: d.status || 'completed' });
     });
     window.addEventListener('tcn:sipDropped', function () {
         if (_state !== 'calling' && _state !== 'on-call') setState('connecting');
@@ -459,8 +494,21 @@
     });
     window.addEventListener('tcn:error', function (e) {
         var msg = (e.detail && e.detail.message) || 'Unknown error';
-        if (_state !== 'calling' && _state !== 'on-call' && _state !== 'ready') setState('error');
+        // Show message in softphone regardless of current state
+        if (D.errTxt) D.errTxt.textContent = msg;
+        if (D.errBar) D.errBar.style.display = 'block';
+        // Transition to error state only when not actively on a call
+        if (_state !== 'calling' && _state !== 'on-call') setState('error');
         toParent({ type: 'TCN_ERROR', message: msg });
+    });
+
+    // Auto-recover: when keep-alive reports agent READY, clear error and restore state
+    window.addEventListener('tcn:statusUpdate', function (e) {
+        var status = ((e.detail && e.detail.status) || '').toUpperCase();
+        if (_state === 'error' && (status === 'READY' || status === 'AVAILABLE')) {
+            if (D.errBar) D.errBar.style.display = 'none';
+            setState('ready');
+        }
     });
 
     // ── Receive commands from parent ─────────────────────────────
@@ -498,7 +546,8 @@
         if (window.TcnService) {
             window.TcnService.call(_phone, leadId).catch(function (e) {
                 console.error('[SP] call failed:', e.message);
-                setState('error');
+                // tcn:error already fired — only set error state if it didn't run
+                if (_state !== 'error') setState('error');
             });
         } else if (window.TCN && window.TCN._loggedIn) {
             window.TCN.startCall(_phone, leadId).catch(function (e) {
@@ -553,14 +602,29 @@
         toParent({ type: 'TCN_INCOMING_CALL', phone: phone || 'Incoming' });
     });
 
-    // ANI resolved after initial detection (e.g., from approve-call or status poll)
+    // ANI + lead info resolved after initial detection
+    var _name     = null;
+    var _leadCode = null;
+
     window.addEventListener('tcn:phoneResolved', function (e) {
-        var phone = (e.detail && e.detail.phone) || null;
+        var phone    = (e.detail && e.detail.phone)    || null;
+        var name     = (e.detail && e.detail.name)     || null;
+        var leadCode = (e.detail && e.detail.leadCode) || null;
         if (!phone) return;
-        _phone = phone;
+        _phone    = phone;
+        _name     = name;
+        _leadCode = leadCode;
         if (D.incomingPhone) D.incomingPhone.textContent = phone;
+        if (D.incomingName) {
+            D.incomingName.textContent = name || '';
+            D.incomingName.style.display = name ? 'block' : 'none';
+        }
+        if (D.incomingCode) {
+            D.incomingCode.textContent = leadCode || '';
+            D.incomingCode.style.display = leadCode ? 'block' : 'none';
+        }
         render();
-        toParent({ type: 'TCN_PHONE_RESOLVED', phone: phone });
+        toParent({ type: 'TCN_PHONE_RESOLVED', phone: phone, name: name, leadCode: leadCode });
     });
 
     window.addEventListener('tcn:incomingCallRejected', function () {
@@ -568,10 +632,12 @@
         _hideIncoming();
         toParent({
             type:      'TCN_INCOMING_REJECTED',
-            phone:     _phone || null,
+            phone:     _phone    || null,
+            name:      _name     || null,
+            leadCode:  _leadCode || null,
             callLogId: (window.TCN && window.TCN._activeLogId) ? window.TCN._activeLogId : null,
         });
-        _phone = '';   // clear so next incoming starts fresh
+        _phone = ''; _name = null; _leadCode = null;
     });
 
     // Accept / Reject buttons kept for edge-case manual override

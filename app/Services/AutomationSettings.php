@@ -9,6 +9,10 @@ class AutomationSettings
     public const LEAD_ASSIGNMENT_ENABLED = 'automation_lead_assignment_enabled';
     public const LEAD_ASSIGN_ACTIVE_ONLY = 'automation_assign_active_managers_only';
 
+    public const LEAD_ASSIGNMENT_MODE        = 'lead_assignment_mode';          // round_robin | course_based | open_pool
+    public const LEAD_AUTO_ASSIGN_TC_ENABLED = 'lead_auto_assign_telecaller_enabled';
+    public const LEAD_AUTO_ASSIGN_TC_HOURS   = 'lead_auto_assign_telecaller_hours';
+
     public const FOLLOWUP_REMINDER_ENABLED = 'automation_followup_reminder_enabled';
     public const FOLLOWUP_REMINDER_DAYS_BEFORE = 'automation_followup_reminder_days_before';
     public const FOLLOWUP_OVERDUE_HIGHLIGHT = 'automation_followup_overdue_highlight_enabled';
@@ -30,6 +34,22 @@ class AutomationSettings
     public function assignToActiveManagersOnly(): bool
     {
         return $this->bool(self::LEAD_ASSIGN_ACTIVE_ONLY, true);
+    }
+
+    public function leadAssignmentMode(): string
+    {
+        $mode = (string) Setting::get(self::LEAD_ASSIGNMENT_MODE, 'round_robin');
+        return in_array($mode, ['round_robin', 'course_based', 'open_pool'], true) ? $mode : 'round_robin';
+    }
+
+    public function autoAssignTelecallerEnabled(): bool
+    {
+        return $this->bool(self::LEAD_AUTO_ASSIGN_TC_ENABLED, false);
+    }
+
+    public function autoAssignTelecallerHours(): int
+    {
+        return max(1, min(720, $this->int(self::LEAD_AUTO_ASSIGN_TC_HOURS, 24)));
     }
 
     public function followupReminderEnabled(): bool

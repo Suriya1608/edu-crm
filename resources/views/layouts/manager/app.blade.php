@@ -84,6 +84,37 @@
     </div>
 
 
+    {{-- Active Call Bar (shown by global-call.js during calls, hidden by default) --}}
+    <div id="gcCallBar" data-turbo-permanent
+        style="display:none;position:fixed;top:0;left:0;right:0;z-index:2000;
+               background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;
+               padding:8px 20px;align-items:center;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,.25);">
+        <span class="material-icons" style="font-size:20px;">call</span>
+        <div style="flex:1;min-width:0;">
+            <div id="gcCallStatus" style="font-size:10px;opacity:.85;text-transform:uppercase;letter-spacing:.6px;line-height:1;">Connecting…</div>
+            <div id="gcCallPhone" style="font-weight:700;font-size:14px;letter-spacing:.3px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;">
+            <span class="material-icons" style="font-size:16px;opacity:.8;">timer</span>
+            <span id="gcCallTimer">0:00</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+            <button id="gcMuteBtn" title="Mute"
+                style="background:rgba(255,255,255,.18);border:none;border-radius:7px;color:#fff;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;">
+                <span class="material-icons" id="gcMuteIcon" style="font-size:18px;">mic</span>
+            </button>
+            <button id="gcHoldBtn" title="Hold"
+                style="background:rgba(255,255,255,.18);border:none;border-radius:7px;color:#fff;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;">
+                <span class="material-icons" id="gcHoldIcon" style="font-size:18px;">pause_circle</span>
+            </button>
+            <button id="gcEndCallBarBtn"
+                style="background:rgba(0,0,0,.25);border:none;border-radius:7px;color:#fff;padding:0 12px;height:34px;cursor:pointer;font-weight:700;font-size:12px;display:flex;align-items:center;gap:5px;transition:background .15s;">
+                <span class="material-icons" style="font-size:16px;">call_end</span>End
+            </button>
+        </div>
+        <a id="gcCallLeadLink" style="display:none;color:#fff;opacity:.8;font-size:12px;" target="_blank">View Lead</a>
+    </div>
+
     {{-- Documents Quick Access Modal --}}
     <div class="modal fade" id="docsModal" tabindex="-1" aria-labelledby="docsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -240,8 +271,9 @@
                 if (_btn) { _btn.style.background = d.type === 'TCN_CALL_ANSWERED' ? '#ef4444' : '#6366f1'; }
             }
             else if (d.type === 'TCN_CALL_ENDED') {
-                f.style.bottom = '80px';
+                // Auto-close the softphone panel 3s after call ends
                 if (_btn) { _btn.style.background = '#10b981'; }
+                setTimeout(function () { if (_visible) hideFrame(); }, 3000);
             }
             else if (d.type === 'TCN_LOGGED_OUT') {
                 if (_btn) { _btn.style.background = '#64748b'; }

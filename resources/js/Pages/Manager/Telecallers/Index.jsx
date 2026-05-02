@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 
 function formatDuration(seconds) {
     const s = parseInt(seconds) || 0;
@@ -80,12 +80,13 @@ export default function Index({
                                 <th>Performance</th>
                                 <th>Break / Status</th>
                                 <th>Missed Follow-up</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody>
                             {telecallers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={11} className="text-center py-5 text-muted">
+                                    <td colSpan={12} className="text-center py-5 text-muted">
                                         <span className="material-icons d-block mb-2" style={{ fontSize: 40, opacity: 0.3 }}>support_agent</span>
                                         No telecallers found.
                                     </td>
@@ -126,6 +127,16 @@ export default function Index({
                                     </td>
                                     <td>
                                         <span className="badge bg-danger">{tele.missed_followup_count}</span>
+                                    </td>
+                                    <td>
+                                        <Link
+                                            href={`/manager/telecallers/${tele.encoded_id}/performance`}
+                                            className="btn btn-sm btn-outline-primary d-inline-flex align-items-center gap-1"
+                                            style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+                                        >
+                                            <span className="material-icons" style={{ fontSize: 14 }}>bar_chart</span>
+                                            View Performance
+                                        </Link>
                                     </td>
                                 </tr>
                             ))}

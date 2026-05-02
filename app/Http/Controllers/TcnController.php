@@ -832,6 +832,97 @@ class TcnController extends Controller
     }
 
     // ─────────────────────────────────────────────────────────────
+    // Get Current Session — ASM API v1alpha1
+    // Route: POST /tcn/current-session
+    // Called at ring time: getcurrentsession → callSid → getclientinfodata → ANI.
+    // Performs a deep recursive scan so nested response structures are handled.
+    // ─────────────────────────────────────────────────────────────
+
+    public function getCurrentSession(Request $request): JsonResponse
+    {
+        $token = $request->bearerToken() ?? $request->input('access_token');
+
+        if (!$token) {
+            return response()->json(['ok' => false, 'reason' => 'missing_token'], 422);
+        }
+
+        $response = Http::withToken($token)
+            ->post(self::API_BASE . '/api/v1alpha1/asm/asm/getcurrentsession', (object)[]);
+
+        $body = $response->json() ?? [];
+
+        // Log FULL raw body so we can read the actual field names from Laravel logs
+        Log::info('TCN getCurrentSession RAW', [
+            'user_id'   => Auth::id(),
+            'http'      => $response->status(),
+            'raw_body'  => $response->body(),
+            'json_body' => $body,
+        ]);
+
+        $callSidKeys = [
+            'callSid', 'callId', 'call_sid', 'sessionCallSid', 'p3CallSid',
+            'taskCallSid', 'inboundCallSid', 'activeCallSid', 'currentCallSid',
+            'sid', 'id',
+        ];
+        $aniKeys = [
+            'ani', 'callerAni', 'callerPhone', 'callerNumber', 'fromNumber',
+            'from', 'cid', 'phoneNumber', 'caller', 'phone', 'customerNumber',
+        ];
+
+        // Deep recursive scan — handles flat, nested, or array-of-objects responses
+        $callSid = $this->deepExtractNumericField($body, $callSidKeys);
+        $ani     = $this->deepExtractStringField($body, $aniKeys);
+
+        Log::info('TCN getCurrentSession extracted', [
+            'callSid' => $callSid,
+            'ani'     => $ani,
+        ]);
+
+        return response()->json([
+            'ok'      => $response->successful(),
+            'callSid' => $callSid,
+            'ani'     => $ani,     // may be populated directly — skips getclientinfodata
+            'body'    => $body,    // full body for JS-side debugging
+        ], $response->successful() ? 200 : ($response->status() ?: 500));
+    }
+
+    // Deep-search $data for a field whose name is in $keys and whose value is a non-zero integer.
+    private function deepExtractNumericField(array $data, array $keys, int $depth = 0): ?string
+    {
+        if ($depth > 6) return null;
+        foreach ($keys as $key) {
+            if (isset($data[$key]) && is_numeric($data[$key]) && (int) $data[$key] !== 0) {
+                return (string)(int) $data[$key];
+            }
+        }
+        foreach ($data as $value) {
+            if (is_array($value)) {
+                $found = $this->deepExtractNumericField($value, $keys, $depth + 1);
+                if ($found !== null) return $found;
+            }
+        }
+        return null;
+    }
+
+    // Deep-search $data for a field whose name is in $keys and whose value is a non-empty string.
+    private function deepExtractStringField(array $data, array $keys, int $depth = 0): ?string
+    {
+        if ($depth > 6) return null;
+        foreach ($keys as $key) {
+            if (isset($data[$key]) && is_string($data[$key]) && filled($data[$key])) {
+                return $data[$key];
+            }
+        }
+        foreach ($data as $value) {
+            if (is_array($value)) {
+                $found = $this->deepExtractStringField($value, $keys, $depth + 1);
+                if ($found !== null) return $found;
+            }
+        }
+        return null;
+    }
+
+    // ─────────────────────────────────────────────────────────────
     // Approve Incoming Call — PBX API
     // Route: POST /tcn/approve-call
     // ─────────────────────────────────────────────────────────────
@@ -1153,84 +1244,183 @@ class TcnController extends Controller
 
     public function getCallerInfo(Request $request): JsonResponse
     {
-        $token     = $request->bearerToken() ?? $request->input('access_token');
-        // Accept both camelCase (JS sends callSid) and snake_case (legacy) forms
-        $callSid   = $request->input('callSid') ?? $request->input('call_sid');
-        $callLogId = $request->input('call_log_id');
+        $token      = $request->bearerToken() ?? $request->input('access_token');
+        $sessionSid = $request->input('callSid') ?? $request->input('call_sid');  // ACD voiceSessionSid from getcurrentsession
+        $callLogId  = $request->input('call_log_id');
 
-        if (!$token || !$callSid) {
+        if (!$token || !$sessionSid) {
             return response()->json(['ok' => false, 'reason' => 'missing_params'], 422);
         }
 
-        $ani        = null;
-        $clientName = null;
+        $ani             = null;
+        $clientName      = null;
+        $p3SidResolved   = null;   // confirmed P3 callSid (38M range) — the ONLY value written to call_sid in DB
+        $detailBodyDebug = null;
 
-        try {
-            // ── Strategy 1: getclientinfodata (P3 API, uses integer callSid) ─────────
-            $p3Resp = Http::withToken($token)
-                ->post(self::API_BASE . '/api/v0alpha/p3api/getclientinfodata', [
-                    'callSid' => (int) $callSid,
+        // callerId = actual caller, phoneNumber = inbound DID.
+        // callerId comes first so getclientinfodata responses resolve correctly.
+        // phoneNumber kept last-resort for non-getclientinfodata APIs where it may be the caller.
+        $aniKeys = ['callerId','ani','callerAni','callerPhone','callerNumber','fromNumber',
+                    'from','cid','caller','customerNumber','callingPartyNumber',
+                    'callerIdNumber','fromPhoneNumber','inboundAni','phoneNumber'];
+        $sidKeys = ['callSid','callId','p3CallSid','inboundCallSid','taskCallSid',
+                    'queueCallSid','taskSid','id','call_sid','call_id'];
+
+        // getclientinfodata field semantics (TCN confirmed):
+        //   callerId    = actual caller (who dialled the inbound line)  ← store as customer_number
+        //   phoneNumber = inbound DID (the number that was called)      ← NEVER store, it's the DID
+        $clientInfoAniKeys = ['callerId','ani','callerAni','callerPhone','callerNumber',
+                              'fromNumber','from','cid','caller','customerNumber'];
+
+        // Helper: call getclientinfodata with the correct TCN params and extract the caller ANI.
+        // TCN requires call_sid (integer), call_type, and task_sid — NOT sessionSid/callSid keys.
+        $tryGetClientInfo = function (int $sid, int $taskSid = 0) use (
+            $token, $clientInfoAniKeys, &$ani, &$clientName, &$p3SidResolved, &$detailBodyDebug
+        ): bool {
+            try {
+                $r = Http::withToken($token)
+                    ->post(self::API_BASE . '/api/v0alpha/p3api/getclientinfodata', [
+                        'call_sid'  => $sid,
+                        'call_type' => 'INBOUND',
+                        'task_sid'  => $taskSid,
+                    ]);
+                $body = $r->json() ?? [];
+                Log::info('TCN getCallerInfo getclientinfodata', [
+                    'call_sid' => $sid, 'task_sid' => $taskSid, 'http' => $r->status(), 'body' => $body,
                 ]);
-
-            $p3Body = $p3Resp->json() ?? [];
-            Log::info('TCN getCallerInfo p3/getclientinfodata', [
-                'callSid' => $callSid,
-                'http'    => $p3Resp->status(),
-                'body'    => $p3Body,
-            ]);
-
-            if ($p3Resp->successful()) {
-                // Check top-level and common nested wrappers (data, clientInfo, clientData)
-                foreach ([$p3Body, $p3Body['data'] ?? null, $p3Body['clientInfo'] ?? null, $p3Body['clientData'] ?? null] as $b) {
+                if (!$detailBodyDebug) $detailBodyDebug = $body;
+                foreach ([$body, $body['data'] ?? null, $body['clientInfo'] ?? null, $body[0] ?? null] as $b) {
                     if (!is_array($b) || $ani) continue;
-                    $ani = $b['ani'] ?? $b['callerAni'] ?? $b['callerPhone'] ?? $b['callerNumber']
-                        ?? $b['fromNumber'] ?? $b['from'] ?? $b['cid']
-                        ?? $b['phoneNumber'] ?? $b['caller'] ?? $b['phone'] ?? null;
-                    if (!$clientName) {
-                        $clientName = $b['clientName'] ?? $b['name'] ?? $b['callerName'] ?? null;
-                    }
+                    $ani = $this->deepExtractStringField($b, $clientInfoAniKeys);
+                    if (!$clientName) $clientName = $b['clientName'] ?? $b['name'] ?? $b['callerName'] ?? null;
                 }
-                // Handle array-of-records response (e.g. [{ "ani": "..." }])
-                if (!$ani && isset($p3Body[0]) && is_array($p3Body[0])) {
-                    $first = $p3Body[0];
-                    $ani = $first['ani'] ?? $first['callerAni'] ?? $first['phoneNumber'] ?? $first['phone'] ?? null;
-                    if (!$clientName) $clientName = $first['clientName'] ?? $first['name'] ?? null;
+                if ($ani) return true;
+            } catch (\Throwable $e) {
+                Log::warning('TCN getclientinfodata failed', ['sid' => $sid, 'error' => $e->getMessage()]);
+            }
+            return false;
+        };
+
+        // ── Strategy 1: agentgetconnectedparty → callSid + taskSid → getclientinfodata ─
+        // TCN prescribed flow: sessionSid → agentgetconnectedparty → call_sid + task_sid
+        // → getclientinfodata(call_sid, call_type:INBOUND, task_sid) → callerId (caller's number)
+        try {
+            $connResp = Http::withToken($token)
+                ->post(self::API_BASE . '/api/v0alpha/acd/agentgetconnectedparty', [
+                    'sessionSid' => (string) $sessionSid,
+                ]);
+            $connBody = $connResp->json() ?? [];
+            Log::info('TCN getCallerInfo agentgetconnectedparty', [
+                'sessionSid' => $sessionSid,
+                'http'       => $connResp->status(),
+                'body'       => $connBody,
+            ]);
+            $detailBodyDebug = $connBody;
+            if ($connResp->successful()) {
+                // ANI directly in response
+                $ani = $this->deepExtractStringField($connBody, $aniKeys);
+                if (!$clientName) {
+                    $clientName = $this->deepExtractStringField($connBody,
+                        ['clientName','name','callerName','clientDesc']);
+                }
+
+                // Extract callSid + taskSid and chain to getclientinfodata
+                if (!$ani) {
+                    $connCallSid = $this->deepExtractNumericField($connBody, $sidKeys);
+                    $connTaskSid = (int) ($connBody['taskSid'] ?? $connBody['task_sid'] ?? 0);
+                    if ($connCallSid && (int)$connCallSid !== (int)$sessionSid) {
+                        Log::info('TCN getCallerInfo: agentgetconnectedparty → getclientinfodata', [
+                            'sessionSid' => $sessionSid, 'call_sid' => $connCallSid, 'task_sid' => $connTaskSid,
+                        ]);
+                        if ($tryGetClientInfo((int)$connCallSid, $connTaskSid)) {
+                            $p3SidResolved = $connCallSid;
+                        }
+                    }
+                } elseif ($ani) {
+                    $connCallSid = $this->deepExtractNumericField($connBody, $sidKeys);
+                    if ($connCallSid && (int)$connCallSid !== (int)$sessionSid) {
+                        $p3SidResolved = $connCallSid;
+                    }
                 }
             }
         } catch (\Throwable $e) {
-            Log::warning('TCN getCallerInfo p3 failed', ['error' => $e->getMessage()]);
+            Log::warning('TCN getCallerInfo agentgetconnectedparty failed', ['error' => $e->getMessage()]);
         }
 
-        // ── Strategy 2: agentgetcalldetail (ACD API, uses sessionSid = callSid) ────
-        // This is the same endpoint resolveCaller() uses and is proven to return ANI.
+        // ── Strategy 2: getclientinfodata(sessionSid) — fallback when agentgetconnectedparty fails ─
+        if (!$ani) {
+            try {
+                $r1a = Http::withToken($token)
+                    ->post(self::API_BASE . '/api/v0alpha/p3api/getclientinfodata', [
+                        'call_sid'  => (int) $sessionSid,
+                        'call_type' => 'INBOUND',
+                        'task_sid'  => 0,
+                    ]);
+                $b1a = $r1a->json() ?? [];
+                Log::info('TCN getCallerInfo getclientinfodata(fallback sessionSid as call_sid)', [
+                    'sessionSid' => $sessionSid, 'http' => $r1a->status(), 'body' => $b1a,
+                ]);
+                $detailBodyDebug = $b1a;
+                if ($r1a->successful()) {
+                    foreach ([$b1a, $b1a['data'] ?? null, $b1a['clientInfo'] ?? null, $b1a[0] ?? null] as $b) {
+                        if (!is_array($b) || $ani) continue;
+                        // Use $clientInfoAniKeys — callerId is the caller, phoneNumber is the DID
+                        $ani = $this->deepExtractStringField($b, $clientInfoAniKeys);
+                        if (!$clientName) $clientName = $b['clientName'] ?? $b['name'] ?? null;
+                        if (!$p3SidResolved) {
+                            $found = $this->deepExtractNumericField((array)$b, $sidKeys);
+                            if ($found && (int)$found !== (int)$sessionSid) $p3SidResolved = $found;
+                        }
+                    }
+                    if ($ani && !$p3SidResolved) $p3SidResolved = (string)$sessionSid;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TCN getCallerInfo strategy2 fallback failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // ── Strategy 3: agentgetcalldetail → callSid → getclientinfodata ──────────
+        // Last resort — this API returns [] for most inbound calls but kept as safety net.
         if (!$ani) {
             try {
                 $detailResp = Http::withToken($token)
                     ->post(self::API_BASE . '/api/v0alpha/acd/agentgetcalldetail', [
-                        'sessionSid' => (string) $callSid,
+                        'sessionSid' => (string) $sessionSid,
                     ]);
-
                 $detailBody = $detailResp->json() ?? [];
-                Log::info('TCN getCallerInfo acd/agentgetcalldetail', [
-                    'sessionSid' => $callSid,
-                    'http'       => $detailResp->status(),
-                    'body'       => $detailBody,
+                Log::info('TCN getCallerInfo agentgetcalldetail', [
+                    'sessionSid' => $sessionSid, 'http' => $detailResp->status(), 'body' => $detailBody,
                 ]);
-
+                $detailBodyDebug = $detailBody;
                 if ($detailResp->successful()) {
-                    $ani = $detailBody['ani'] ?? $detailBody['callerAni'] ?? $detailBody['callerPhone']
-                        ?? $detailBody['callerNumber'] ?? $detailBody['fromNumber'] ?? $detailBody['from']
-                        ?? $detailBody['cid'] ?? null;
-                    if (!$clientName) {
-                        $clientName = $detailBody['clientName'] ?? $detailBody['name'] ?? $detailBody['callerName'] ?? null;
+                    $rawP3 = $this->deepExtractNumericField($detailBody, $sidKeys);
+                    if ($rawP3 && (int)$rawP3 !== (int)$sessionSid) {
+                        if ($tryGetClientInfo((int)$rawP3)) {
+                            $p3SidResolved = $rawP3;
+                        }
                     }
                 }
             } catch (\Throwable $e) {
-                Log::warning('TCN getCallerInfo acd fallback failed', ['error' => $e->getMessage()]);
+                Log::warning('TCN getCallerInfo agentgetcalldetail failed', ['error' => $e->getMessage()]);
             }
         }
 
-        // ── Update DB ────────────────────────────────────────────────────────────────
+        // Always look up lead by phone directly — ensures name/code are returned
+        // even when no callLogId is provided (ring-time lookup before log creation).
+        $lead = null;
+        if ($ani) {
+            $rawPhone = preg_replace('/\D/', '', (string) $ani);
+            $tenDigit = (strlen($rawPhone) === 12 && str_starts_with($rawPhone, '91'))
+                ? substr($rawPhone, 2) : $rawPhone;
+            if (strlen($tenDigit) === 10) {
+                $lead = Lead::where('phone', $tenDigit)
+                    ->orWhere('phone', '91' . $tenDigit)
+                    ->orWhere('phone', '+91' . $tenDigit)
+                    ->first();
+            }
+        }
+
+        // ── Update DB ────────────────────────────────────────────────────────────
         if ($callLogId) {
             try {
                 $callLog = CallLog::where('id', $callLogId)
@@ -1238,23 +1428,14 @@ class TcnController extends Controller
                     ->first();
 
                 if ($callLog) {
-                    if ($callSid) {
-                        $callLog->call_sid = (string) $callSid;
+                    if ($p3SidResolved && !$callLog->call_sid) {
+                        $callLog->call_sid = $p3SidResolved;
                     }
                     if ($ani && !$callLog->customer_number) {
                         $callLog->customer_number = (string) $ani;
                     }
-                    if ($ani && !$callLog->lead_id) {
-                        $rawPhone = preg_replace('/\D/', '', (string) $ani);
-                        $tenDigit = (strlen($rawPhone) === 12 && str_starts_with($rawPhone, '91'))
-                            ? substr($rawPhone, 2) : $rawPhone;
-                        if (strlen($tenDigit) === 10) {
-                            $lead = Lead::where('phone', $tenDigit)
-                                ->orWhere('phone', '91' . $tenDigit)
-                                ->orWhere('phone', '+91' . $tenDigit)
-                                ->first();
-                            if ($lead) $callLog->lead_id = $lead->id;
-                        }
+                    if (!$callLog->lead_id && $lead) {
+                        $callLog->lead_id = $lead->id;
                     }
                     $callLog->save();
                 }
@@ -1264,10 +1445,187 @@ class TcnController extends Controller
         }
 
         return response()->json([
-            'ok'      => true,
-            'phone'   => $ani,
-            'name'    => $clientName,
-            'call_sid' => $callSid ? (string) $callSid : null,
+            'ok'           => true,
+            'phone'        => $ani,
+            'name'         => $lead?->name ?? $clientName,
+            'lead_id'      => $lead?->id,
+            'lead_code'    => $lead?->lead_code,
+            'call_sid'     => $p3SidResolved,
+            '_detail_body' => $detailBodyDebug,
+        ]);
+    }
+
+    // ---------------------------------------------------------------
+    // Incoming caller lookup — TCN prescribed flow (pre-approve).
+    // Step 1: agentgetconnectedparty → get call_sid + task_sid
+    // Step 2: getclientinfodata(call_sid, INBOUND, task_sid) → callerId (actual caller)
+    //
+    // Field semantics confirmed by TCN:
+    //   callerId   = who called in (the customer)  ← stored as customer_number
+    //   phoneNumber = the inbound DID (what was dialled) ← NOT stored
+    //
+    // Route: POST /tcn/incoming-caller
+    // ---------------------------------------------------------------
+    public function incomingCallerLookup(Request $request): JsonResponse
+    {
+        $token      = $request->bearerToken() ?? $request->input('access_token');
+        $sessionSid = $request->input('sessionSid') ?? $request->input('session_sid');
+        $callLogId  = $request->input('call_log_id');
+
+        if (!$token || !$sessionSid) {
+            return response()->json(['ok' => false, 'reason' => 'missing_params'], 422);
+        }
+
+        $ani     = null;
+        $callSid = null;
+        $taskSid = 0;
+
+        // Step 1: agentgetconnectedparty — get the real call_sid and task_sid for this session.
+        // This is a POST to the ACD endpoint (same pattern as other ACD APIs).
+        try {
+            $connResp = Http::withToken($token)
+                ->post(self::API_BASE . '/api/v0alpha/acd/agentgetconnectedparty', [
+                    'sessionSid' => (string) $sessionSid,
+                ]);
+            $connBody = $connResp->json() ?? [];
+            Log::info('TCN incomingCallerLookup agentgetconnectedparty', [
+                'sessionSid' => $sessionSid,
+                'http'       => $connResp->status(),
+                'body'       => $connBody,
+            ]);
+
+            if ($connResp->successful()) {
+                // Extract call_sid — try both camelCase and snake_case
+                $callSid = $connBody['callSid'] ?? $connBody['call_sid']
+                    ?? $connBody['callId']  ?? $connBody['call_id']
+                    ?? $connBody['p3CallSid'] ?? $connBody['taskCallSid'] ?? null;
+                $taskSid = (int) ($connBody['taskSid'] ?? $connBody['task_sid'] ?? 0);
+
+                // callerId = caller's number, phoneNumber = inbound DID (do NOT use phoneNumber)
+                $aniKeys = ['callerId','ani','callerAni','callerPhone','callerNumber',
+                            'fromNumber','from','cid','caller','phone'];
+                foreach ($aniKeys as $k) {
+                    if (!empty($connBody[$k]) && is_string($connBody[$k])) {
+                        $ani = $connBody[$k];
+                        break;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TCN incomingCallerLookup agentgetconnectedparty failed', ['error' => $e->getMessage()]);
+        }
+
+        // Step 2: getclientinfodata — TCN confirmed params: call_sid, call_type, task_sid.
+        // Response: callerId = actual caller's number, phoneNumber = inbound DID (ignored).
+        if (!$ani && $callSid) {
+            try {
+                $infoResp = Http::withToken($token)
+                    ->post(self::API_BASE . '/api/v0alpha/p3api/getclientinfodata', [
+                        'call_sid'  => (int) $callSid,
+                        'call_type' => 'INBOUND',
+                        'task_sid'  => $taskSid,
+                    ]);
+                $infoBody = $infoResp->json() ?? [];
+                Log::info('TCN incomingCallerLookup getclientinfodata', [
+                    'call_sid' => $callSid, 'task_sid' => $taskSid,
+                    'http'     => $infoResp->status(),
+                    'body'     => $infoBody,
+                ]);
+
+                if ($infoResp->successful()) {
+                    // callerId = actual caller, phoneNumber = inbound DID — never store phoneNumber
+                    $aniKeys = ['callerId','ani','callerAni','callerPhone','callerNumber',
+                                'fromNumber','from','cid','caller','customerNumber'];
+                    foreach ([$infoBody, $infoBody['data'] ?? null, $infoBody[0] ?? null] as $b) {
+                        if (!is_array($b) || $ani) continue;
+                        foreach ($aniKeys as $k) {
+                            if (!empty($b[$k]) && is_string($b[$k])) {
+                                $ani = $b[$k];
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TCN incomingCallerLookup getclientinfodata failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // Fallback: try getclientinfodata with sessionSid directly as call_sid
+        if (!$ani) {
+            try {
+                $fbResp = Http::withToken($token)
+                    ->post(self::API_BASE . '/api/v0alpha/p3api/getclientinfodata', [
+                        'call_sid'  => (int) $sessionSid,
+                        'call_type' => 'INBOUND',
+                        'task_sid'  => 0,
+                    ]);
+                $fbBody = $fbResp->json() ?? [];
+                Log::info('TCN incomingCallerLookup getclientinfodata(fallback sessionSid)', [
+                    'sessionSid' => $sessionSid, 'http' => $fbResp->status(), 'body' => $fbBody,
+                ]);
+                if ($fbResp->successful()) {
+                    $aniKeys = ['callerId','ani','callerAni','callerPhone','callerNumber','phone'];
+                    foreach ([$fbBody, $fbBody['data'] ?? null] as $b) {
+                        if (!is_array($b) || $ani) continue;
+                        foreach ($aniKeys as $k) {
+                            if (!empty($b[$k]) && is_string($b[$k])) {
+                                $ani = $b[$k];
+                                break;
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TCN incomingCallerLookup fallback failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        // Always look up lead by phone number directly (independent of call log availability).
+        // This ensures name/code are returned even when callLogId is absent (race at ring time).
+        $lead = null;
+        if ($ani) {
+            $rawPhone = preg_replace('/\D/', '', (string) $ani);
+            $tenDigit = (strlen($rawPhone) === 12 && str_starts_with($rawPhone, '91'))
+                ? substr($rawPhone, 2) : $rawPhone;
+            if (strlen($tenDigit) === 10) {
+                $lead = Lead::where('phone', $tenDigit)
+                    ->orWhere('phone', '91' . $tenDigit)
+                    ->orWhere('phone', '+91' . $tenDigit)
+                    ->first();
+            }
+        }
+
+        // Persist ANI + lead link to call log if we have one
+        if ($ani && $callLogId) {
+            try {
+                $callLog = CallLog::where('id', $callLogId)
+                    ->where('user_id', Auth::id())
+                    ->first();
+                if ($callLog) {
+                    if (!$callLog->customer_number) {
+                        $callLog->customer_number = (string) $ani;
+                    }
+                    if ($callSid && !$callLog->call_sid) {
+                        $callLog->call_sid = (string) $callSid;
+                    }
+                    if (!$callLog->lead_id && $lead) {
+                        $callLog->lead_id = $lead->id;
+                    }
+                    $callLog->save();
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TCN incomingCallerLookup DB save failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        return response()->json([
+            'ok'        => (bool) $ani,
+            'phone'     => $ani,
+            'name'      => $lead?->name,
+            'lead_id'   => $lead?->id,
+            'lead_code' => $lead?->lead_code,
+            'call_sid'  => $callSid ? (string) $callSid : null,
         ]);
     }
 
@@ -1286,29 +1644,74 @@ class TcnController extends Controller
             return response()->json(['ok' => false, 'reason' => 'missing_params'], 422);
         }
 
-        // Try TCN's call detail / reporting endpoint to get ANI
+        $ani       = null;
+        $p3CallSid = null;
+
+        // ── Step 1: agentgetcalldetail (ACD) → may return ANI or P3 callSid ──────
         try {
             $response = Http::withToken($token)
                 ->post(self::API_BASE . '/api/v0alpha/acd/agentgetcalldetail', [
                     'sessionSid' => (string) $sessionSid,
                 ]);
 
-            $body = $response->json();
+            $body = $response->json() ?? [];
             Log::info('TCN resolveCaller agentgetcalldetail', [
                 'sessionSid' => $sessionSid,
                 'http'       => $response->status(),
                 'body'       => $body,
             ]);
 
+            // Extract ANI if present
             $ani = $body['ani'] ?? $body['callerAni'] ?? $body['callerPhone']
                 ?? $body['callerNumber'] ?? $body['fromNumber'] ?? $body['from'] ?? null;
 
-            if ($ani) {
+            // Extract P3 callSid from response — field names TCN may use
+            if (!$ani) {
+                $rawP3 = $body['callSid'] ?? $body['callId'] ?? $body['id']
+                    ?? $body['p3CallSid'] ?? $body['inboundCallSid'] ?? $body['sessionId'] ?? null;
+                if ($rawP3 && is_numeric($rawP3) && (int)$rawP3 !== (int)$sessionSid) {
+                    $p3CallSid = (int) $rawP3;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TCN resolveCaller agentgetcalldetail failed', ['error' => $e->getMessage()]);
+        }
+
+        // ── Step 2: getclientinfodata with correct params → callerId (not phoneNumber) ──
+        if (!$ani && $p3CallSid) {
+            try {
+                $p3Resp = Http::withToken($token)
+                    ->post(self::API_BASE . '/api/v0alpha/p3api/getclientinfodata', [
+                        'call_sid'  => $p3CallSid,
+                        'call_type' => 'INBOUND',
+                        'task_sid'  => 0,
+                    ]);
+
+                $p3Body = $p3Resp->json() ?? [];
+                Log::info('TCN resolveCaller getclientinfodata', [
+                    'p3CallSid' => $p3CallSid,
+                    'http'      => $p3Resp->status(),
+                    'body'      => $p3Body,
+                ]);
+
+                // callerId = caller's number, phoneNumber = inbound DID — use callerId
+                foreach ([$p3Body, $p3Body['data'] ?? null, $p3Body[0] ?? null] as $b) {
+                    if (!is_array($b) || $ani) continue;
+                    $ani = $b['callerId'] ?? $b['ani'] ?? $b['callerAni'] ?? $b['callerPhone']
+                        ?? $b['callerNumber'] ?? $b['fromNumber'] ?? $b['from']
+                        ?? $b['cid'] ?? $b['caller'] ?? null;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('TCN resolveCaller getclientinfodata failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        if ($ani) {
+            try {
                 $callLog = CallLog::where('id', $callLogId)->where('user_id', Auth::id())->first();
                 if ($callLog && !$callLog->customer_number) {
                     $callLog->customer_number = (string) $ani;
 
-                    // Resolve lead by phone
                     $rawPhone = preg_replace('/\D/', '', (string) $ani);
                     $tenDigit = (strlen($rawPhone) === 12 && str_starts_with($rawPhone, '91'))
                         ? substr($rawPhone, 2) : $rawPhone;
@@ -1322,10 +1725,10 @@ class TcnController extends Controller
                     }
                     $callLog->save();
                 }
-                return response()->json(['ok' => true, 'phone' => $ani]);
+            } catch (\Throwable $e) {
+                Log::warning('TCN resolveCaller DB save failed', ['error' => $e->getMessage()]);
             }
-        } catch (\Throwable $e) {
-            Log::warning('TCN resolveCaller failed', ['error' => $e->getMessage()]);
+            return response()->json(['ok' => true, 'phone' => $ani]);
         }
 
         return response()->json(['ok' => false, 'reason' => 'no_ani']);

@@ -29,6 +29,9 @@
     var _state        = 'connecting';
     var _phone        = '';
     var _incomingPhone = '';
+    var _callerName   = '';   // lead name — populated from tcn:phoneResolved
+    var _callerLeadId = null; // lead id  — populated from tcn:callStarted / tcn:phoneResolved
+    var _callerLeadCode = null; // lead code (e.g. "SMIT-00004") — used for display in calling label
     var _muted        = false;
     var _agentPaused  = false;
     var _expanded     = false;
@@ -141,7 +144,7 @@
         //   In-call controls
         var inCallCtrl = el('div', { style: 'display:none;padding:0 14px 12px;' });
         var timerDisp = el('div', { style: 'text-align:center;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;color:' + C.dark + ';margin-bottom:4px;' }, '0:00');
-        var callingLbl = el('div', { style: 'text-align:center;font-size:12px;color:' + C.muted + ';margin-bottom:12px;' });
+        var callingLbl = el('div', { style: 'text-align:center;font-size:11px;color:' + C.muted + ';margin-bottom:12px;line-height:1.4;word-break:break-word;' });
         var inCallBtns = el('div', { style: 'display:flex;gap:8px;' });
         var muteBtn = el('button', { class: 'tcn-icon-btn' });
         muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic</span>Mute';
@@ -303,8 +306,18 @@
         W.callBtn.style.opacity = canCall ? '1' : '0.5';
         W.callBtn.style.cursor  = canCall ? 'pointer' : 'not-allowed';
 
-        // Calling label (phone number under timer)
-        if (inCall) W.callingLbl.textContent = _phone || '';
+        // Calling label (name + lead-id + phone under timer).
+        if (inCall) {
+            var _blanksLbl = ['incoming', 'unknown', 'anonymous', 'private'];
+            var _displayPhone = (_phone && !_blanksLbl.includes(_phone.toLowerCase())) ? _phone
+                     : (_incomingPhone && !_blanksLbl.includes(_incomingPhone.toLowerCase()) && _incomingPhone !== 'Resolving...') ? _incomingPhone
+                     : '';
+            var _parts = [];
+            if (_callerName)                    _parts.push(_callerName);
+            if (_callerLeadCode || _callerLeadId) _parts.push(_callerLeadCode || ('#' + _callerLeadId));
+            if (_displayPhone)                  _parts.push(_displayPhone);
+            W.callingLbl.textContent = _parts.join(' · ');
+        }
 
         // Pause/Resume button
         if (_agentPaused) {
@@ -493,7 +506,9 @@
         // ── Incoming call ────────────────────────────────────────────────
         // Fired by tcn-softphone.js onInvite delegate when TCN sends a SIP INVITE.
         window.addEventListener('tcn:incomingCall', function (e) {
-            _incomingPhone = (e.detail && e.detail.phone) ? e.detail.phone : 'Unknown';
+            var _raw = (e.detail && e.detail.phone) ? String(e.detail.phone) : '';
+            var _blanks = ['incoming', 'unknown', 'anonymous', 'private', ''];
+            _incomingPhone = _blanks.includes(_raw.toLowerCase()) ? 'Resolving...' : _raw;
             setState('incoming');
             // Force panel open so telecaller sees it immediately
             expand();
@@ -503,21 +518,36 @@
             if (_state === 'incoming') setState('ready');
         });
 
-        // Fired when getclientinfodata resolves the real caller ANI after the initial
-        // SIP INVITE provided no phone number — update the incoming banner live.
+        // Fired when getclientinfodata resolves the real caller ANI (and optionally
+        // lead name / lead ID) — update the incoming banner and calling label live.
         window.addEventListener('tcn:phoneResolved', function (e) {
-            if (e.detail && e.detail.phone) {
+            if (!e.detail) return;
+            if (e.detail.phone) {
                 _incomingPhone = e.detail.phone;
-                if ((_state === 'incoming' || _state === 'on-call') && W.incomingNumDisp) {
+                if (_state === 'incoming' && W.incomingNumDisp) {
                     W.incomingNumDisp.textContent = _incomingPhone;
                 }
+                // NOTE: _phone (the outbound dialer) is intentionally NOT updated here.
+                // The calling label uses _callerName / _callerLeadId / _incomingPhone instead.
             }
+            if (e.detail.name)     _callerName     = e.detail.name;
+            if (e.detail.leadId)   _callerLeadId   = e.detail.leadId;
+            if (e.detail.leadCode) _callerLeadCode = e.detail.leadCode;
+            // Re-render so callingLbl picks up the new name/id immediately.
+            if (_state === 'incoming' || _state === 'calling' || _state === 'on-call') render();
         });
 
         // ── Outbound / accepted incoming call ────────────────────────────
         window.addEventListener('tcn:callStarted', function (e) {
             var detail = e.detail || {};
-            if (detail.phone) setPhone(detail.phone);
+            // Only populate the dialer with the number for OUTBOUND calls.
+            // For incoming calls (_state === 'incoming') the caller's number lives
+            // in _incomingPhone (shown in the incoming banner); putting it in _phone
+            // (the dialer display) causes it to persist in Ready state after the call.
+            if (detail.phone && _state !== 'incoming') setPhone(detail.phone);
+            if (detail.leadId)   _callerLeadId   = detail.leadId;
+            if (detail.leadName) _callerName     = detail.leadName;
+            if (detail.leadCode) _callerLeadCode = detail.leadCode;
             stopCallTimer();
             _callSecs = 0;
             updateTimer();
@@ -535,7 +565,12 @@
 
         window.addEventListener('tcn:callEnded', function () {
             stopCallTimer();
-            _muted = false;
+            _muted          = false;
+            _incomingPhone  = '';
+            _callerName     = '';
+            _callerLeadId   = null;
+            _callerLeadCode = null;
+            setPhone('');   // clears _phone and resets phoneDisp to em-dash
             if (W.muteBtn) {
                 W.muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic</span>Mute';
                 W.muteBtn.style.background  = C.surface;

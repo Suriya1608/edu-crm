@@ -46,10 +46,11 @@ class AuthenticatedSessionController extends Controller
             }
 
             return match ($user->role) {
-                'admin'      => redirect()->route('admin.dashboard'),
-                'manager'    => redirect()->route('manager.dashboard'),
-                'telecaller' => redirect()->route('telecaller.dashboard'),
-                default      => redirect('/'),
+                'admin'         => redirect()->route('admin.dashboard'),
+                'manager'       => redirect()->route('manager.dashboard'),
+                'telecaller'    => redirect()->route('telecaller.dashboard'),
+                'report_viewer' => redirect()->route('report_viewer.dashboard'),
+                default         => redirect('/'),
             };
         }
 
