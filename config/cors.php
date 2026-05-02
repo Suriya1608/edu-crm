@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'paths' => ['crm-store-lead'],
+    'paths' => ['api/lead-capture', 'crm-store-lead'],
 
     'allowed_methods' => ['*'],
 
