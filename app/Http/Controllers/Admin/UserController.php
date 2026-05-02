@@ -39,6 +39,11 @@ class UserController extends Controller
         return $this->renderByRole($request, 'telecaller', 'Telecallers');
     }
 
+    public function reportViewers(Request $request)
+    {
+        return $this->renderByRole($request, 'report_viewer', 'Report Viewers');
+    }
+
 
     public function create()
     {
@@ -53,9 +58,9 @@ class UserController extends Controller
     {
         $request->validate([
             'name'     => 'required|string|max:255',
-            'email'    => 'required|email:rfc,dns|unique:users,email',
+            'email'    => 'required|email:rfc|unique:users,email',
             'phone'    => ['required', 'digits:10'],
-            'role'     => 'required|in:manager,telecaller',
+            'role'     => 'required|in:manager,telecaller,report_viewer',
             'password' => ['required', 'min:8', 'regex:/[A-Z]/', 'regex:/[a-z]/', 'regex:/[0-9]/', 'regex:/[@$!%*#?&^_\-]/'],
         ], [
             'phone.required'      => 'Phone number is required.',
@@ -122,7 +127,7 @@ class UserController extends Controller
             'name'  => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
             'phone' => 'nullable|string|max:20',
-            'role'  => 'required|in:manager,telecaller',
+            'role'   => 'required|in:manager,telecaller,report_viewer',
             'status' => 'required|in:0,1',
         ]);
 
@@ -301,10 +306,11 @@ class UserController extends Controller
         });
 
         $counts = [
-            'admins' => User::where('role', 'admin')->count(),
-            'managers' => User::where('role', 'manager')->count(),
-            'telecallers' => User::where('role', 'telecaller')->count(),
-            'active' => User::where('status', 1)->count(),
+            'admins'         => User::where('role', 'admin')->count(),
+            'managers'       => User::where('role', 'manager')->count(),
+            'telecallers'    => User::where('role', 'telecaller')->count(),
+            'report_viewers' => User::where('role', 'report_viewer')->count(),
+            'active'         => User::where('status', 1)->count(),
         ];
 
         return view('admin.users.index', [

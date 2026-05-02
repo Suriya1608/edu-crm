@@ -6,6 +6,8 @@
  *
  * Auto-initializes on DOMContentLoaded.
  * Exposes: window.TcnWidget = { setState, setPhone, expand, collapse }
+ *
+ * States: connecting | ready | paused | calling | on-call | incoming | wrapup | error
  */
 (function () {
     'use strict';
@@ -26,6 +28,10 @@
     // ─── State ───────────────────────────────────────────────────────────
     var _state        = 'connecting';
     var _phone        = '';
+    var _incomingPhone = '';
+    var _callerName   = '';   // lead name — populated from tcn:phoneResolved
+    var _callerLeadId = null; // lead id  — populated from tcn:callStarted / tcn:phoneResolved
+    var _callerLeadCode = null; // lead code (e.g. "SMIT-00004") — used for display in calling label
     var _muted        = false;
     var _agentPaused  = false;
     var _expanded     = false;
@@ -40,9 +46,9 @@
         var e = document.createElement(tag);
         if (attrs) {
             Object.keys(attrs).forEach(function (k) {
-                if (k === 'class')    { e.className = attrs[k]; }
+                if (k === 'class')      { e.className = attrs[k]; }
                 else if (k === 'style') { e.style.cssText = attrs[k]; }
-                else                  { e.setAttribute(k, attrs[k]); }
+                else                   { e.setAttribute(k, attrs[k]); }
             });
         }
         if (html !== undefined) e.innerHTML = html;
@@ -59,7 +65,7 @@
         // ── Inject CSS ──────────────────────────────────────────────────
         var styleEl = document.createElement('style');
         styleEl.textContent = [
-            '#tcnWidget{position:fixed;bottom:20px;right:20px;z-index:1065;font-family:"Manrope",sans-serif;}',
+            '#tcnWidget{position:fixed;bottom:20px;right:20px;z-index:1040;font-family:"Manrope",sans-serif;}',
             '#tcnWidgetTab{width:52px;height:52px;border-radius:50%;background:' + C.muted + ';cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(0,0,0,.22);transition:background .25s;position:relative;user-select:none;}',
             '#tcnWidgetTab:hover{box-shadow:0 6px 24px rgba(0,0,0,.28);}',
             '#tcnWidgetDot{width:11px;height:11px;border-radius:50%;position:absolute;top:1px;right:1px;border:2px solid #fff;background:' + C.muted + ';transition:background .25s;}',
@@ -73,8 +79,14 @@
             '.tcn-ctrl-btn{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:9px;padding:10px 0;font-family:"Manrope",sans-serif;font-weight:700;font-size:13px;cursor:pointer;border:1px solid ' + C.border + ';transition:opacity .15s;}',
             '.tcn-icon-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;border-radius:9px;padding:10px 0;font-family:"Manrope",sans-serif;font-weight:600;font-size:11px;cursor:pointer;border:1px solid ' + C.border + ';background:' + C.surface + ';color:' + C.dark + ';transition:background .15s;}',
             '.tcn-icon-btn:hover{background:' + C.border + ';}',
+            '.tcn-incoming-banner{background:linear-gradient(135deg,#059669,#10b981);padding:14px 14px 12px;text-align:center;}',
+            '.tcn-incoming-icon{font-size:32px;color:#fff;animation:tcnRingBounce .6s ease-in-out infinite alternate;display:block;}',
+            '.tcn-incoming-label{font-size:11px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.8px;margin-top:4px;}',
+            '.tcn-incoming-num{font-size:20px;font-weight:800;color:#fff;margin-top:2px;letter-spacing:1px;}',
+            '.tcn-incoming-btns{display:flex;gap:10px;padding:12px 14px 14px;}',
             '@keyframes tcnSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}',
             '@keyframes tcnPulse{0%,100%{opacity:1}50%{opacity:.6}}',
+            '@keyframes tcnRingBounce{from{transform:rotate(-15deg) scale(1)}to{transform:rotate(15deg) scale(1.15)}}',
         ].join('');
         document.head.appendChild(styleEl);
 
@@ -132,7 +144,7 @@
         //   In-call controls
         var inCallCtrl = el('div', { style: 'display:none;padding:0 14px 12px;' });
         var timerDisp = el('div', { style: 'text-align:center;font-size:28px;font-weight:800;font-variant-numeric:tabular-nums;color:' + C.dark + ';margin-bottom:4px;' }, '0:00');
-        var callingLbl = el('div', { style: 'text-align:center;font-size:12px;color:' + C.muted + ';margin-bottom:12px;' });
+        var callingLbl = el('div', { style: 'text-align:center;font-size:11px;color:' + C.muted + ';margin-bottom:12px;line-height:1.4;word-break:break-word;' });
         var inCallBtns = el('div', { style: 'display:flex;gap:8px;' });
         var muteBtn = el('button', { class: 'tcn-icon-btn' });
         muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic</span>Mute';
@@ -145,6 +157,27 @@
         inCallCtrl.appendChild(timerDisp);
         inCallCtrl.appendChild(callingLbl);
         inCallCtrl.appendChild(inCallBtns);
+
+        //   Incoming call view — shown inside panel when state === 'incoming'
+        var incomingView = el('div', { style: 'display:none;' });
+        var incomingBanner = el('div', { class: 'tcn-incoming-banner' });
+        var incomingRingIcon = el('span', { class: 'material-icons tcn-incoming-icon' }, 'phone_in_talk');
+        var incomingLabel = el('div', { class: 'tcn-incoming-label' }, 'Incoming Call');
+        var incomingNumDisp = el('div', { class: 'tcn-incoming-num' }, '\u2014');
+        incomingBanner.appendChild(incomingRingIcon);
+        incomingBanner.appendChild(incomingLabel);
+        incomingBanner.appendChild(incomingNumDisp);
+        var incomingActionBtns = el('div', { class: 'tcn-incoming-btns' });
+        var acceptBtn = el('button', { class: 'tcn-ctrl-btn', style: 'background:' + C.success + ';color:#fff;border-color:' + C.success + ';' });
+        acceptBtn.innerHTML = '<span class="material-icons" style="font-size:17px;">call</span> Accept';
+        acceptBtn.addEventListener('click', function () { handleAcceptIncoming(); });
+        var rejectBtn = el('button', { class: 'tcn-ctrl-btn', style: 'background:' + C.danger + ';color:#fff;border-color:' + C.danger + ';' });
+        rejectBtn.innerHTML = '<span class="material-icons" style="font-size:17px;">call_end</span> Reject';
+        rejectBtn.addEventListener('click', function () { handleRejectIncoming(); });
+        incomingActionBtns.appendChild(acceptBtn);
+        incomingActionBtns.appendChild(rejectBtn);
+        incomingView.appendChild(incomingBanner);
+        incomingView.appendChild(incomingActionBtns);
 
         //   Agent controls
         var agentCtrl = el('div', { style: 'display:flex;gap:8px;padding:10px 14px 14px;border-top:1px solid ' + C.border + ';' });
@@ -160,6 +193,7 @@
         //   Assemble panel
         panel.appendChild(hdr);
         panel.appendChild(statusBar);
+        panel.appendChild(incomingView);   // incoming view first — hides rest when shown
         panel.appendChild(phoneDisp);
         panel.appendChild(dpSection);
         panel.appendChild(preCallCtrl);
@@ -181,26 +215,28 @@
 
         // ── Store refs ──────────────────────────────────────────────────
         W = {
-            root:         root,
-            panel:        panel,
-            tab:          tab,
-            tabDot:       tabDot,
-            statusDot:    statusDot,
-            statusTxt:    statusTxt,
-            phoneDisp:    phoneDisp,
-            dpSection:    dpSection,
-            preCallCtrl:  preCallCtrl,
-            callBtn:      callBtn,
-            inCallCtrl:   inCallCtrl,
-            timerDisp:    timerDisp,
-            callingLbl:   callingLbl,
-            muteBtn:      muteBtn,
-            endBtn:       endBtn,
-            agentCtrl:    agentCtrl,
-            pauseBtn:     pauseBtn,
-            pauseIcon:    null, // set after append
-            pauseLabel:   null,
-            logoutBtn:    logoutBtn,
+            root:            root,
+            panel:           panel,
+            tab:             tab,
+            tabDot:          tabDot,
+            statusDot:       statusDot,
+            statusTxt:       statusTxt,
+            phoneDisp:       phoneDisp,
+            dpSection:       dpSection,
+            preCallCtrl:     preCallCtrl,
+            callBtn:         callBtn,
+            inCallCtrl:      inCallCtrl,
+            timerDisp:       timerDisp,
+            callingLbl:      callingLbl,
+            muteBtn:         muteBtn,
+            endBtn:          endBtn,
+            incomingView:    incomingView,
+            incomingNumDisp: incomingNumDisp,
+            agentCtrl:       agentCtrl,
+            pauseBtn:        pauseBtn,
+            pauseIcon:       null, // set after append
+            pauseLabel:      null,
+            logoutBtn:       logoutBtn,
         };
 
         // Late-bind elements that were created with id
@@ -213,13 +249,14 @@
         if (!W.root) return;
         W.root.style.display = 'block';
 
-        // Color map per state
         var COLOR_MAP = {
             connecting: C.muted,
             ready:      C.success,
             paused:     C.warning,
             calling:    C.primary,
             'on-call':  C.danger,
+            incoming:   C.success,
+            wrapup:     C.warning,
             error:      C.danger,
         };
         var LABEL_MAP = {
@@ -228,30 +265,40 @@
             paused:     'Paused',
             calling:    'Calling\u2026',
             'on-call':  'On Call',
+            incoming:   'Incoming Call',
+            wrapup:     'Wrap-up\u2026',
             error:      'Error',
         };
 
         var stateColor = COLOR_MAP[_state] || C.muted;
         var stateLabel = LABEL_MAP[_state]  || _state;
 
-        // Tab
+        // Tab color + pulse for calling and incoming
         W.tab.style.background = stateColor;
         W.tabDot.style.background = stateColor;
-
-        // Pulse animation during calling
-        W.tab.style.animation = (_state === 'calling') ? 'tcnPulse 1s ease-in-out infinite' : '';
+        W.tab.style.animation = (_state === 'calling' || _state === 'incoming')
+            ? 'tcnPulse .8s ease-in-out infinite' : '';
 
         // Status bar
         W.statusDot.style.background = stateColor;
         W.statusTxt.style.color      = stateColor;
         W.statusTxt.textContent      = stateLabel;
 
-        // Section visibility
-        var inCall = (_state === 'calling' || _state === 'on-call');
-        W.dpSection.style.display    = inCall ? 'none'  : 'block';
-        W.preCallCtrl.style.display  = inCall ? 'none'  : 'block';
-        W.inCallCtrl.style.display   = inCall ? 'block' : 'none';
-        W.agentCtrl.style.display    = inCall ? 'none'  : 'flex';
+        // Section visibility — mutually exclusive sections
+        var inCall    = (_state === 'calling' || _state === 'on-call');
+        var isIncoming = (_state === 'incoming');
+
+        W.incomingView.style.display  = isIncoming          ? 'block' : 'none';
+        W.phoneDisp.style.display     = (inCall || isIncoming) ? 'none' : 'block';
+        W.dpSection.style.display     = (inCall || isIncoming) ? 'none' : 'block';
+        W.preCallCtrl.style.display   = (inCall || isIncoming) ? 'none' : 'block';
+        W.inCallCtrl.style.display    = inCall               ? 'block' : 'none';
+        W.agentCtrl.style.display     = (inCall || isIncoming) ? 'none' : 'flex';
+
+        // Update incoming number display
+        if (isIncoming && W.incomingNumDisp) {
+            W.incomingNumDisp.textContent = _incomingPhone || 'Unknown';
+        }
 
         // Call button enable/disable
         var canCall = (_state === 'ready' && _phone.length >= 5);
@@ -259,8 +306,18 @@
         W.callBtn.style.opacity = canCall ? '1' : '0.5';
         W.callBtn.style.cursor  = canCall ? 'pointer' : 'not-allowed';
 
-        // Calling label
-        if (inCall) W.callingLbl.textContent = _phone || '';
+        // Calling label (name + lead-id + phone under timer).
+        if (inCall) {
+            var _blanksLbl = ['incoming', 'unknown', 'anonymous', 'private'];
+            var _displayPhone = (_phone && !_blanksLbl.includes(_phone.toLowerCase())) ? _phone
+                     : (_incomingPhone && !_blanksLbl.includes(_incomingPhone.toLowerCase()) && _incomingPhone !== 'Resolving...') ? _incomingPhone
+                     : '';
+            var _parts = [];
+            if (_callerName)                    _parts.push(_callerName);
+            if (_callerLeadCode || _callerLeadId) _parts.push(_callerLeadCode || ('#' + _callerLeadId));
+            if (_displayPhone)                  _parts.push(_displayPhone);
+            W.callingLbl.textContent = _parts.join(' · ');
+        }
 
         // Pause/Resume button
         if (_agentPaused) {
@@ -315,11 +372,28 @@
     }
 
     function collapse() {
+        // Don't allow collapsing during incoming call — agent must act
+        if (_state === 'incoming') return;
         _expanded = false;
         if (W.panel) W.panel.style.display = 'none';
     }
 
-    // ─── Call actions ─────────────────────────────────────────────────────
+    // ─── Incoming call accept / reject ────────────────────────────────────
+    function handleAcceptIncoming() {
+        if (window.TCN && typeof window.TCN.acceptIncomingCall === 'function') {
+            window.TCN.acceptIncomingCall();
+        }
+        // State will transition to 'calling' → 'on-call' via tcn:callStarted / tcn:callAnswered
+    }
+
+    function handleRejectIncoming() {
+        if (window.TCN && typeof window.TCN.rejectIncomingCall === 'function') {
+            window.TCN.rejectIncomingCall();
+        }
+        setState('ready');
+    }
+
+    // ─── Outbound call button ─────────────────────────────────────────────
     function handleCallBtn() {
         if (_state !== 'ready' || _phone.length < 5) return;
         if (window.GC && typeof window.GC.startCall === 'function') {
@@ -336,6 +410,8 @@
     function handleEndBtn() {
         if (window.GC && typeof window.GC.endCall === 'function') {
             window.GC.endCall();
+        } else if (window.TCN && window.TCN._isIncoming && typeof window.TCN.endIncomingCall === 'function') {
+            window.TCN.endIncomingCall();
         } else if (window.TCN && window.TCN._callActive) {
             window.TCN.endCall();
         }
@@ -361,7 +437,7 @@
 
     // ─── Agent pause / resume ─────────────────────────────────────────────
     function toggleAgentStatus() {
-        if (_state === 'calling' || _state === 'on-call') return;
+        if (_state === 'calling' || _state === 'on-call' || _state === 'incoming') return;
         var newPaused   = !_agentPaused;
         var statusParam = newPaused ? 'UNAVAILABLE' : 'READY';
 
@@ -369,22 +445,14 @@
 
         fetch('/tcn/set-status', {
             method:  'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': csrf(),
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf() },
             body: JSON.stringify({ status: statusParam }),
-        }).then(function (res) {
-            return res.json();
-        }).then(function (data) {
-            // Accept both ok:true and warning (API may not support set-status for this account)
+        }).then(function (res) { return res.json(); })
+        .then(function (data) {
             _agentPaused = newPaused;
             setState(_agentPaused ? 'paused' : 'ready');
-            if (data && data.warning) {
-                console.warn('[TCN-Widget] set-status warning:', data.warning);
-            }
+            if (data && data.warning) console.warn('[TCN-Widget] set-status warning:', data.warning);
         }).catch(function (e) {
-            // Toggle locally even on network error
             console.error('[TCN-Widget] set-status error:', e);
             _agentPaused = newPaused;
             setState(_agentPaused ? 'paused' : 'ready');
@@ -402,7 +470,8 @@
             window.TCN.logout();
         }
         setState('connecting');
-        collapse();
+        _expanded = false;
+        if (W.panel) W.panel.style.display = 'none';
     }
 
     // ─── Call timer ────────────────────────────────────────────────────────
@@ -434,34 +503,107 @@
             setState('ready');
         });
 
+        // ── Incoming call ────────────────────────────────────────────────
+        // Fired by tcn-softphone.js onInvite delegate when TCN sends a SIP INVITE.
+        window.addEventListener('tcn:incomingCall', function (e) {
+            var _raw = (e.detail && e.detail.phone) ? String(e.detail.phone) : '';
+            var _blanks = ['incoming', 'unknown', 'anonymous', 'private', ''];
+            _incomingPhone = _blanks.includes(_raw.toLowerCase()) ? 'Resolving...' : _raw;
+            setState('incoming');
+            // Force panel open so telecaller sees it immediately
+            expand();
+        });
+
+        window.addEventListener('tcn:incomingCallRejected', function () {
+            if (_state === 'incoming') setState('ready');
+        });
+
+        // Fired when getclientinfodata resolves the real caller ANI (and optionally
+        // lead name / lead ID) — update the incoming banner and calling label live.
+        window.addEventListener('tcn:phoneResolved', function (e) {
+            if (!e.detail) return;
+            if (e.detail.phone) {
+                _incomingPhone = e.detail.phone;
+                if (_state === 'incoming' && W.incomingNumDisp) {
+                    W.incomingNumDisp.textContent = _incomingPhone;
+                }
+                // NOTE: _phone (the outbound dialer) is intentionally NOT updated here.
+                // The calling label uses _callerName / _callerLeadId / _incomingPhone instead.
+            }
+            if (e.detail.name)     _callerName     = e.detail.name;
+            if (e.detail.leadId)   _callerLeadId   = e.detail.leadId;
+            if (e.detail.leadCode) _callerLeadCode = e.detail.leadCode;
+            // Re-render so callingLbl picks up the new name/id immediately.
+            if (_state === 'incoming' || _state === 'calling' || _state === 'on-call') render();
+        });
+
+        // ── Outbound / accepted incoming call ────────────────────────────
         window.addEventListener('tcn:callStarted', function (e) {
             var detail = e.detail || {};
-            if (detail.phone) setPhone(detail.phone);
-            startCallTimer();
+            // Only populate the dialer with the number for OUTBOUND calls.
+            // For incoming calls (_state === 'incoming') the caller's number lives
+            // in _incomingPhone (shown in the incoming banner); putting it in _phone
+            // (the dialer display) causes it to persist in Ready state after the call.
+            if (detail.phone && _state !== 'incoming') setPhone(detail.phone);
+            if (detail.leadId)   _callerLeadId   = detail.leadId;
+            if (detail.leadName) _callerName     = detail.leadName;
+            if (detail.leadCode) _callerLeadCode = detail.leadCode;
+            stopCallTimer();
+            _callSecs = 0;
+            updateTimer();
             setState('calling');
-            // Auto-expand so agent can see call controls
             if (!_expanded) expand();
         });
 
-        window.addEventListener('tcn:callAnswered', function () {
+        window.addEventListener('tcn:callAnswered', function (e) {
+            if (e.detail && e.detail.phone) {
+                _incomingPhone = e.detail.phone;
+            }
+            startCallTimer();
             setState('on-call');
         });
 
         window.addEventListener('tcn:callEnded', function () {
             stopCallTimer();
-            // Reset mute
-            _muted = false;
+            _muted          = false;
+            _incomingPhone  = '';
+            _callerName     = '';
+            _callerLeadId   = null;
+            _callerLeadCode = null;
+            setPhone('');   // clears _phone and resets phoneDisp to em-dash
             if (W.muteBtn) {
                 W.muteBtn.innerHTML = '<span class="material-icons" style="font-size:22px;">mic</span>Mute';
                 W.muteBtn.style.background  = C.surface;
                 W.muteBtn.style.borderColor = C.border;
                 W.muteBtn.style.color       = C.dark;
             }
-            setState(_agentPaused ? 'paused' : 'ready');
+            // tcn:statusUpdate from the wrapup monitor drives wrapup → ready transition
+            setState('wrapup');
+        });
+
+        // Driven by real-time TCN status from keepAlive and wrapup monitor polls.
+        window.addEventListener('tcn:statusUpdate', function (e) {
+            var status = (e.detail && e.detail.status) || '';
+            // Don't override active call / incoming states via background polling
+            if (_state === 'calling' || _state === 'on-call' || _state === 'incoming') return;
+
+            if (status === 'WRAPUP') {
+                setState('wrapup');
+            } else if (status === 'READY' || status === 'AVAILABLE') {
+                setState(_agentPaused ? 'paused' : 'ready');
+            } else if (status === 'INCALL' || status === 'TALKING') {
+                setState('on-call');
+            }
+        });
+
+        window.addEventListener('tcn:agentReady', function () {
+            if (_state === 'wrapup' || _state === 'connecting') {
+                setState(_agentPaused ? 'paused' : 'ready');
+            }
         });
 
         window.addEventListener('tcn:sipDropped', function () {
-            if (_state !== 'calling' && _state !== 'on-call') {
+            if (_state !== 'calling' && _state !== 'on-call' && _state !== 'incoming') {
                 setState('connecting');
             }
         });
@@ -472,25 +614,32 @@
         });
 
         window.addEventListener('tcn:error', function (e) {
-            var msg = (e.detail && e.detail.message) ? e.detail.message : '';
+            var msg = (e.detail && e.detail.message) ? e.detail.message : 'An error occurred';
             console.error('[TCN-Widget] tcn:error:', msg);
-            // Don't switch to error state if already in a call or connecting
-            if (_state !== 'calling' && _state !== 'on-call' && _state !== 'ready') {
+
+            if (_state === 'calling') {
+                // Dial failed — show error in phone display and return to ready
+                setState('ready');
+                if (W.phoneDisp) {
+                    var prev = _phone || '\u2014';
+                    W.phoneDisp.style.color = C.danger;
+                    W.phoneDisp.style.fontSize = '12px';
+                    W.phoneDisp.style.fontWeight = '600';
+                    W.phoneDisp.textContent = msg;
+                    setTimeout(function () {
+                        W.phoneDisp.style.color = '';
+                        W.phoneDisp.style.fontSize = '';
+                        W.phoneDisp.style.fontWeight = '';
+                        W.phoneDisp.textContent = prev;
+                    }, 5000);
+                }
+            } else if (_state !== 'on-call' && _state !== 'ready') {
                 setState('error');
             }
         });
 
-        // Adjust position when call bar (gcCallBar) appears / disappears
-        document.addEventListener('gc:callAccepted', function () {
-            if (W.root) W.root.style.bottom = '80px';
-        });
-        document.addEventListener('gc:callEnded', function () {
-            if (W.root) W.root.style.bottom = '20px';
-        });
-
-        // Intercept clicks on [data-phone] buttons to pre-populate dial pad
+        // Intercept [data-phone] clicks to pre-populate dial pad
         document.addEventListener('click', function (e) {
-            // Skip if the click is inside the widget itself
             if (W.root && W.root.contains(e.target)) return;
             var btn = e.target.closest('[data-phone]');
             if (btn) {

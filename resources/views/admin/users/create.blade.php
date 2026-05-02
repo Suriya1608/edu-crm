@@ -8,6 +8,16 @@
     <form method="POST" action="{{ route('admin.users.store') }}">
         @csrf
 
+        @if ($errors->any())
+        <div class="alert alert-danger mb-3">
+            <ul class="mb-0 ps-3">
+                @foreach ($errors->all() as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        </div>
+        @endif
+
         <div class="row g-3">
 
             <div class="col-md-6">
@@ -20,14 +30,20 @@
 
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Name *</label>
-                <input type="text" name="name" class="form-control"
+                <input type="text" name="name" class="form-control @error('name') is-invalid @enderror"
                        value="{{ old('name') }}" required>
+                @error('name')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
             </div>
 
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Email *</label>
-                <input type="email" name="email" class="form-control"
+                <input type="email" name="email" class="form-control @error('email') is-invalid @enderror"
                        value="{{ old('email') }}" required>
+                @error('email')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
             </div>
 
             <div class="col-md-6">
@@ -45,17 +61,25 @@
 
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Role *</label>
-                <select name="role" class="form-select" required>
+                <select name="role" class="form-select @error('role') is-invalid @enderror" required>
                     <option value="">Select Role</option>
-                    <option value="manager">Manager</option>
-                    <option value="telecaller">Telecaller</option>
+                    <option value="manager" {{ old('role') === 'manager' ? 'selected' : '' }}>Manager</option>
+                    <option value="telecaller" {{ old('role') === 'telecaller' ? 'selected' : '' }}>Telecaller</option>
+                    <option value="report_viewer" {{ old('role') === 'report_viewer' ? 'selected' : '' }}>Report Viewer (Principal / Director)</option>
                 </select>
+                @error('role')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
             </div>
 
             <div class="col-md-6">
                 <label class="form-label fw-semibold">Password *</label>
                 <input type="password" name="password"
-                       class="form-control" required>
+                       class="form-control @error('password') is-invalid @enderror" required>
+                @error('password')
+                    <div class="invalid-feedback">{{ $message }}</div>
+                @enderror
+                <small class="text-muted">Min 8 chars · uppercase · lowercase · number · special char (@$!%*#?&amp;^_-)</small>
             </div>
 
         </div>

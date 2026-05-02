@@ -223,7 +223,7 @@
         (function () {
             var activeBtn = null;
 
-            // Initialize Twilio via GC on page load
+            // Initialize TCN softphone via GC on page load
             GC.initDevice();
 
             function resetButton(btn) {

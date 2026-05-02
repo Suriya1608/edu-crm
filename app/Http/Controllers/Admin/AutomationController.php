@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Course;
+use App\Models\CourseManagerAssignment;
 use App\Models\Setting;
+use App\Models\User;
 use App\Services\AutomationSettings;
 use Illuminate\Http\Request;
 
@@ -15,25 +18,68 @@ class AutomationController extends Controller
 
     public function leadAssignment()
     {
+        $courses  = Course::orderBy('name')->get(['id', 'name']);
+        $managers = User::where('role', 'manager')->orderBy('name')->get(['id', 'name']);
+        $mappings = CourseManagerAssignment::with(['course:id,name', 'manager:id,name'])->get();
+
         return view('admin.automation.lead-assignment', [
             'values' => [
-                'enabled' => $this->automationSettings->leadAssignmentEnabled(),
-                'active_only' => $this->automationSettings->assignToActiveManagersOnly(),
+                'enabled'              => $this->automationSettings->leadAssignmentEnabled(),
+                'active_only'          => $this->automationSettings->assignToActiveManagersOnly(),
+                'mode'                 => $this->automationSettings->leadAssignmentMode(),
+                'auto_assign_tc'       => $this->automationSettings->autoAssignTelecallerEnabled(),
+                'auto_assign_tc_hours' => $this->automationSettings->autoAssignTelecallerHours(),
             ],
+            'courses'  => $courses,
+            'managers' => $managers,
+            'mappings' => $mappings,
         ]);
     }
 
     public function updateLeadAssignment(Request $request)
     {
         $request->validate([
-            'enabled' => 'nullable|boolean',
-            'active_only' => 'nullable|boolean',
+            'enabled'              => 'nullable|boolean',
+            'active_only'          => 'nullable|boolean',
+            'mode'                 => 'required|in:round_robin,course_based,open_pool',
+            'auto_assign_tc'       => 'nullable|boolean',
+            'auto_assign_tc_hours' => 'required|integer|min:1|max:720',
         ]);
 
         Setting::set(AutomationSettings::LEAD_ASSIGNMENT_ENABLED, $request->boolean('enabled') ? '1' : '0');
         Setting::set(AutomationSettings::LEAD_ASSIGN_ACTIVE_ONLY, $request->boolean('active_only') ? '1' : '0');
+        Setting::set(AutomationSettings::LEAD_ASSIGNMENT_MODE, $request->input('mode'));
+        Setting::set(AutomationSettings::LEAD_AUTO_ASSIGN_TC_ENABLED, $request->boolean('auto_assign_tc') ? '1' : '0');
+        Setting::set(AutomationSettings::LEAD_AUTO_ASSIGN_TC_HOURS, (string) $request->integer('auto_assign_tc_hours'));
 
-        return back()->with('success', 'Lead assignment automation rules updated.');
+        return back()->with('success', 'Lead assignment rules updated.');
+    }
+
+    public function storeCourseMapping(Request $request)
+    {
+        $request->validate([
+            'course_id'  => 'required|exists:courses,id',
+            'manager_id' => 'required|exists:users,id',
+        ]);
+
+        CourseManagerAssignment::updateOrCreate(
+            ['course_id' => $request->course_id, 'manager_id' => $request->manager_id],
+            ['is_active' => true]
+        );
+
+        return back()->with('success', 'Course mapping added.');
+    }
+
+    public function toggleCourseMapping(CourseManagerAssignment $mapping)
+    {
+        $mapping->update(['is_active' => !$mapping->is_active]);
+        return back()->with('success', 'Mapping ' . ($mapping->is_active ? 'enabled' : 'disabled') . '.');
+    }
+
+    public function destroyCourseMapping(CourseManagerAssignment $mapping)
+    {
+        $mapping->delete();
+        return back()->with('success', 'Course mapping removed.');
     }
 
     public function followupReminder()

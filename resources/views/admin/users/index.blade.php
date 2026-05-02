@@ -39,6 +39,13 @@
                 <div class="stat-value">{{ $counts['active'] ?? 0 }}</div>
             </div>
         </div>
+        <div class="col-6 col-md-3">
+            <div class="stat-card">
+                <div class="stat-icon purple"><span class="material-icons">school</span></div>
+                <div class="stat-label">Report Viewers</div>
+                <div class="stat-value">{{ $counts['report_viewers'] ?? 0 }}</div>
+            </div>
+        </div>
     </div>
 
     <div class="chart-card mb-3">
@@ -54,6 +61,10 @@
             <a href="{{ route('admin.users.telecallers') }}"
                 class="btn btn-sm {{ $scope === 'telecaller' ? 'btn-primary' : 'btn-outline-primary' }}">
                 Telecallers
+            </a>
+            <a href="{{ route('admin.users.report-viewers') }}"
+                class="btn btn-sm {{ $scope === 'report_viewer' ? 'btn-primary' : 'btn-outline-primary' }}">
+                Report Viewers
             </a>
         </div>
     </div>

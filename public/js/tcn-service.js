@@ -14,7 +14,9 @@ window.TcnService = (function () {
     let _tokenFetchedAt = null;
 
     const TOKEN_TTL_MS = 55 * 60 * 1000;
-    const CACHE_KEY = 'tcn_service_bootstrap_v1';
+    // localStorage (not sessionStorage) so the token survives page navigations
+    // and iframe recreation — sessionStorage is wiped whenever the iframe is destroyed.
+    const CACHE_KEY = 'tcn_service_bootstrap_v2';
 
     function _log(msg, data) {
         const ts = new Date().toLocaleTimeString();
@@ -36,7 +38,7 @@ window.TcnService = (function () {
 
     function _readCache() {
         try {
-            const raw = sessionStorage.getItem(CACHE_KEY);
+            const raw = localStorage.getItem(CACHE_KEY);
             return raw ? JSON.parse(raw) : null;
         } catch (_) {
             return null;
@@ -45,7 +47,7 @@ window.TcnService = (function () {
 
     function _writeCache() {
         try {
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify({
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
                 access_token: _accessToken,
                 agent_id: _agentId,
                 hunt_group_id: _huntGroupId,
@@ -57,7 +59,10 @@ window.TcnService = (function () {
 
     function _clearCache() {
         try {
-            sessionStorage.removeItem(CACHE_KEY);
+            localStorage.removeItem(CACHE_KEY);
+            // Remove old sessionStorage key (pre-localStorage migration)
+            localStorage.removeItem('tcn_service_bootstrap_v1');
+            sessionStorage.removeItem('tcn_service_bootstrap_v1');
         } catch (_) { }
     }
 
@@ -115,6 +120,18 @@ window.TcnService = (function () {
     }
 
     async function init() {
+        // ── Page-level singleton guard ──────────────────────────────────────
+        // On a full page reload the JS module is re-evaluated, so _initialized
+        // resets to false. window.__tcnSvcInitDone persists for the lifetime of
+        // the current page and catches duplicate init() calls that happen before
+        // loginWithToken() has finished (e.g. two components calling init() on
+        // DOMContentLoaded).
+        if (window.__tcnSvcInitDone && window.TCN && window.TCN._loggedIn) {
+            _log('Already initialized this page (page flag), skipping.');
+            _initialized = true;
+            return true;
+        }
+
         if (_initialized && !_isTokenExpired() && window.TCN && window.TCN._loggedIn) {
             _log('Already initialized, skipping.');
             return true;
@@ -122,6 +139,13 @@ window.TcnService = (function () {
 
         if (_initializing) {
             _log('Init already in progress, skipping duplicate call.');
+            return false;
+        }
+
+        // Guard against TCN softphone already mid-login (e.g. loaded by another
+        // script on the same page before TcnService ran).
+        if (window.TCN && window.TCN._loginInProgress) {
+            _log('TCN softphone login already in progress — skipping duplicate init.');
             return false;
         }
 
@@ -162,6 +186,7 @@ window.TcnService = (function () {
             }
 
             _initialized = true;
+            window.__tcnSvcInitDone = true;
             _emit('ready', { agent_id: _agentId, hunt_group_id: _huntGroupId });
             _log('Initialized successfully.');
             return true;
@@ -181,6 +206,25 @@ window.TcnService = (function () {
     if (!phone) {
         _log('call() - no phone number provided.');
         return;
+    }
+
+    // ✅ Wait if boot init is already in progress (prevents race condition where
+    // the user clicks "Call Now" before the automatic init() triggered on page
+    // load has finished — without this wait, init() would return false immediately
+    // because _initializing is true, causing call_failed to be emitted silently).
+    if (_initializing) {
+        _log('Init in progress — waiting for completion before calling...');
+        let _waited = 0;
+        while (_initializing && _waited < 15000) {
+            await new Promise(function (r) { setTimeout(r, 200); });
+            _waited += 200;
+        }
+        if (_initializing) {
+            _log('Init did not complete within 15s — aborting call.');
+            _emit('call_failed', { phone: phone, reason: 'init_timeout' });
+            return;
+        }
+        _log('Init completed — proceeding with call.');
     }
 
     // ✅ Step 1: Ensure initialized (ONLY if not initialized)
@@ -235,6 +279,7 @@ window.TcnService = (function () {
         _huntGroupId = null;
         _tokenFetchedAt = null;
         _clearCache();
+        window.__tcnSvcInitDone = false;
         _emit('logged_out');
         _log('Logged out.');
     }
