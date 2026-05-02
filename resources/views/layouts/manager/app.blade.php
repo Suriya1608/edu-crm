@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="call-provider" content="{{ \App\Models\Setting::get('primary_call_provider', 'twilio') }}">
+    <meta name="call-provider" content="tcn">
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
     <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
 
@@ -84,6 +84,37 @@
     </div>
 
 
+    {{-- Active Call Bar (shown by global-call.js during calls, hidden by default) --}}
+    <div id="gcCallBar" data-turbo-permanent
+        style="display:none;position:fixed;top:0;left:0;right:0;z-index:2000;
+               background:linear-gradient(135deg,#dc2626,#b91c1c);color:#fff;
+               padding:8px 20px;align-items:center;gap:16px;box-shadow:0 2px 12px rgba(0,0,0,.25);">
+        <span class="material-icons" style="font-size:20px;">call</span>
+        <div style="flex:1;min-width:0;">
+            <div id="gcCallStatus" style="font-size:10px;opacity:.85;text-transform:uppercase;letter-spacing:.6px;line-height:1;">Connecting…</div>
+            <div id="gcCallPhone" style="font-weight:700;font-size:14px;letter-spacing:.3px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;">
+            <span class="material-icons" style="font-size:16px;opacity:.8;">timer</span>
+            <span id="gcCallTimer">0:00</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+            <button id="gcMuteBtn" title="Mute"
+                style="background:rgba(255,255,255,.18);border:none;border-radius:7px;color:#fff;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;">
+                <span class="material-icons" id="gcMuteIcon" style="font-size:18px;">mic</span>
+            </button>
+            <button id="gcHoldBtn" title="Hold"
+                style="background:rgba(255,255,255,.18);border:none;border-radius:7px;color:#fff;width:34px;height:34px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s;">
+                <span class="material-icons" id="gcHoldIcon" style="font-size:18px;">pause_circle</span>
+            </button>
+            <button id="gcEndCallBarBtn"
+                style="background:rgba(0,0,0,.25);border:none;border-radius:7px;color:#fff;padding:0 12px;height:34px;cursor:pointer;font-weight:700;font-size:12px;display:flex;align-items:center;gap:5px;transition:background .15s;">
+                <span class="material-icons" style="font-size:16px;">call_end</span>End
+            </button>
+        </div>
+        <a id="gcCallLeadLink" style="display:none;color:#fff;opacity:.8;font-size:12px;" target="_blank">View Lead</a>
+    </div>
+
     {{-- Documents Quick Access Modal --}}
     <div class="modal fade" id="docsModal" tabindex="-1" aria-labelledby="docsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -149,30 +180,118 @@
         });
     })();
     </script>
-    {{-- Global Active Call Bar --}}
-    <div id="gcCallBar" style="display:none; position:fixed; bottom:0; left:0; right:0; z-index:1060; background:linear-gradient(135deg,#dc2626,#b91c1c); color:#fff; padding:10px 20px; box-shadow:0 -2px 12px rgba(0,0,0,0.25); align-items:center; gap:12px;">
-        <span class="material-icons" style="font-size:24px;">call</span>
-        <div>
-            <div style="font-size:11px; opacity:0.85; line-height:1;">Active Call</div>
-            <div id="gcCallPhone" style="font-weight:700; font-size:15px; letter-spacing:0.3px; line-height:1.3;"></div>
-            <a id="gcCallLeadLink" href="#" style="display:none; color:#fee2e2; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
-        </div>
-        <div style="margin-left:6px;">
-            <div style="font-size:11px; opacity:0.85; line-height:1;">Duration</div>
-            <div id="gcCallTimer" style="font-weight:700; font-size:15px; font-variant-numeric:tabular-nums; line-height:1.3;">0:00</div>
-        </div>
-        <div class="ms-auto">
-            <button id="gcBarEndBtn" class="btn btn-light btn-sm fw-semibold text-danger" style="min-width:110px;">
-                <span class="material-icons me-1" style="font-size:16px; vertical-align:middle;">call_end</span>End Call
-            </button>
-        </div>
+    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
+    {{--
+        Softphone iframe for managers — persistent iframe architecture.
+        data-turbo-permanent on the wrapper div ensures Turbo Drive NEVER
+        destroys/recreates this element during navigation — the SIP session
+        and WebRTC audio survive across all page transitions.
+        The iframe loads once; TcnService.init() runs once inside it.
+    --}}
+    <div id="tcnMgrWidget" data-turbo-permanent>
+        <iframe id="tcnSoftphoneFrame"
+            src="/softphone"
+            allow="microphone"
+            style="position:fixed;bottom:80px;right:20px;width:300px;height:480px;border:none;z-index:1065;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;transition:height .2s,width .2s;">
+        </iframe>
+        {{-- Toggle button — always visible once layout renders. Lets managers
+             open the softphone even when TCN_READY hasn't fired yet. --}}
+        <button id="tcnMgrToggleBtn" title="TCN Softphone"
+            style="position:fixed;bottom:20px;right:20px;z-index:1066;
+                   width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+                   background:#64748b;color:#fff;display:flex;
+                   align-items:center;justify-content:center;
+                   box-shadow:0 4px 20px rgba(0,0,0,.22);transition:background .25s;">
+            <span class="material-icons" style="font-size:24px;pointer-events:none;" id="tcnMgrToggleIco">phone</span>
+        </button>
     </div>
+    {{--
+        data-turbo-eval="false" — this script runs ONCE on the first hard page load.
+        Turbo navigations do NOT re-execute it, preventing duplicate window message
+        handlers from accumulating across page visits.
+    --}}
+    <script data-turbo-eval="false">
+    (function () {
+        var _frame   = null;
+        var _btn     = document.getElementById('tcnMgrToggleBtn');
+        var _ico     = document.getElementById('tcnMgrToggleIco');
+        var _visible = false;
 
-    {{-- Navigation Warning Modal (shown when user clicks a link during an active call) --}}
-    <div class="modal fade" id="gcNavWarningModal" tabindex="-1" aria-hidden="true">
+        function frame() {
+            if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame');
+            return _frame;
+        }
+
+        function showFrame() {
+            var f = frame(); if (!f) return;
+            f.style.display = 'block'; f.style.height = '480px'; f.style.width = '300px';
+            f.style.bottom = '80px'; f.style.borderRadius = '14px';
+            _visible = true;
+            if (_ico) _ico.textContent = 'close';
+        }
+
+        function hideFrame() {
+            var f = frame(); if (!f) return;
+            f.style.display = 'none';
+            _visible = false;
+            if (_ico) _ico.textContent = 'phone';
+        }
+
+        // Toggle button click.
+        if (_btn) {
+            _btn.addEventListener('click', function () {
+                if (_visible) hideFrame(); else showFrame();
+            });
+        }
+
+        // Forward [data-phone] clicks to the softphone iframe.
+        document.addEventListener('click', function (e) {
+            var el = e.target.closest('[data-phone]');
+            if (!el) return;
+            var f = frame(); if (!f) return;
+            var phone = el.getAttribute('data-phone');
+            if (phone) {
+                showFrame();
+                f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
+            }
+        }, true);
+
+        // Receive status messages from the softphone iframe.
+        // Runs for the lifetime of the tab; persists across Turbo navigations.
+        window.addEventListener('message', function (ev) {
+            var d = ev.data; if (!d || typeof d !== 'object') return;
+            var f = frame(); if (!f) return;
+            if (d.type === 'SP_MINIMIZE')       { f.style.height = '44px';  f.style.width = '170px'; f.style.borderRadius = '22px'; }
+            else if (d.type === 'SP_EXPAND')    { f.style.height = '480px'; f.style.width = '300px'; f.style.borderRadius = '14px'; }
+            else if (d.type === 'TCN_READY') {
+                if (_btn) { _btn.style.background = '#10b981'; }
+            }
+            else if (d.type === 'TCN_CALL_STARTED' || d.type === 'TCN_CALL_ANSWERED') {
+                showFrame(); f.style.bottom = '80px';
+                if (_btn) { _btn.style.background = d.type === 'TCN_CALL_ANSWERED' ? '#ef4444' : '#6366f1'; }
+            }
+            else if (d.type === 'TCN_CALL_ENDED') {
+                // Auto-close the softphone panel 3s after call ends
+                if (_btn) { _btn.style.background = '#10b981'; }
+                setTimeout(function () { if (_visible) hideFrame(); }, 3000);
+            }
+            else if (d.type === 'TCN_LOGGED_OUT') {
+                if (_btn) { _btn.style.background = '#64748b'; }
+            }
+            else if (d.type === 'TCN_SIP_DROPPED') {
+                if (_btn) { _btn.style.background = '#f59e0b'; }
+            }
+        });
+    })();
+    </script>
+    <style>@keyframes tcnMgrBtnPulse{0%,100%{opacity:1}50%{opacity:.55}}</style>
+    @endif
+
+    {{-- Navigation warning modal — shown when manager clicks a link during an active call --}}
+    <div class="modal fade" id="gcNavWarningModal" tabindex="-1" aria-hidden="true" data-turbo-permanent>
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-                <div class="modal-header" style="background:#dc2626; color:#fff;">
+                <div class="modal-header" style="background:#dc2626;color:#fff;">
                     <h5 class="modal-title d-flex align-items-center gap-2">
                         <span class="material-icons">warning</span> Call in Progress
                     </h5>
@@ -185,69 +304,33 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Stay on Call</button>
                     <button type="button" class="btn btn-danger" id="gcNavProceedBtn">
-                        <span class="material-icons me-1" style="font-size:16px; vertical-align:middle;">call_end</span>End &amp; Navigate
+                        <span class="material-icons me-1" style="font-size:16px;vertical-align:middle;">call_end</span>End &amp; Navigate
                     </button>
                 </div>
             </div>
         </div>
     </div>
 
-    @if(\App\Models\Setting::get('primary_call_provider', 'twilio') === 'exotel')
-    <div id="gcIncomingBar" style="display:none; position:fixed; top:20px; right:20px; z-index:1070; background:#ffffff; border:2px solid #10b981; border-radius:12px; padding:14px 18px; box-shadow:0 4px 20px rgba(0,0,0,0.15); min-width:240px;">
-        <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
-            <span class="material-icons" style="color:#10b981; font-size:22px; animation:gcRing 0.6s infinite alternate;">call</span>
-            <div>
-                <div style="font-size:11px; color:#64748b; line-height:1;">Incoming Call</div>
-                <div id="gcIncomingPhone" style="font-weight:700; font-size:15px; color:#0f172a; line-height:1.3;"></div>
-                <a id="gcIncomingLeadLink" href="#" style="display:none; color:#137fec; font-size:12px; font-weight:600; text-decoration:none;">Open Lead</a>
-            </div>
-        </div>
-        <div style="display:flex; gap:8px;">
-            <button id="gcIncomingAnswerBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#10b981; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
-                <span class="material-icons" style="font-size:16px;">call</span> Answer
-            </button>
-            <button id="gcIncomingRejectBtn" style="flex:1; display:flex; align-items:center; justify-content:center; gap:5px; background:#ef4444; color:#fff; border:none; border-radius:8px; padding:7px 0; font-weight:600; font-size:13px; cursor:pointer;">
-                <span class="material-icons" style="font-size:16px;">call_end</span> Reject
-            </button>
-        </div>
-    </div>
-    <style>@keyframes gcRing { from { transform:rotate(-15deg); } to { transform:rotate(15deg); } }</style>
-    @endif
+    {{-- data-turbo-eval="false" keeps GC as a true singleton across Turbo navigations --}}
+    <script src="{{ asset('js/global-call.js') }}" data-turbo-eval="false"></script>
 
-    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn')
-    {{-- Softphone iframe for managers (hidden by default; shown via enableCallingMode()) --}}
-    <iframe id="tcnSoftphoneFrame"
-        src="{{ route('softphone') }}"
-        allow="microphone"
-        style="position:fixed;bottom:20px;right:20px;width:300px;height:480px;border:none;z-index:1065;border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.20);display:none;transition:height .2s,width .2s;">
-    </iframe>
-    <script>
+    {{-- GC lifecycle helpers — once per session --}}
+    <script data-turbo-eval="false">
     (function () {
-        var _frame = null;
-        function frame() { if (!_frame) _frame = document.getElementById('tcnSoftphoneFrame'); return _frame; }
-        document.addEventListener('click', function (e) {
-            var btn = e.target.closest('[data-phone]');
-            if (!btn) return;
-            var f = frame(); if (!f) return;
-            var phone = btn.getAttribute('data-phone');
-            if (phone) {
-                f.style.display = 'block'; f.style.height = '480px'; f.style.width = '300px';
-                f.contentWindow.postMessage({ type: 'SET_PHONE', phone: phone }, '*');
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.GC && typeof window.GC.initDevice === 'function') {
+                window.GC.initDevice();
             }
-        }, true);
-        window.addEventListener('message', function (ev) {
-            var d = ev.data; if (!d || typeof d !== 'object') return;
-            var f = frame(); if (!f) return;
-            if (d.type === 'SP_MINIMIZE') { f.style.height = '44px'; f.style.width = '170px'; f.style.borderRadius = '22px'; }
-            else if (d.type === 'SP_EXPAND') { f.style.height = '480px'; f.style.width = '300px'; f.style.borderRadius = '14px'; }
-            else if (d.type === 'TCN_READY') { f.style.display = 'block'; }
-            else if (d.type === 'TCN_CALL_STARTED' || d.type === 'TCN_CALL_ANSWERED') { f.style.bottom = '80px'; }
-            else if (d.type === 'TCN_CALL_ENDED' || d.type === 'TCN_LOGGED_OUT') { f.style.bottom = '20px'; }
+        });
+
+        document.addEventListener('turbo:load', function () {
+            var m = document.querySelector('meta[name="csrf-token"]');
+            if (m && window.GC) {
+                window.GC._csrf = m.getAttribute('content');
+            }
         });
     })();
     </script>
-    @endif
-    <script src="{{ asset('js/global-call.js') }}"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>

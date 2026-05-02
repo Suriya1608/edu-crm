@@ -35,6 +35,11 @@ return [
         ],
     ],
 
+    'google' => [
+        'client_id'     => env('GOOGLE_CLIENT_ID', ''),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET', ''),
+    ],
+
     'meta' => [
         'whatsapp_token'            => env('META_WHATSAPP_TOKEN', ''),
         'whatsapp_phone_id'         => env('META_WHATSAPP_PHONE_NUMBER_ID', ''),

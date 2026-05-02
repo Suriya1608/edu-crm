@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
@@ -171,24 +172,58 @@ class DashboardController extends Controller
             ->groupByRaw('DATE(next_followup)')
             ->pluck('total', 'day');
 
-        return view('manager.dashboard.index', [
-            'period' => $period,
-            'leadsToday' => $leadsToday,
-            'leadsWeek' => $leadsWeek,
-            'leadsMonth' => $leadsMonth,
-            'totalCallsMade' => $totalCallsMade,
-            'totalCallDurationSec' => $totalCallDurationSec,
-            'whatsAppConversations' => $whatsAppConversations,
-            'conversionRate' => $conversionRate,
-            'bestPerformingTelecaller' => $bestPerformingTelecaller,
-            'missedFollowups' => $missedFollowups,
-            'missedFollowupList' => $missedFollowupList,
-            'leadSource' => $leadSource,
-            'telecallerStats' => $telecallerStats->take(8),
-            'telecallerPresence' => $telecallerPresence,
-            'missedInboundCalls' => $missedInboundCalls,
-            'courseStats' => $courseStats,
-            'followupCalendar' => $followupCalendar,
+        return Inertia::render('Manager/Dashboard', [
+            'period'                   => $period,
+            'leadsToday'               => $leadsToday,
+            'leadsWeek'                => $leadsWeek,
+            'leadsMonth'               => $leadsMonth,
+            'totalCallsMade'           => $totalCallsMade,
+            'totalCallDurationSec'     => $totalCallDurationSec,
+            'whatsAppConversations'    => $whatsAppConversations,
+            'conversionRate'           => $conversionRate,
+            'bestPerformingTelecaller' => $bestPerformingTelecaller
+                ? ['name' => $bestPerformingTelecaller->name, 'conversion_rate' => $bestPerformingTelecaller->conversion_rate]
+                : null,
+            'missedFollowups'          => $missedFollowups,
+            'missedFollowupList'       => $missedFollowupList->map(fn($f) => [
+                'id'           => $f->id,
+                'lead_id'      => $f->lead_id,
+                'next_followup'=> $f->next_followup,
+                'lead'         => $f->lead ? [
+                    'name'          => $f->lead->name,
+                    'assigned_user' => $f->lead->assignedUser ? ['name' => $f->lead->assignedUser->name] : null,
+                ] : null,
+            ])->values(),
+            'leadSource'               => $leadSource->map(fn($r) => [
+                'source' => $r->source ?: 'Unknown',
+                'total'  => (int) $r->total,
+            ])->values(),
+            'telecallerStats'          => $telecallerStats->take(8)->map(fn($t) => [
+                'id'               => $t->id,
+                'name'             => $t->name,
+                'assigned_count'   => $t->assigned_count,
+                'total_calls'      => $t->total_calls,
+                'pending_followups'=> $t->pending_followups,
+                'conversion_rate'  => $t->conversion_rate,
+            ])->values(),
+            'telecallerPresence'       => $telecallerPresence->values(),
+            'missedInboundCalls'       => $missedInboundCalls->map(fn($c) => [
+                'id'                  => $c->id,
+                'created_at_formatted'=> $c->created_at?->format('d M, h:i A'),
+                'lead_id'             => $c->lead_id,
+                'lead_code'           => $c->lead?->lead_code,
+                'lead_name'           => $c->lead?->name,
+                'lead_phone'          => $c->lead?->phone,
+                'customer_number'     => $c->customer_number ?? null,
+                'encrypted_lead_id'   => $c->lead_id ? encrypt($c->lead_id) : null,
+            ])->values(),
+            'courseStats'              => $courseStats->values(),
+            'followupCalendar'         => $followupCalendar,
+            // URLs
+            'presenceSnapshotUrl'      => route('manager.telecaller-status.snapshot'),
+            'calendarDataUrl'          => route('manager.followups.calendar-data'),
+            'telecallersUrl'           => route('manager.telecallers'),
+            'leadsCreateUrl'           => route('manager.leads.create'),
         ]);
     }
 }

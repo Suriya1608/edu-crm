@@ -14,4 +14,9 @@ class Course extends Model
     {
         return $query->where('is_active', true);
     }
+
+    public function intakes()
+    {
+        return $this->hasMany(CourseIntake::class);
+    }
 }

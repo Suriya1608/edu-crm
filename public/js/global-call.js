@@ -1,1122 +1,688 @@
 /**
- * global-call.js - Provider-aware call manager (Twilio + Exotel VOIP)
+ * global-call.js — TCN call manager (v4 — auto-answer edition)
+ *
+ * All calls are handled via the TCN softphone iframe (id="tcnSoftphoneFrame").
+ * Parent ↔ iframe communication uses window.postMessage.
+ *
+ * Changes in v4:
+ *  - gcCallBar sticky-top bar now has End / Mute / Hold controls
+ *  - Audio alert plays on tcn:callAnswered (Web Audio API — no file needed)
+ *  - toggleMute() / toggleHold() send MUTE / HOLD postMessages to the iframe
+ *  - body.gc-call-active class pushes content below the call bar
+ *  - Auto-answer: TCN_CALL_STARTED with incoming:true shows "Auto-Answered" status
  */
 
 (function () {
-"use strict";
-
-var metaProvider = document.querySelector('meta[name="call-provider"]');
-var PROVIDER = metaProvider ? metaProvider.getAttribute("content") : "twilio";
-
-
-var GC = {
-
-_device: null,
-_call: null,
-_deviceInitPromise: null,
-_deviceInitialized: false,
-
-_ua: null,
-_registered: false,
-_session: null,
-_incomingVoipSession: null,
-_voipConfig: null,
-_tcnPopupWin: null,
-
-_state: null,
-_csrf: null,
-_timerInterval: null,
-_pollInterval: null,
-_manualHangup: false,
-_endReported: false,
-
-_pendingUrl: null,
-_navInterceptBound: false,
-_barEndBtnBound: false,
-
-_pstnPollInterval: null,
-_pstnShownCallLogId: null,
-_pstnIncomingBtnBound: false,
-
-isActive: function () {
-    return !!this._state;
-},
-
-initDevice: async function () {
-    if (this._deviceInitialized) {
-        return;
-    }
-    if (this._deviceInitPromise) {
-        return this._deviceInitPromise;
-    }
-
-    var self = this;
-    this._deviceInitPromise = (async function () {
-    if (PROVIDER === "exotel") {
-        await self._initExotel();
-        self._startPstnIncomingPoll();
-    } else if (PROVIDER === "tcn") {
-        await self._initTcn();
-    } else {
-        await self._initTwilio();
-    }
-
-    self._setupNavIntercept();
-    self._setupBarEndBtn();
-    self._setupPstnIncomingBtns();
-    self._deviceInitialized = true;
-    })().finally(function () {
-        self._deviceInitPromise = null;
-    });
-
-    return this._deviceInitPromise;
-},
-
-// ── TCN ───────────────────────────────────────────────────────────────────
-// TCN calls are driven by a named popup window (/softphone).
-// Using a popup (not an iframe) ensures the SIP session and WebRTC audio
-// survive parent-page navigations — the popup is never reloaded.
-// Parent ↔ popup communication uses window.postMessage.
-// ─────────────────────────────────────────────────────────────────────────
-
-_tcnEventsWired: false,
-_pendingLeadId:  null,
-
-// Return the embedded softphone iframe element (present in both layouts).
-_tcnFrame: function () {
-    return document.getElementById('tcnSoftphoneFrame');
-},
-
-// Show the iframe and the toggle button (if hidden).
-_showTcnFrame: function () {
-    var f = this._tcnFrame();
-    if (f && f.style.display === 'none') {
-        f.style.display = 'block';
-        f.style.bottom  = '80px';
-    }
-},
-
-// Return the live popup window if it is still open, otherwise null.
-_tcnPopup: function () {
-    if (this._tcnPopupWin && !this._tcnPopupWin.closed) return this._tcnPopupWin;
-    // After a page navigation _tcnPopupWin is gone — try to reattach by name.
-    try {
-        var w = window.open('', 'tcnSoftphone');
-        if (w && !w.closed) {
-            var href = '';
-            try { href = w.location.href; } catch (e) {}
-            if (href && href.indexOf('softphone') !== -1) {
-                this._tcnPopupWin = w;
-                return w;
-            }
-            // window.open opened a blank window — close it immediately.
-            if (!href || href === 'about:blank') { try { w.close(); } catch (e) {} }
-        }
-    } catch (e) {}
-    return null;
-},
-
-// Open (or focus) the softphone popup and return it.
-_openTcnPopup: function () {
-    var existing = this._tcnPopup();
-    if (existing) { try { existing.focus(); } catch (e) {} return existing; }
-    var w = window.open(
-        '/softphone', 'tcnSoftphone',
-        'width=300,height=500,resizable=no,scrollbars=no,toolbar=no,menubar=no'
-    );
-    if (w) this._tcnPopupWin = w;
-    return w;
-},
-
-_initTcn: async function () {
-    var self = this;
-
-    // Singleton guard
-    if (window.tcnInitialized) {
-        console.log('[GC-TCN] Already initialized.');
-        return;
-    }
-    window.tcnInitialized = true;
-
-    if (self._tcnEventsWired) return;
-    self._tcnEventsWired = true;
-
-    // Receive status messages from the softphone iframe
-    window.addEventListener("message", function (ev) {
-        var d = ev.data;
-        if (!d || typeof d !== "object") return;
-
-        switch (d.type) {
-
-            case "TCN_CALL_STARTED":
-                self._endReported = false;
-                self._state = {
-                    callLogId:  d.callLogId  || null,
-                    phone:      d.phone      || "",
-                    leadId:     self._pendingLeadId || null,
-                    leadName:   null,
-                    leadUrl:    null,
-                    answeredAt: null,
-                };
-                self._pendingLeadId = null;
-                self._showBar("Connecting\u2026");
-                self._startTimer(Date.now());
-                document.dispatchEvent(new CustomEvent("gc:callAccepted"));
-                break;
-
-            case "TCN_CALL_ANSWERED":
-                if (self._state) {
-                    self._state.answeredAt = Date.now();
-                    self._showBar(self._state.phone || d.phone || "");
-                    self._startTimer(self._state.answeredAt);
-                }
-                break;
-
-            case "TCN_CALL_ENDED":
-                self._finalize(d.status || "completed");
-                break;
-
-            case "TCN_ERROR":
-                console.error("[GC-TCN]", d.message);
-                if (self._state && !self._endReported) {
-                    self._finalize("failed");
-                }
-                break;
-        }
-    });
-},
-
-// Manager: turn ON calling mode — show the iframe
-enableCallingMode: async function () {
-    if (PROVIDER !== "tcn") return;
-    this._showTcnFrame();
-    console.log("[GC-TCN] Calling mode enabled.");
-},
-
-// Manager: turn OFF calling mode — tell softphone to logout
-disableCallingMode: function () {
-    var f = this._tcnFrame();
-    if (f && f.contentWindow) {
-        f.contentWindow.postMessage({ type: "LOGOUT" }, "*");
-    }
-    console.log("[GC-TCN] Calling mode disabled.");
-},
-
-_startTcnCall: function (phone, leadId) {
-    var self = this;
-    var f = self._tcnFrame();
-
-    if (!f) {
-        // Iframe not in DOM — fall back to in-page TcnService if available
-        if (window.TcnService) {
-            window.TcnService.call(phone, leadId).catch(function (e) {
-                console.error("[GC-TCN] TcnService.call failed:", e.message);
-            });
-        } else {
-            console.error("[GC-TCN] Softphone iframe not found.");
-        }
-        return Promise.resolve();
-    }
-
-    self._pendingLeadId = leadId || null;
-    self._showTcnFrame();
-    f.contentWindow.postMessage({ type: "CALL", phone: phone }, "*");
-    return Promise.resolve();
-},
-
-// ─────────────────────────────────────────────────────────────────────────
-
-_initTwilio: async function () {
-    if (this._device) return;
-
-    try {
-        var res = await fetch("/twilio/token");
-        var data = await res.json();
-        this._device = new window.TwilioDevice(data.token);
-    } catch (e) {
-        console.error("Twilio init error", e);
-    }
-},
-
-_loadJsSIP: function () {
-    if (typeof JsSIP !== "undefined") return Promise.resolve();
-
-    return new Promise(function (resolve, reject) {
-        var s = document.createElement("script");
-        s.src = "/js/jssip.min.js";
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-    });
-},
-
-_initExotel: async function () {
-    if (this._ua) return;
-
-    try {
-        await this._loadJsSIP();
-    } catch (e) {
-        console.error("JsSIP load failed", e);
-        return;
-    }
-
-    try {
-
-        const res = await fetch("/settings/voip");
-        const cfg = await res.json();
-        console.log("Using TEST VOIP CONFIG:", cfg);
-
-        if (!cfg.enabled) {
-            console.warn("Exotel VOIP disabled");
-            return;
-        }
-
-        this._voipConfig = cfg;
-
-        const socket = new JsSIP.WebSocketInterface("wss://" + cfg.proxy);
-
-        this._ua = new JsSIP.UA({
-            sockets: [socket],
-           uri: "sip:" + cfg.username + "@" + cfg.domain,
-            password: cfg.password,
-            register: true,
-            session_timers: false
-        });
-
-        const self = this;
-
-        this._ua.on("registered", function () {
-            self._registered = true;
-            console.log("✅ Exotel SIP Registered");
-        });
-
-        this._ua.on("registrationFailed", function (e) {
-            console.error("❌ SIP registration failed:", e.cause);
-        });
-
-        this._ua.on("newRTCSession", function (data) {
-
-            if (data.originator === "remote") {
-                self._incomingCall(data.session);
-            }
-
-        });
-
-        this._ua.start();
-
-    } catch (e) {
-        console.error("VOIP init error", e);
-    }
-},
-
-_waitForRegister: function (timeout) {
-    var self = this;
-
-    if (this._registered) return Promise.resolve();
-    if (!this._ua) return Promise.reject("SIP not initialized");
-
-    return new Promise(function (resolve, reject) {
-        var t = setTimeout(function () {
-            reject("SIP registration timeout");
-        }, timeout || 10000);
-
-        self._ua.once("registered", function () {
-            clearTimeout(t);
-            resolve();
-        });
-    });
-},
-
-startCall: async function (phone, leadId) {
-    if (this._state) {
-        alert("Call already active");
-        return;
-    }
-
-    await this.initDevice();
-
-    if (PROVIDER === "tcn") {
-        // Return the promise so callers can await it and catch errors.
-        // Without this return the button click handler's catch() never fires,
-        // leaving the button stuck on "Connecting..." after a failed dial.
-        return this._startTcnCall(phone, leadId);
-    } else if (PROVIDER === "exotel") {
-        this._startExotelCall(phone, leadId);
-    } else {
-        this._startTwilioCall(phone, leadId);
-    }
-},
-
-_startTwilioCall: async function (phone, leadId) {
-    if (!this._device) {
-        await this._initTwilio();
-    }
-
-    if (!this._device) {
-        alert("Twilio not ready. Please refresh and try again.");
-        return;
-    }
-
-    var logRes = await fetch("/call/start", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-TOKEN": this._csrf
+    "use strict";
+
+    var GC = {
+
+        // ── Core state ─────────────────────────────────────────────
+        _state: null,
+        _csrf: null,
+        _timerInterval: null,
+        _manualHangup: false,
+        _endReported: false,
+
+        _tcnEventsWired: false,
+        _pendingLeadId: null,
+        _wrapupReached: false,
+        _deviceInitialized: false,
+
+        // ── Call-bar control state ─────────────────────────────────
+        _muted: false,
+        _onHold: false,
+
+        _agentRole: function () {
+            var meta = document.querySelector('meta[name="user-role"]');
+            return meta && meta.getAttribute('content') === 'manager' ? 'manager' : 'telecaller';
         },
-        body: JSON.stringify({ lead_id: leadId })
-    });
 
-    var log = await logRes.json();
+        // ── Web Audio context for alert sound ──────────────────────
+        _audioCtx: null,
 
-    this._state = {
-        callLogId: log.call_log_id,
-        phone: phone,
-        leadId: leadId,
-        leadName: null,
-        leadUrl: null,
-        answeredAt: null
-    };
+        // ── localStorage key — persists "SIP active" across page navigations ──
+        SIP_ACTIVE_KEY: 'tcn_sip_active',
 
-    this._showBar("Connecting...");
-
-    var self = this;
-
-    try {
-        this._call = await this._device.connect({
-            params: { To: phone, LeadId: leadId }
-        });
-
-        this._call.on("accept", function () {
-            self._markAnswered(phone);
-        });
-
-        this._call.on("disconnect", function () {
-            self._finalize("completed");
-        });
-
-        this._call.on("error", function () {
-            self._finalize("failed");
-        });
-    } catch (e) {
-        this._finalize("failed");
-    }
-},
-
-_startExotelCall: async function (phone, leadId) {
-
-    if (!this._ua) {
-        await this._initExotel();
-    }
-
-    if (!this._ua) {
-        alert("Exotel not initialized");
-        return;
-    }
-
-    try {
-
-        await this._waitForRegister(15000);
-
-    } catch (e) {
-
-        alert("SIP not registered yet");
-        return;
-
-    }
-
-    try {
-
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-
-    } catch (e) {
-
-        alert("Microphone permission required");
-        return;
-
-    }
-
-    const res = await fetch("/exotel/voip-call", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-TOKEN": this._csrf
+        _isSipPersisted: function () {
+            try { return localStorage.getItem(this.SIP_ACTIVE_KEY) === '1'; } catch (_) { return false; }
         },
-        body: JSON.stringify({
-            phone: phone,
-            lead_id: leadId
-        })
-    });
 
-    const log = await res.json();
+        _persistSip: function (active) {
+            try {
+                if (active) localStorage.setItem(this.SIP_ACTIVE_KEY, '1');
+                else localStorage.removeItem(this.SIP_ACTIVE_KEY);
+            } catch (_) {}
+        },
 
-    if (!log.ok) {
+        isActive: function () {
+            return !!this._state;
+        },
 
-        alert("Call failed");
-        return;
+        // ── Return the embedded softphone iframe ───────────────────
+        _tcnFrame: function () {
+            return document.getElementById('tcnSoftphoneFrame');
+        },
 
-    }
+        _showTcnFrame: function () {
+            var f = this._tcnFrame();
+            if (!f) return;
+            f.style.display = 'block';
+            f.style.bottom = '80px';
+            f.style.height = '480px';
+            f.style.width = '300px';
+            f.style.borderRadius = '14px';
+        },
 
-    this._state = {
-        callLogId: log.call_log_id,
-        phone: phone,
-        leadId: leadId,
-        answeredAt: null
-    };
+        // ── Audio alert — Web Audio API, no external file needed ───
+        // Plays a two-tone "call connected" sound that works even without
+        // a prior user gesture on the parent page (gesture happened in iframe).
+        _playCallAlert: function () {
+            try {
+                if (!this._audioCtx) {
+                    this._audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                var ctx = this._audioCtx;
+                // Resume in case browser suspended the context
+                if (ctx.state === 'suspended') { ctx.resume(); }
 
-    this._showBar("Calling " + phone);
-
-    const target = log.dial_to
-        ? log.dial_to
-        : this._buildDialTarget(phone);
-
-    console.log("Dialing:", target);
-
-    const session = this._ua.call(target, {
-        mediaConstraints: { audio: true, video: false }
-    });
-
-    this._session = session;
-
-    this._attachOutboundSession(session);
-
-},
-
-endCall: function () {
-    this._manualHangup = true;
-
-    if (PROVIDER === "tcn") {
-        var p = this._tcnPopup();
-        if (p) {
-            p.postMessage({ type: "HANGUP" }, "*");
-        } else if (window.TCN && window.TCN._callActive) {
-            window.TCN.endCall();
-        }
-        return;
-    }
-
-    if (this._call) {
-        this._call.disconnect();
-    } else if (this._session) {
-        this._session.terminate();
-    } else if (this._incomingVoipSession) {
-        this._incomingVoipSession.terminate();
-    } else if (this._state) {
-        this._finalize("canceled");
-    }
-},
-
-_finalize: async function (status) {
-    if (this._endReported) return;
-
-    this._endReported = true;
-
-    var duration = this._state && this._state.answeredAt
-        ? Math.floor((Date.now() - this._state.answeredAt) / 1000)
-        : 0;
-
-    var logId = this._state ? this._state.callLogId : null;
-    var phone = this._state ? this._state.phone : null;
-    var endedBy = this._manualHangup ? "telecaller" : "unknown";
-
-    this._stopExotelStatusPoll();
-    this._stopTimer();
-    this._hideBar();
-
-    if (logId) {
-        await fetch("/call/end", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-TOKEN": this._csrf
-            },
-            body: JSON.stringify({
-                call_log_id: logId,
-                duration: duration,
-                final_status: status,
-                ended_by: endedBy
-            })
-        });
-    }
-
-    this._call = null;
-    this._session = null;
-    this._incomingVoipSession = null;
-    this._state = null;
-    this._endReported = false;
-    this._manualHangup = false;
-
-    document.dispatchEvent(new CustomEvent("gc:callEnded", {
-        detail: { callLogId: logId, phone: phone }
-    }));
-},
-
-_attachOutboundSession: function (session) {
-    var self = this;
-
-    session.on("progress", function () {
-        self._updateBar("Ringing " + self._state.phone + "...");
-        self._syncCallSidFromSession(session, self._state.callLogId);
-    });
-
-    session.on("accepted", function () {
-        self._syncCallSidFromSession(session, self._state.callLogId);
-        self._markAnswered(self._state.phone);
-    });
-
-    session.on("confirmed", function () {
-        self._syncCallSidFromSession(session, self._state.callLogId);
-        if (!self._state.answeredAt) {
-            self._markAnswered(self._state.phone);
-        }
-    });
-
-    session.on("ended", function () {
-        self._finalize("completed");
-    });
-
-    session.on("failed", function (e) {
-        var cause = e && e.cause ? String(e.cause).toLowerCase() : "";
-        var finalStatus = "failed";
-
-        if (cause.indexOf("busy") !== -1) {
-            finalStatus = "busy";
-        } else if (cause.indexOf("cancel") !== -1 || cause.indexOf("reject") !== -1) {
-            finalStatus = self._manualHangup ? "canceled" : "failed";
-        } else if (cause.indexOf("no answer") !== -1 || cause.indexOf("unavailable") !== -1) {
-            finalStatus = "no-answer";
-        }
-
-        self._finalize(finalStatus);
-    });
-},
-
-_incomingCall: function (session) {
-    var self = this;
-    var caller = this._extractSessionNumber(session);
-
-    this._incomingVoipSession = session;
-    this._showIncoming(caller);
-    this._registerIncomingSession(caller, this._extractSessionCallSid(session));
-
-    session.on("accepted", function () {
-        self._syncCallSidFromSession(session, self._currentIncomingCallLogId());
-    });
-
-    session.on("confirmed", function () {
-        var activeLabel = self._currentIncomingLabel();
-        var activeCallLogId = self._currentIncomingCallLogId();
-        var incomingMeta = self._currentIncomingMeta();
-
-        self._session = session;
-        self._incomingVoipSession = null;
-        self._hideIncoming();
-        self._state = {
-            callLogId: activeCallLogId,
-            phone: incomingMeta.phone || activeLabel,
-            leadId: null,
-            leadName: incomingMeta.leadName,
-            leadUrl: incomingMeta.leadUrl,
-            answeredAt: Date.now()
-        };
-
-        self._showBar(activeLabel);
-        self._startTimer(self._state.answeredAt);
-        document.dispatchEvent(new CustomEvent("gc:callAccepted"));
-    });
-
-    session.on("ended", function () {
-        var pendingCallLogId = self._currentIncomingCallLogId();
-        self._incomingVoipSession = null;
-        self._hideIncoming();
-
-        if (self._session === session) {
-            self._finalize("completed");
-        } else if (pendingCallLogId) {
-            fetch("/call/end", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRF-TOKEN": self._csrf
-                },
-                body: JSON.stringify({
-                    call_log_id: pendingCallLogId,
-                    final_status: self._manualHangup ? "canceled" : "no-answer",
-                    ended_by: self._manualHangup ? "telecaller" : "unknown",
-                    duration: 0
-                })
-            });
-        }
-    });
-
-    session.on("failed", function (e) {
-        var pendingCallLogId = self._currentIncomingCallLogId();
-        self._incomingVoipSession = null;
-        self._hideIncoming();
-
-        if (self._session === session) {
-            self._finalize("failed");
-            return;
-        }
-
-        if (pendingCallLogId) {
-            fetch("/call/end", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-CSRF-TOKEN": self._csrf
-                },
-                body: JSON.stringify({
-                    call_log_id: pendingCallLogId,
-                    final_status: self._mapFailedCauseToStatus(e),
-                    ended_by: self._manualHangup ? "telecaller" : "unknown",
-                    duration: 0
-                })
-            });
-        }
-    });
-},
-
-_registerIncomingSession: async function (phone, callSid) {
-    try {
-        var res = await fetch("/exotel/browser-incoming", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-TOKEN": this._csrf,
-                "Accept": "application/json"
-            },
-            body: JSON.stringify({
-                phone: phone,
-                call_sid: callSid
-            })
-        });
-
-        if (!res.ok) return;
-
-        var data = await res.json();
-        if (!data || !data.ok) return;
-
-        this._pstnShownCallLogId = data.call_log_id;
-        this._showPstnIncoming({
-            callLogId: data.call_log_id,
-            phone: data.phone,
-            leadName: data.lead_name || null,
-            leadUrl: data.lead_url || null,
-            label: data.lead_name ? data.lead_name + " • " + data.phone : data.phone
-        });
-    } catch (e) {
-        console.error("Unable to register incoming SIP session", e);
-    }
-},
-
-_startPstnIncomingPoll: function () {
-    if (this._pstnPollInterval) return;
-
-    var self = this;
-
-    this._pstnPollInterval = setInterval(async function () {
-        try {
-            var res = await fetch("/exotel/incoming-poll");
-            var data = await res.json();
-
-            if (data.has_incoming) {
-                if (data.call_log_id === self._pstnShownCallLogId) return;
-
-                self._pstnShownCallLogId = data.call_log_id;
-                self._showPstnIncoming({
-                    callLogId: data.call_log_id,
-                    phone: data.phone,
-                    leadName: data.lead_name || null,
-                    leadUrl: data.lead_url || null,
-                    label: data.lead_name ? data.lead_name + " • " + data.phone : data.phone
+                // Two short tones: 880 Hz + 1100 Hz (pleasant "ding-ding")
+                var tones = [
+                    { freq: 880,  start: 0,    dur: 0.18 },
+                    { freq: 1100, start: 0.22, dur: 0.18 },
+                ];
+                tones.forEach(function (t) {
+                    var osc  = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.value = t.freq;
+                    var now = ctx.currentTime;
+                    gain.gain.setValueAtTime(0, now + t.start);
+                    gain.gain.linearRampToValueAtTime(0.32, now + t.start + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + t.start + t.dur);
+                    osc.start(now + t.start);
+                    osc.stop(now + t.start + t.dur + 0.02);
                 });
-            } else if (self._pstnShownCallLogId && !self._incomingVoipSession) {
-                self._pstnShownCallLogId = null;
-                self._hidePstnIncoming();
+            } catch (_) {}
+        },
+
+        // ── Device init ────────────────────────────────────────────
+        initDevice: async function () {
+            if (this._deviceInitialized) return;
+            this._deviceInitialized = true;
+
+            await this._initTcn();
+
+            if (this._isSipPersisted()) {
+                await this.enableCallingMode();
             }
-        } catch (e) {
-            // ignore transient errors
-        }
-    }, 5000);
-},
+        },
 
-_showPstnIncoming: function (payload) {
-    var el = document.getElementById("gcIncomingBar");
-    var ph = document.getElementById("gcIncomingPhone");
-    var callLogId = payload && payload.callLogId ? payload.callLogId : "";
-    var label = payload && payload.label ? payload.label : "";
+        readyForCalls: async function () {
+            await this.initDevice();
+            await this.enableCallingMode();
+        },
 
-    if (ph) ph.textContent = label;
+        // ── Wire postMessage events from the softphone iframe ──────
+        _initTcn: async function () {
+            var self = this;
 
-    if (el) {
-        el.setAttribute("data-call-log-id", callLogId || "");
-        el.setAttribute("data-lead-name", payload && payload.leadName ? payload.leadName : "");
-        el.setAttribute("data-lead-url", payload && payload.leadUrl ? payload.leadUrl : "");
-        el.setAttribute("data-phone", payload && payload.phone ? payload.phone : "");
-        el.style.display = "flex";
-    }
+            if (self._tcnEventsWired) return;
+            self._tcnEventsWired = true;
 
-    this._setIncomingLeadLink(payload && payload.leadUrl ? payload.leadUrl : null);
+            // Wire call-bar button clicks (event delegation survives Turbo nav)
+            document.addEventListener('click', function (e) {
+                if (e.target.closest('#gcMuteBtn'))       { self.toggleMute(); }
+                if (e.target.closest('#gcHoldBtn'))       { self.toggleHold(); }
+                if (e.target.closest('#gcEndCallBarBtn')) { self.endCall(); }
+            }, true);
 
-    document.dispatchEvent(new CustomEvent("gc:incomingCall", {
-        detail: {
-            callLogId: callLogId || null,
-            phone: payload && payload.phone ? payload.phone : null,
-            leadName: payload && payload.leadName ? payload.leadName : null,
-            leadUrl: payload && payload.leadUrl ? payload.leadUrl : null
-        }
-    }));
-},
+            window.addEventListener("message", function (ev) {
+                var d = ev.data;
+                if (!d || typeof d !== "object") return;
 
-_hidePstnIncoming: function () {
-    var el = document.getElementById("gcIncomingBar");
-    if (el) el.style.display = "none";
-    this._setIncomingLeadLink(null);
-},
+                switch (d.type) {
 
-_setupPstnIncomingBtns: function () {
-    if (this._pstnIncomingBtnBound) return;
+                    // ── Incoming call popup (manual-answer mode, not auto-answer) ──
+                    case "TCN_INCOMING_CALL":
+                        self._showIncomingCallPopup(d.phone || "Unknown", d.name || null, d.leadCode || null);
+                        break;
 
-    var answerBtn = document.getElementById("gcIncomingAnswerBtn");
-    var rejectBtn = document.getElementById("gcIncomingRejectBtn");
+                    case "TCN_INCOMING_REJECTED":
+                        self._hideIncomingCallPopup();
+                        self._showMissedCallToast(d.phone || null, d.callLogId || null, d.name || null, d.leadCode || null);
+                        window.dispatchEvent(new CustomEvent('gc:missedCall', {
+                            detail: { phone: d.phone || null, callLogId: d.callLogId || null }
+                        }));
+                        break;
 
-    if (!answerBtn && !rejectBtn) return;
+                    case "TCN_PHONE_RESOLVED":
+                        if (d.phone) {
+                            self._updatePhone(d.phone);
+                            self._showIncomingCallPopup(d.phone, d.name || null, d.leadCode || null);
+                        }
+                        break;
 
-    this._pstnIncomingBtnBound = true;
+                    // ── Call started (outbound dial-out OR inbound auto-answered) ──
+                    case "TCN_CALL_STARTED":
+                        self._endReported = false;
+                        self._wrapupReached = false;
+                        self._state = {
+                            callLogId: d.callLogId || null,
+                            phone:     d.phone || "",
+                            leadId:    self._pendingLeadId || null,
+                            leadName:  null,
+                            leadUrl:   null,
+                            answeredAt: null,
+                        };
+                        self._pendingLeadId = null;
 
-    var self = this;
+                        // Reset mute / hold state for this new call
+                        self._muted  = false;
+                        self._onHold = false;
+                        self._resetMuteUI();
+                        self._resetHoldUI();
 
-    if (answerBtn) {
-        answerBtn.addEventListener("click", function () {
-            if (self._incomingVoipSession) {
-                self._incomingVoipSession.answer({
-                    mediaConstraints: { audio: true, video: false }
-                });
+                        // Show bar immediately.
+                        // Auto-answered inbound calls fire TCN_CALL_STARTED and TCN_CALL_ANSWERED
+                        // nearly simultaneously — show "Auto-Answered" for inbound, "Connecting…" for outbound.
+                        var initialStatus = d.incoming ? 'Auto-Answered' : 'Connecting\u2026';
+                        self._showBar(d.phone || (d.incoming ? 'Incoming' : 'Connecting\u2026'), initialStatus);
+                        self._stopTimer();
+                        document.dispatchEvent(new CustomEvent("gc:callAccepted"));
+                        break;
+
+                    // ── Call answered (PSTN leg bridged — start timer) ─────────
+                    case "TCN_CALL_ANSWERED":
+                        if (self._wrapupReached) return;
+
+                        self._hideIncomingCallPopup();
+
+                        if (!self._state) {
+                            // Incoming auto-answered without prior TCN_CALL_STARTED message.
+                            self._endReported = false;
+                            self._state = {
+                                callLogId: d.callLogId || null,
+                                phone:     d.phone || "Incoming",
+                                leadId:    null,
+                                leadName:  null,
+                                leadUrl:   null,
+                                answeredAt: Date.now(),
+                            };
+                            self._showBar(self._state.phone, 'Call Connected');
+                            self._startTimer(self._state.answeredAt);
+                            document.dispatchEvent(new CustomEvent("gc:callAccepted"));
+                        } else {
+                            self._state.answeredAt = Date.now();
+                            self._showBar(self._state.phone || d.phone || "", 'Call Connected');
+                            self._startTimer(self._state.answeredAt);
+                        }
+
+                        // Play alert so telecaller knows the call is live
+                        self._playCallAlert();
+                        break;
+
+                    // ── WRAPUP — post-call state ───────────────────────────────
+                    case "TCN_WRAPUP":
+                        self._wrapupReached = true;
+                        self._stopTimer();
+                        break;
+
+                    // ── Call ended ──────────────────────────────────────────────
+                    case "TCN_CALL_ENDED":
+                        self._finalize(d.status || "completed", d.ended_by || null);
+                        self._wrapupReached = false;
+                        break;
+
+                    case "TCN_ERROR":
+                        console.error("[GC-TCN]", d.message);
+                        if (self._state && !self._endReported) {
+                            self._finalize("failed");
+                        }
+                        break;
+
+                    // ── Hold / resume state reflected from iframe ──────────────
+                    case "TCN_ON_HOLD":
+                        self._onHold = true;
+                        self._setHoldUI(true);
+                        break;
+
+                    case "TCN_OFF_HOLD":
+                        self._onHold = false;
+                        self._setHoldUI(false);
+                        break;
+                }
+            });
+        },
+
+        // ── Enabling / disabling calling mode ──────────────────────
+        enableCallingMode: async function () {
+            this._persistSip(true);
+            // Do NOT auto-show the frame here — SIP reconnects silently in the
+            // background. The manager opens the softphone manually via the toggle
+            // button; calls auto-open it via the TCN_CALL_STARTED message handler.
+            var f = this._tcnFrame();
+            if (!f) return;
+
+            try {
+                if (f.contentWindow && f.contentWindow._sipBooted) {
+                    console.log("[GC-TCN] SIP already running — skipping START_SIP.");
+                    return;
+                }
+            } catch (_) {}
+
+            function _sendStartSip() {
+                try { if (f.contentWindow && f.contentWindow._sipBooted) return; } catch (_) {}
+                if (f && f.contentWindow) {
+                    f.contentWindow.postMessage({ type: "START_SIP" }, "*");
+                }
+            }
+
+            if (f.contentDocument && f.contentDocument.readyState === 'complete') {
+                _sendStartSip();
+            } else {
+                f.addEventListener('load', _sendStartSip, { once: true });
+            }
+            console.log("[GC-TCN] Calling mode enabled.");
+        },
+
+        disableCallingMode: function () {
+            this._persistSip(false);
+            try { localStorage.removeItem('tcn_softphone_bootstrap_v1'); } catch (_) {}
+            try { localStorage.removeItem('tcn_service_bootstrap_v2'); } catch (_) {}
+            var f = this._tcnFrame();
+            if (f && f.contentWindow) f.contentWindow.postMessage({ type: "LOGOUT_SILENT" }, "*");
+            console.log("[GC-TCN] Calling mode disabled.");
+        },
+
+        // ── Call initiation ─────────────────────────────────────────
+        startCall: async function (phone, leadId) {
+            if (this._state) {
+                alert("Call already active");
                 return;
             }
-
-            self._pstnShownCallLogId = null;
-            self._hidePstnIncoming();
-        });
-    }
-
-    if (rejectBtn) {
-        rejectBtn.addEventListener("click", function () {
-            if (self._incomingVoipSession) {
-                self._incomingVoipSession.terminate();
-                self._incomingVoipSession = null;
-            }
-
-            self._pstnShownCallLogId = null;
-            self._hidePstnIncoming();
-        });
-    }
-},
-
-_setupNavIntercept: function () {
-    if (this._navInterceptBound) return;
-
-    this._navInterceptBound = true;
-
-    var self = this;
-
-    document.addEventListener("click", function (e) {
-        if (!self.isActive()) return;
-
-        var link = e.target.closest("a[href]");
-        if (!link) return;
-
-        var href = link.getAttribute("href");
-        if (!href || href === "#" || href.startsWith("javascript:")) return;
-
-        e.preventDefault();
-        self._pendingUrl = href;
-
-        var modal = document.getElementById("gcNavWarningModal");
-        if (modal && typeof bootstrap !== "undefined") {
-            new bootstrap.Modal(modal).show();
-        }
-    });
-
-    var proceedBtn = document.getElementById("gcNavProceedBtn");
-    if (proceedBtn) {
-        proceedBtn.addEventListener("click", function () {
-            var url = GC._pendingUrl;
-            GC._pendingUrl = null;
-            GC.endCall();
-            setTimeout(function () {
-                window.location.href = url;
-            }, 300);
-        });
-    }
-},
-
-_setupBarEndBtn: function () {
-    if (this._barEndBtnBound) return;
-
-    var endBtn = document.getElementById("gcBarEndBtn");
-    if (!endBtn) return;
-
-    this._barEndBtnBound = true;
-    endBtn.addEventListener("click", function () {
-        GC.endCall();
-    });
-},
-
-_normalize: function (phone) {
-    if (!phone) return phone;
-
-    var d = String(phone).replace(/\D/g, "");
-
-    if (d.length === 10) return "91" + d;
-    if (d.length === 11 && d.startsWith("0")) return "91" + d.substring(1);
-    if (d.startsWith("91")) return d;
-
-    return d;
-},
-
-_sanitizeProxyHost: function (proxy) {
-    var host = String(proxy || "voip.in1.exotel.com").trim();
-    host = host.replace(/^wss?:\/\//i, "");
-    host = host.replace(/\/+$/, "");
-    host = host.replace(/:443$/, "");
-    return host || "voip.in1.exotel.com";
-},
-
-// _buildDialTarget: function (phone) {
-//     var normalized = this._normalize(phone);
-//     var domain = this._voipConfig && this._voipConfig.domain ? this._voipConfig.domain : "";
-//     return "sip:" + normalized + "@" + domain;
-// },
-_buildDialTarget: function (phone) {
-
-    var normalized = this._normalize(phone);
-    var domain = this._voipConfig.domain;
-
-    return "sip:" + normalized + "@" + domain;
-
-},
-
-_extractSessionNumber: function (session) {
-    try {
-        var user = session && session.remote_identity && session.remote_identity.uri
-            ? session.remote_identity.uri.user
-            : "";
-
-        if (!user) return "Incoming call";
-
-        return this._normalize(user) || user;
-    } catch (e) {
-        return "Incoming call";
-    }
-},
-
-_extractSessionCallSid: function (session) {
-    try {
-        return session && session.request && session.request.call_id
-            ? session.request.call_id
-            : null;
-    } catch (e) {
-        return null;
-    }
-},
-
-_syncCallSidFromSession: function (session, callLogId) {
-    var callSid = this._extractSessionCallSid(session);
-    if (!callSid || !callLogId) return;
-
-    fetch("/call/update-sid", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "X-CSRF-TOKEN": this._csrf
+            await this.initDevice();
+            return this._startTcnCall(phone, leadId);
         },
-        body: JSON.stringify({
-            call_log_id: callLogId,
-            call_sid: callSid
-        })
-    });
-},
 
-_mapFailedCauseToStatus: function (event) {
-    var cause = event && event.cause ? String(event.cause).toLowerCase() : "";
+        _startTcnCall: function (phone, leadId) {
+            var self = this;
+            var f = self._tcnFrame();
 
-    if (cause.indexOf("busy") !== -1) return "busy";
-    if (cause.indexOf("no answer") !== -1 || cause.indexOf("unavailable") !== -1) return "no-answer";
-    if (cause.indexOf("cancel") !== -1 || cause.indexOf("reject") !== -1) return this._manualHangup ? "canceled" : "failed";
+            if (!f) {
+                console.error("[GC-TCN] Softphone iframe not found in DOM.");
+                return Promise.resolve();
+            }
 
-    return "failed";
-},
+            self._pendingLeadId = leadId || null;
+            self._showTcnFrame();
+            f.contentWindow.postMessage({ type: "CALL", phone: phone, leadId: leadId || null }, "*");
+            return Promise.resolve();
+        },
 
-_markAnswered: function (label) {
-    if (!this._state) return;
-    if (!this._state.answeredAt) {
-        this._state.answeredAt = Date.now();
-    }
-    this._updateBar(label);
-    this._startTimer(this._state.answeredAt);
-    document.dispatchEvent(new CustomEvent("gc:callAccepted"));
-},
+        endCall: function () {
+            this._manualHangup = true;
 
-_currentIncomingLabel: function () {
-    var ph = document.getElementById("gcIncomingPhone");
-    return ph && ph.textContent ? ph.textContent : "Incoming call";
-},
+            var f = this._tcnFrame();
+            if (f && f.contentWindow) {
+                f.contentWindow.postMessage({ type: "HANGUP" }, "*");
+            } else if (window.TCN && window.TCN._callActive) {
+                window.TCN.endCall();
+            } else if (this._state) {
+                this._finalize("canceled");
+            }
+        },
 
-_currentIncomingCallLogId: function () {
-    var el = document.getElementById("gcIncomingBar");
-    var raw = el ? el.getAttribute("data-call-log-id") : null;
-    return raw ? parseInt(raw, 10) : null;
-},
+        // ── Mute toggle ────────────────────────────────────────────
+        toggleMute: function () {
+            if (!this._state) return;
+            this._muted = !this._muted;
 
-_currentIncomingMeta: function () {
-    var el = document.getElementById("gcIncomingBar");
-    return {
-        leadName: el ? (el.getAttribute("data-lead-name") || null) : null,
-        leadUrl: el ? (el.getAttribute("data-lead-url") || null) : null,
-        phone: el ? (el.getAttribute("data-phone") || null) : null
+            var f = this._tcnFrame();
+            if (f && f.contentWindow) {
+                f.contentWindow.postMessage({ type: "MUTE" }, "*");
+            } else if (window.TCN) {
+                if (this._muted) window.TCN.mute();
+                else             window.TCN.unmute();
+            }
+
+            this._setMuteUI(this._muted);
+        },
+
+        // ── Hold toggle ────────────────────────────────────────────
+        toggleHold: function () {
+            if (!this._state) return;
+
+            var f = this._tcnFrame();
+            if (f && f.contentWindow) {
+                f.contentWindow.postMessage({ type: "HOLD" }, "*");
+            } else if (window.TCN) {
+                if (this._onHold) window.TCN.resume();
+                else              window.TCN.hold();
+            }
+            // Visual update happens on TCN_ON_HOLD / TCN_OFF_HOLD postMessage from iframe
+        },
+
+        // ── Mute/Hold button UI helpers ────────────────────────────
+        _setMuteUI: function (muted) {
+            var btn  = document.getElementById('gcMuteBtn');
+            var icon = document.getElementById('gcMuteIcon');
+            if (!btn || !icon) return;
+            if (muted) {
+                btn.style.background  = 'rgba(239,68,68,.45)';
+                btn.title             = 'Unmute';
+                icon.textContent      = 'mic_off';
+            } else {
+                btn.style.background  = 'rgba(255,255,255,.18)';
+                btn.title             = 'Mute';
+                icon.textContent      = 'mic';
+            }
+        },
+
+        _resetMuteUI: function () {
+            this._muted = false;
+            this._setMuteUI(false);
+        },
+
+        _setHoldUI: function (onHold) {
+            var btn  = document.getElementById('gcHoldBtn');
+            var icon = document.getElementById('gcHoldIcon');
+            if (!btn || !icon) return;
+            if (onHold) {
+                btn.style.background  = 'rgba(245,158,11,.5)';
+                btn.title             = 'Resume';
+                icon.textContent      = 'play_circle';
+            } else {
+                btn.style.background  = 'rgba(255,255,255,.18)';
+                btn.title             = 'Hold';
+                icon.textContent      = 'pause_circle';
+            }
+        },
+
+        _resetHoldUI: function () {
+            this._onHold = false;
+            this._setHoldUI(false);
+        },
+
+        // ── Finalize (call ended) ──────────────────────────────────
+        _finalize: async function (status, iframeEndedBy) {
+            if (this._endReported) return;
+            this._endReported = true;
+
+            var duration = this._state && this._state.answeredAt
+                ? Math.floor((Date.now() - this._state.answeredAt) / 1000)
+                : 0;
+
+            var logId    = this._state ? this._state.callLogId : null;
+            var phone    = this._state ? this._state.phone     : null;
+            // Prefer explicit ended_by from iframe message; fall back to manualHangup flag
+            var endedBy  = iframeEndedBy || (this._manualHangup ? this._agentRole() : null);
+
+            this._stopTimer();
+            this._hideBar();
+            this._hideIncomingCallPopup();
+
+            // Reset call-bar control state
+            this._resetMuteUI();
+            this._resetHoldUI();
+
+            if (logId) {
+                var body = { call_log_id: logId, duration: duration, final_status: status };
+                if (endedBy) body.ended_by = endedBy;
+                await fetch("/call/end", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": this._csrf },
+                    body: JSON.stringify(body)
+                });
+            }
+
+            this._state        = null;
+            this._endReported  = false;
+            this._manualHangup = false;
+
+            document.dispatchEvent(new CustomEvent("gc:callEnded", {
+                detail: { callLogId: logId, phone: phone }
+            }));
+        },
+
+        _markAnswered: function (label) {
+            if (!this._state) return;
+            if (!this._state.answeredAt) {
+                this._state.answeredAt = Date.now();
+            }
+            this._updateBar(label);
+            this._startTimer(this._state.answeredAt);
+            document.dispatchEvent(new CustomEvent("gc:callAccepted"));
+        },
+
+        // ── Incoming call popup (manual-answer mode only) ─────────
+        _showIncomingCallPopup: function (phone, name, leadCode) {
+            var self = this;
+            var popup = document.getElementById('gcIncomingCallPopup');
+
+            if (!popup) {
+                popup = document.createElement('div');
+                popup.id = 'gcIncomingCallPopup';
+
+                var styleEl = document.createElement('style');
+                styleEl.textContent = [
+                    '@keyframes gcRingPulse{',
+                    '0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,.6)}',
+                    '70%{box-shadow:0 0 0 12px rgba(99,102,241,0)}}',
+                    '#gcIncomingCallPopup{animation:gcRingPulse 1.2s ease-in-out infinite;}',
+                ].join('');
+                document.head.appendChild(styleEl);
+
+                popup.style.cssText = [
+                    'position:fixed;bottom:100px;right:20px;width:270px;',
+                    'background:#fff;border-radius:14px;',
+                    'box-shadow:0 8px 32px rgba(0,0,0,.22);',
+                    'border:1px solid #e2e8f0;z-index:10001;overflow:hidden;',
+                    'font-family:"Plus Jakarta Sans",sans-serif;',
+                ].join('');
+
+                popup.innerHTML = [
+                    '<div style="background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;padding:12px 14px;">',
+                    '  <div style="font-size:11px;font-weight:600;opacity:.75;margin-bottom:4px;letter-spacing:.5px;text-transform:uppercase;">Incoming Call</div>',
+                    '  <div id="gcIncomingName" style="font-size:15px;font-weight:800;letter-spacing:.2px;display:none;"></div>',
+                    '  <div id="gcIncomingCode" style="font-size:11px;font-weight:600;opacity:.75;display:none;"></div>',
+                    '  <div id="gcIncomingPhone" style="font-size:13px;font-weight:600;opacity:.9;letter-spacing:.5px;margin-top:1px;"></div>',
+                    '</div>',
+                    '<div style="padding:12px 14px;display:flex;gap:8px;">',
+                    '  <button id="gcAcceptCallBtn" style="flex:1;height:38px;border:none;border-radius:9px;',
+                    '    background:#10b981;color:#fff;font-family:inherit;font-weight:700;font-size:13px;',
+                    '    cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;',
+                    '    transition:opacity .15s;">',
+                    '    <span class="material-icons" style="font-size:16px;">call</span> Accept',
+                    '  </button>',
+                    '  <button id="gcRejectCallBtn" style="flex:1;height:38px;border:none;border-radius:9px;',
+                    '    background:#ef4444;color:#fff;font-family:inherit;font-weight:700;font-size:13px;',
+                    '    cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;',
+                    '    transition:opacity .15s;">',
+                    '    <span class="material-icons" style="font-size:16px;">call_end</span> Reject',
+                    '  </button>',
+                    '</div>',
+                ].join('');
+
+                document.body.appendChild(popup);
+
+                document.getElementById('gcAcceptCallBtn').addEventListener('click', function () {
+                    self._hideIncomingCallPopup();
+                    var f = self._tcnFrame();
+                    if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'ACCEPT_INCOMING' }, '*');
+                });
+
+                document.getElementById('gcRejectCallBtn').addEventListener('click', function () {
+                    self._hideIncomingCallPopup();
+                    var f = self._tcnFrame();
+                    if (f && f.contentWindow) f.contentWindow.postMessage({ type: 'REJECT_INCOMING' }, '*');
+                });
+            }
+
+            var phoneEl = document.getElementById('gcIncomingPhone');
+            var nameEl  = document.getElementById('gcIncomingName');
+            var codeEl  = document.getElementById('gcIncomingCode');
+            if (phoneEl) phoneEl.textContent = phone || '';
+            if (nameEl)  { nameEl.textContent = name || ''; nameEl.style.display = name ? 'block' : 'none'; }
+            if (codeEl)  { codeEl.textContent = leadCode || ''; codeEl.style.display = leadCode ? 'block' : 'none'; }
+            popup.style.display = 'block';
+        },
+
+        _hideIncomingCallPopup: function () {
+            var popup = document.getElementById('gcIncomingCallPopup');
+            if (popup) popup.style.display = 'none';
+        },
+
+        // ── Missed call toast ──────────────────────────────────────
+        _showMissedCallToast: function (phone, callLogId, name, leadCode) {
+            var self = this;
+
+            // Play a distinct double-beep missed-call sound
+            try {
+                var ctx = new (window.AudioContext || window.webkitAudioContext)();
+                [[440, 0], [440, 0.35]].forEach(function (t) {
+                    var osc  = ctx.createOscillator();
+                    var gain = ctx.createGain();
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.type = 'sine';
+                    osc.frequency.value = t[0];
+                    var now = ctx.currentTime;
+                    gain.gain.setValueAtTime(0, now + t[1]);
+                    gain.gain.linearRampToValueAtTime(0.28, now + t[1] + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + t[1] + 0.22);
+                    osc.start(now + t[1]);
+                    osc.stop(now + t[1] + 0.25);
+                });
+            } catch (_) {}
+
+            // Build toast
+            var toastId = 'gcMissedCallToast_' + Date.now();
+            var displayPhone = phone || 'Unknown caller';
+            var logLink = callLogId
+                ? ' <a href="/telecaller/call-logs" style="color:#fca5a5;font-weight:700;text-decoration:underline;">View log</a>'
+                : '';
+            var nameRow = name
+                ? '<div style="font-size:14px;font-weight:700;color:#fff;margin-bottom:1px;">' + name + '</div>'
+                : '';
+            var codeRow = leadCode
+                ? '<div style="font-size:11px;color:rgba(255,255,255,.7);margin-bottom:2px;letter-spacing:.3px;">' + leadCode + '</div>'
+                : '';
+
+            var toast = document.createElement('div');
+            toast.id = toastId;
+            toast.style.cssText = [
+                'position:fixed;bottom:80px;right:20px;z-index:10100;',
+                'width:280px;border-radius:13px;overflow:hidden;',
+                'box-shadow:0 8px 28px rgba(0,0,0,.28);',
+                'font-family:"Plus Jakarta Sans",sans-serif;',
+                'animation:gcToastIn .25s ease;',
+            ].join('');
+            toast.innerHTML = [
+                '<style>',
+                '@keyframes gcToastIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}',
+                '</style>',
+                '<div style="background:#dc2626;padding:10px 14px 12px;">',
+                '  <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">',
+                '    <span class="material-icons" style="font-size:17px;color:#fff;flex-shrink:0;">phone_missed</span>',
+                '    <span style="font-size:11px;font-weight:700;color:rgba(255,255,255,.8);text-transform:uppercase;letter-spacing:.6px;">Missed Call</span>',
+                '  </div>',
+                nameRow,
+                codeRow,
+                '  <div style="font-size:16px;font-weight:800;color:#fff;letter-spacing:.5px;">' + displayPhone + '</div>',
+                '  <div style="font-size:11px;color:rgba(255,255,255,.75);margin-top:3px;">Caller hung up before you could answer.' + logLink + '</div>',
+                '</div>',
+            ].join('');
+
+            document.body.appendChild(toast);
+
+            // Auto-remove after 8s
+            var removeToast = function () {
+                if (toast.parentNode) toast.parentNode.removeChild(toast);
+            };
+            setTimeout(removeToast, 8000);
+            toast.addEventListener('click', removeToast);
+        },
+
+        // ── Call bar show / hide / update ─────────────────────────
+        // status: optional string for the small label above the phone number.
+        _showBar: function (phoneText, status) {
+            var bar = document.getElementById("gcCallBar");
+            var ph  = document.getElementById("gcCallPhone");
+            var st  = document.getElementById("gcCallStatus");
+
+            if (ph) ph.textContent = phoneText || '—';
+            if (st) st.textContent = status || 'Connecting\u2026';
+            this._setCallLeadLink(this._state && this._state.leadUrl ? this._state.leadUrl : null);
+            if (bar) bar.style.display = "flex";
+
+            // Push content below the bar
+            document.body.classList.add('gc-call-active');
+        },
+
+        _updateBar: function (phoneText, status) {
+            var ph = document.getElementById("gcCallPhone");
+            var st = document.getElementById("gcCallStatus");
+            if (ph && phoneText !== undefined) ph.textContent = phoneText;
+            if (st && status    !== undefined) st.textContent = status;
+        },
+
+        _updatePhone: function (phone) {
+            if (!phone) return;
+            if (this._state) this._state.phone = phone;
+            var ph = document.getElementById("gcCallPhone");
+            if (ph && ph.textContent) ph.textContent = phone;
+        },
+
+        _hideBar: function () {
+            var bar = document.getElementById("gcCallBar");
+            if (bar) bar.style.display = "none";
+            this._setCallLeadLink(null);
+            document.body.classList.remove('gc-call-active');
+        },
+
+        _setCallLeadLink: function (url) {
+            var link = document.getElementById("gcCallLeadLink");
+            if (!link) return;
+            if (url) {
+                link.href           = url;
+                link.style.display  = "inline-block";
+            } else {
+                link.removeAttribute("href");
+                link.style.display  = "none";
+            }
+        },
+
+        // ── Timer ──────────────────────────────────────────────────
+        _startTimer: function (start) {
+            this._stopTimer();
+            var el = document.getElementById("gcCallTimer");
+
+            this._timerInterval = setInterval(function () {
+                var sec = Math.floor((Date.now() - start) / 1000);
+                var m   = Math.floor(sec / 60);
+                var s   = sec % 60;
+                if (el) el.textContent = m + ":" + (s < 10 ? "0" : "") + s;
+            }, 1000);
+        },
+
+        _stopTimer: function () {
+            clearInterval(this._timerInterval);
+            this._timerInterval = null;
+            var el = document.getElementById("gcCallTimer");
+            if (el) el.textContent = "0:00";
+        }
+
     };
-},
 
-_showBar: function (text) {
-    var el = document.getElementById("gcCallBar");
-    var ph = document.getElementById("gcCallPhone");
-
-    if (ph) ph.textContent = text;
-    this._setCallLeadLink(this._state && this._state.leadUrl ? this._state.leadUrl : null);
-    if (el) el.style.display = "flex";
-},
-
-_updateBar: function (text) {
-    var ph = document.getElementById("gcCallPhone");
-    if (ph) ph.textContent = text;
-},
-
-_hideBar: function () {
-    var el = document.getElementById("gcCallBar");
-    if (el) el.style.display = "none";
-    this._setCallLeadLink(null);
-},
-
-_showIncoming: function (phone) {
-    var el = document.getElementById("gcIncomingBar");
-    var ph = document.getElementById("gcIncomingPhone");
-
-    if (ph) ph.textContent = phone;
-    this._setIncomingLeadLink(this._currentIncomingMeta().leadUrl);
-    if (el) el.style.display = "flex";
-},
-
-_hideIncoming: function () {
-    var el = document.getElementById("gcIncomingBar");
-
-    if (el) {
-        el.style.display = "none";
-        el.removeAttribute("data-call-log-id");
-        el.removeAttribute("data-lead-name");
-        el.removeAttribute("data-lead-url");
-        el.removeAttribute("data-phone");
+    // ── Bootstrap ─────────────────────────────────────────────────
+    var metaCsrf = document.querySelector('meta[name="csrf-token"]');
+    if (metaCsrf) {
+        GC._csrf = metaCsrf.getAttribute("content");
     }
 
-    this._setIncomingLeadLink(null);
-},
-
-_setCallLeadLink: function (url) {
-    var link = document.getElementById("gcCallLeadLink");
-    if (!link) return;
-
-    if (url) {
-        link.href = url;
-        link.style.display = "inline-block";
-    } else {
-        link.removeAttribute("href");
-        link.style.display = "none";
-    }
-},
-
-_setIncomingLeadLink: function (url) {
-    var link = document.getElementById("gcIncomingLeadLink");
-    if (!link) return;
-
-    if (url) {
-        link.href = url;
-        link.style.display = "inline-block";
-    } else {
-        link.removeAttribute("href");
-        link.style.display = "none";
-    }
-},
-
-_startTimer: function (start) {
-    this._stopTimer();
-
-    var el = document.getElementById("gcCallTimer");
-
-    this._timerInterval = setInterval(function () {
-        var sec = Math.floor((Date.now() - start) / 1000);
-        var m = Math.floor(sec / 60);
-        var s = sec % 60;
-
-        if (el) el.textContent = m + ":" + (s < 10 ? "0" : "") + s;
-    }, 1000);
-},
-
-_stopTimer: function () {
-    clearInterval(this._timerInterval);
-    this._timerInterval = null;
-
-    var el = document.getElementById("gcCallTimer");
-    if (el) el.textContent = "0:00";
-},
-
-_startExotelStatusPoll: function () {
-    var self = this;
-
-    this._pollInterval = setInterval(async function () {
-        if (!self._state) {
-            self._stopExotelStatusPoll();
-            return;
-        }
-
-        try {
-            var res = await fetch("/exotel/status/" + self._state.callLogId);
-            var data = await res.json();
-
-            if (data.status === "in-progress" || data.status === "answered") {
-                self._stopExotelStatusPoll();
-                self._state.answeredAt = data.answered_at
-                    ? new Date(data.answered_at).getTime()
-                    : Date.now();
-                self._updateBar(self._state.phone);
-                self._startTimer(self._state.answeredAt);
-                document.dispatchEvent(new CustomEvent("gc:callAccepted"));
-                return;
-            }
-
-            if (["completed", "no-answer", "failed", "busy", "canceled", "missed"].indexOf(data.status) !== -1) {
-                self._stopExotelStatusPoll();
-                if (!self._endReported) {
-                    self._finalize(data.status === "missed" ? "no-answer" : data.status);
-                }
-            }
-        } catch (e) {
-            // ignore transient errors
-        }
-    }, 3000);
-},
-
-_stopExotelStatusPoll: function () {
-    clearInterval(this._pollInterval);
-    this._pollInterval = null;
-}
-
-};
-
-var metaCsrf = document.querySelector('meta[name="csrf-token"]');
-if (metaCsrf) {
-    GC._csrf = metaCsrf.getAttribute("content");
-}
-
-window.GC = GC;
+    window.GC = GC;
 
 })();

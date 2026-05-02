@@ -6,12 +6,12 @@ use Illuminate\Http\Request;
 use App\Models\CallLog;
 use App\Models\LeadActivity;
 use App\Models\Lead;
-use App\Models\User;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
-use Twilio\TwiML\VoiceResponse;
+use App\Models\Followup;
+
 class CallController extends Controller
 {
     public function startCall(Request $request)
@@ -23,7 +23,7 @@ class CallController extends Controller
             'lead_id' => $request->lead_id,
             'user_id' => Auth::id(),
             'customer_number' => $customerNumber,
-            'provider' => (string) Setting::get('telephony_provider', 'twilio'),
+            'provider' => (string) Setting::get('primary_call_provider', 'tcn'),
             'direction' => 'outbound',
             'status' => 'ringing'
         ]);
@@ -36,7 +36,7 @@ class CallController extends Controller
     {
         $request->validate([
             'call_log_id' => 'required|integer',
-            'ended_by' => 'nullable|in:telecaller,customer,system,unknown',
+            'ended_by' => 'nullable|in:telecaller,manager,lead,customer,system,unknown',
             'final_status' => 'nullable|in:initiated,ringing,in-progress,answered,completed,busy,failed,no-answer,canceled',
             'end_reason' => 'nullable|string|max:50',
             'duration' => 'nullable|integer|min:0',
@@ -84,10 +84,15 @@ class CallController extends Controller
                 $updates['ended_at'] = now('Asia/Kolkata');
             }
 
-            if ($request->filled('ended_by')) {
-                $updates['ended_by'] = $request->input('ended_by');
+            $requestedEndedBy = $request->input('ended_by');
+            $meaningfulValues = ['telecaller', 'manager', 'lead', 'customer', 'system'];
+            if ($request->filled('ended_by') && in_array($requestedEndedBy, $meaningfulValues)) {
+                // Only overwrite if DB value is not already meaningful (prevents race with tcn-softphone.js patch)
+                if (!in_array($call->ended_by, $meaningfulValues)) {
+                    $updates['ended_by'] = $requestedEndedBy;
+                }
             } elseif (!$call->ended_by) {
-                $updates['ended_by'] = 'unknown';
+                $updates['ended_by'] = $requestedEndedBy ?? 'unknown';
             }
 
             if (!$call->end_reason && $resolvedStatus !== 'in-progress') {
@@ -102,13 +107,15 @@ class CallController extends Controller
 
             $endedByText = $updates['ended_by'] ?? ($call->ended_by ?: 'unknown');
 
-            LeadActivity::create([
-                'lead_id' => $call->lead_id,
-                'user_id' => $call->user_id,
-                'type' => 'call',
-                'description' => "Call {$resolvedStatus}. Duration: {$duration} seconds. Ended by: {$endedByText}.",
-                'activity_time' => now()
-            ]);
+            if ($call->lead_id) {
+                LeadActivity::create([
+                    'lead_id' => $call->lead_id,
+                    'user_id' => $call->user_id,
+                    'type' => 'call',
+                    'description' => "Call {$resolvedStatus}. Duration: {$duration} seconds. Ended by: {$endedByText}.",
+                    'activity_time' => now()
+                ]);
+            }
         }
 
         return response()->json(['ok']);
@@ -168,108 +175,4 @@ class CallController extends Controller
         return response()->json(['ok']);
     }
 
-    public function incomingCall(Request $request)
-    {
-        $fromRaw = (string) $request->input('From', '');
-        $fromDigits = preg_replace('/\D+/', '', $fromRaw);
-        $last10 = $fromDigits ? substr($fromDigits, -10) : null;
-
-        $lead = null;
-        if ($last10) {
-            $lead = Lead::where('phone', 'like', '%' . $last10)->latest('id')->first();
-        }
-
-        $lastOutbound = null;
-        if ($lead) {
-            $lastOutbound = CallLog::where('lead_id', $lead->id)
-                ->where('direction', 'outbound')
-                ->latest('id')
-                ->first();
-        }
-
-        $telecallerId = $lastOutbound?->user_id;
-
-        if (Schema::hasColumn('users', 'is_online') && Schema::hasColumn('users', 'last_seen_at')) {
-            User::where('role', 'telecaller')
-                ->where('is_online', true)
-                ->where('last_seen_at', '<', now()->subSeconds(90))
-                ->update(['is_online' => false]);
-        }
-
-        $telecallerOnline = false;
-        if ($telecallerId) {
-            $query = User::where('id', $telecallerId)
-                ->where('role', 'telecaller')
-                ->where('status', 1); // account active
-
-            if (Schema::hasColumn('users', 'is_online') && Schema::hasColumn('users', 'last_seen_at')) {
-                $query->where('is_online', true)
-                    ->where('last_seen_at', '>=', now()->subSeconds(90));
-            } else {
-                $query->whereRaw('1 = 0');
-            }
-
-            $telecallerOnline = $query->exists();
-        }
-
-        $call = CallLog::create([
-            'lead_id' => $lead?->id,
-            'user_id' => $telecallerId,
-            'customer_number' => $fromRaw,
-            'provider' => (string) Setting::get('telephony_provider', 'twilio'),
-            'direction' => 'inbound',
-            'call_sid' => $request->input('CallSid'),
-            'status' => $telecallerOnline ? 'ringing' : 'missed',
-        ]);
-
-        $response = new VoiceResponse();
-
-        if ($telecallerOnline) {
-            $dial = $response->dial('', [
-                'action' => route('webhook.call-status', ['call_log_id' => $call->id]),
-                'method' => 'POST',
-            ]);
-            $dial->client('agent_' . $telecallerId);
-        } else {
-            $response->say('Our executive is currently unavailable. We will call you back.', ['voice' => 'alice']);
-        }
-
-        return response($response->__toString(), 200)->header('Content-Type', 'text/xml');
-    }
-
-    public function callStatusWebhook(Request $request)
-    {
-        $callLogId = $request->input('call_log_id');
-        $callSid = $request->input('CallSid');
-        $callStatus = strtolower((string) $request->input('CallStatus', ''));
-        $dialCallStatus = strtolower((string) $request->input('DialCallStatus', ''));
-
-        $status = $dialCallStatus ?: $callStatus;
-        $resolvedStatus = in_array($status, ['completed'], true) ? 'completed' : 'missed';
-
-        $call = null;
-        if ($callLogId) {
-            $call = CallLog::find($callLogId);
-        }
-        if (!$call && $callSid) {
-            $call = CallLog::where('call_sid', $callSid)->latest('id')->first();
-        }
-
-        if ($call) {
-            $updates = [
-                'status' => $resolvedStatus,
-                'end_reason' => $status ?: $resolvedStatus,
-                'ended_at' => now(),
-            ];
-
-            $duration = $request->input('CallDuration', $request->input('DialCallDuration'));
-            if ($duration !== null && $duration !== '') {
-                $updates['duration'] = (int) $duration;
-            }
-
-            $call->update($updates);
-        }
-
-        return response('OK', 200);
-    }
 }

@@ -377,10 +377,16 @@ class MetaWhatsAppController extends Controller
                 $m->id => data_get($m->meta_data, 'meta_status', 'sent'),
             ]);
 
+        $sessionActive = WhatsAppMessage::where('lead_id', $leadId)
+            ->where('direction', 'inbound')
+            ->where('created_at', '>=', now()->subHours(24))
+            ->exists();
+
         return response()->json([
-            'ok'       => true,
-            'messages' => $messages,
-            'statuses' => $statuses,
+            'ok'             => true,
+            'messages'       => $messages,
+            'statuses'       => $statuses,
+            'session_active' => $sessionActive,
         ]);
     }
 
@@ -818,19 +824,30 @@ class MetaWhatsAppController extends Controller
             return response()->json(['success' => false, 'message' => $result['error']], 422);
         }
 
+        // When no 24h inbound window, Meta sends a template — store what was actually sent
+        $templateName = (string) Setting::get('meta_whatsapp_template_name', 'welcome_template');
+        $storedBody   = $inbound24h
+            ? $messageBody
+            : "📋 Template sent ({$templateName}) — no active chat session";
+
         $row = [
             'lead_id'             => $lead->id,
             'from_number'         => $this->phoneNumberId(),
-            'message_body'        => $messageBody,
+            'message_body'        => $storedBody,
             'direction'           => 'outbound',
             'provider_message_id' => $result['provider_message_id'],
             'provider'            => $result['provider'],
             'sent_at'             => now(),
-            'meta_data'           => ['meta_status' => 'sent', 'to' => $to],
+            'meta_data'           => [
+                'meta_status'   => 'sent',
+                'to'            => $to,
+                'inbound24h'    => $inbound24h,
+                'intended_body' => $inbound24h ? null : $messageBody,
+            ],
         ];
 
         if (Schema::hasColumn('whatsapp_messages', 'message')) {
-            $row['message'] = $messageBody;
+            $row['message'] = $storedBody;
         }
 
         $saved = WhatsAppMessage::create($row);
@@ -839,19 +856,20 @@ class MetaWhatsAppController extends Controller
             'lead_id'       => $lead->id,
             'user_id'       => Auth::id(),
             'type'          => 'whatsapp',
-            'description'   => $messageBody,
+            'description'   => $storedBody,
             'meta_data'     => ['direction' => 'outbound', 'provider' => $result['provider'],
                                 'message_id' => $result['provider_message_id']],
             'activity_time' => now(),
         ]);
 
         return response()->json([
-            'success'    => true,
-            'message_id' => $saved->id,
-            'message'    => $saved->message_body,
-            'direction'  => $saved->direction,
-            'time'       => optional($saved->created_at)->format('h:i A'),
-            'status'     => 'sent',
+            'success'        => true,
+            'message_id'     => $saved->id,
+            'message'        => $saved->message_body,
+            'direction'      => $saved->direction,
+            'time'           => optional($saved->created_at)->format('h:i A'),
+            'status'         => 'sent',
+            'session_active' => $inbound24h,
         ]);
     }
 

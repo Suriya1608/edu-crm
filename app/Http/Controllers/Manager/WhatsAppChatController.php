@@ -9,6 +9,7 @@ use App\Models\WhatsAppMessage;
 use App\Notifications\WhatsAppInboundNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Inertia\Inertia;
 
 class WhatsAppChatController extends Controller
 {
@@ -71,12 +72,41 @@ class WhatsAppChatController extends Controller
             }
         }
 
-        return view('manager.whatsapp.index', compact(
-            'conversations',
-            'unreadCounts',
-            'activeLead',
-            'activeMessages'
-        ));
+        $conversationData = $conversations->map(fn($lead) => [
+            'id'              => $lead->id,
+            'encrypted_id'    => encrypt($lead->id),
+            'name'            => $lead->name,
+            'phone'           => $lead->phone,
+            'assigned_user'   => $lead->assignedUser?->name,
+            'last_message'    => $lead->whatsappMessages->first()?->message_body,
+            'last_message_at' => $lead->whatsappMessages->first()?->created_at?->format('h:i A'),
+            'unread_count'    => $unreadCounts->get($lead->id, 0),
+        ]);
+
+        $activeLeadData = $activeLead ? [
+            'id'           => $activeLead->id,
+            'encrypted_id' => encrypt($activeLead->id),
+            'name'         => $activeLead->name,
+            'phone'        => $activeLead->phone,
+        ] : null;
+
+        $activeMessagesData = $activeMessages->map(fn($m) => [
+            'id'           => $m->id,
+            'message_body' => $m->message_body,
+            'direction'    => $m->direction,
+            'time'         => $m->created_at?->format('h:i A'),
+            'date'         => $m->created_at?->format('d M Y'),
+            'status'       => data_get($m->meta_data, 'meta_status', 'sent'),
+            'media_url'    => $m->media_url ?? null,
+            'media_type'   => $m->media_type ?? null,
+        ]);
+
+        return Inertia::render('Manager/WhatsApp/Index', [
+            'conversations'   => $conversationData,
+            'activeLead'      => $activeLeadData,
+            'activeMessages'  => $activeMessagesData,
+            'unreadCounts'    => $unreadCounts,
+        ]);
     }
 
     /**

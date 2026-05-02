@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\CallLog;
 use App\Models\WhatsAppMessage;
 
 class Lead extends Model
@@ -16,9 +17,15 @@ class Lead extends Model
         'email',
         'email_valid',
         'course_id',
+        'academic_year_id',
+        'quota',
         'source',
+        'source_type',
+        'source_category',
+        'source_detail',
         'assigned_by',
         'assigned_to',
+        'manager_assigned_at',
         'status',
         'next_followup',
         'sla_escalated_at',
@@ -27,11 +34,13 @@ class Lead extends Model
     ];
 
     protected $casts = [
-        'sla_escalated_at'    => 'datetime',
+        'sla_escalated_at'     => 'datetime',
+        'manager_assigned_at'  => 'datetime',
         'is_duplicate'        => 'boolean',
         'email_valid'         => 'boolean',
-        'merged_into_lead_id' => 'integer',
-        'course_id'           => 'integer',
+        'merged_into_lead_id'  => 'integer',
+        'course_id'            => 'integer',
+        'academic_year_id'     => 'integer',
     ];
 
     // ─── Relationships ──────────────────────────────────────────────────────────
@@ -39,6 +48,11 @@ class Lead extends Model
     public function enrolledCourse(): BelongsTo
     {
         return $this->belongsTo(Course::class, 'course_id');
+    }
+
+    public function academicYear(): BelongsTo
+    {
+        return $this->belongsTo(AcademicYear::class);
     }
 
     public function assignedUser()
@@ -64,6 +78,11 @@ class Lead extends Model
     public function whatsappMessages()
     {
         return $this->hasMany(WhatsAppMessage::class);
+    }
+
+    public function callLogs()
+    {
+        return $this->hasMany(CallLog::class);
     }
 
     /**
