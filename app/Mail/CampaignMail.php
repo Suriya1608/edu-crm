@@ -2,12 +2,13 @@
 
 namespace App\Mail;
 
-use App\Models\Setting;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Storage;
 
 class CampaignMail extends Mailable
 {
@@ -17,6 +18,7 @@ class CampaignMail extends Mailable
         public readonly string $emailSubject,
         public readonly string $emailBody,
         public readonly string $recipientName,
+        public readonly array $fileAttachments = [],
     ) {}
 
     public function envelope(): Envelope
@@ -31,6 +33,10 @@ class CampaignMail extends Mailable
 
     public function attachments(): array
     {
-        return [];
+        return collect($this->fileAttachments)
+            ->filter(fn ($a) => isset($a['path']) && Storage::disk('public')->exists($a['path']))
+            ->map(fn ($a) => Attachment::fromStorageDisk('public', $a['path'])->as($a['name'] ?? basename($a['path'])))
+            ->values()
+            ->all();
     }
 }

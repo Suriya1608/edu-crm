@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Policies\LeadPolicy;
 use App\Policies\SettingPolicy;
 use App\Policies\UserPolicy;
+use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
@@ -35,6 +37,19 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Paginator::useBootstrapFive();
+
+        RedirectIfAuthenticated::redirectUsing(function () {
+            $user = Auth::user();
+            if (! $user) {
+                return '/';
+            }
+            return match ($user->role) {
+                'admin'      => route('admin.dashboard'),
+                'manager'    => route('manager.dashboard'),
+                'telecaller' => route('telecaller.dashboard'),
+                default      => '/',
+            };
+        });
         Schema::defaultStringLength(191);
         if (!Schema::hasTable('settings')) {
             view()->share('globalSettings', collect());

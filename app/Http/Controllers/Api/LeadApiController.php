@@ -110,14 +110,19 @@ class LeadApiController extends Controller
             : null;
 
         $lead = Lead::create([
-            'lead_code' => $this->generateLeadCode(),
-            'name' => $request->name,
-            'phone' => $request->phone,
-            'email' => $request->email,
-            'course_id' => $courseId,
-            'source' => $request->source ?? 'landing_page',
-            'assigned_by' => $managerId,
-            'status' => LeadDefaults::defaultStatus(),
+            'lead_code'       => $this->generateLeadCode(),
+            'name'            => $request->name,
+            'phone'           => $request->phone,
+            'email'           => $request->email,
+            'course_id'       => $courseId,
+            'academic_year_id'=> \App\Models\AcademicYear::current()?->id,
+            'quota'           => 'counselling',
+            'source'          => $request->source ?? 'landing_page',
+            'source_type'     => 'landing_page',
+            'source_category' => $request->input('source_category', 'other_digital'),
+            'source_detail'   => $request->input('source_detail'),
+            'assigned_by'     => $managerId,
+            'status'          => LeadDefaults::defaultStatus(),
         ]);
 
         LeadActivity::create([

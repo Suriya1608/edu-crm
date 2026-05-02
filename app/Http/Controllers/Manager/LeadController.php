@@ -14,11 +14,19 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Setting;
 use Illuminate\Support\Facades\Auth;
+use App\Models\CallLog;
 use App\Models\WhatsAppMessage;
+use App\Models\LeadMeeting;
+use App\Models\AcademicYear;
+use App\Models\CourseIntake;
 use Illuminate\Support\Facades\Schema;
 use App\Notifications\LeadAssignmentNotification;
+use App\Mail\LeadEmail;
+use App\Models\EmailTemplate;
 use App\Services\AuditLogService;
 use App\Services\LeadDefaults;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 class LeadController extends Controller
 {
@@ -167,22 +175,27 @@ class LeadController extends Controller
 
     public function create()
     {
-        $courses = \App\Models\Course::active()->orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
+        $courses       = \App\Models\Course::active()->orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
+        $academicYears = AcademicYear::orderByDesc('id')->get(['id', 'name', 'is_active']);
 
         return Inertia::render('Manager/Leads/Create', [
-            'courses'   => $courses->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
-            'store_url' => route('manager.leads.store'),
+            'courses'        => $courses->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
+            'academic_years' => $academicYears->map(fn($y) => ['id' => $y->id, 'name' => $y->name, 'is_active' => $y->is_active])->values(),
+            'store_url'      => route('manager.leads.store'),
         ]);
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'name'      => 'required|string',
-            'phone'     => 'required|string',
-            'email'     => 'nullable|email',
-            'course_id' => 'nullable|integer|exists:courses,id',
-            'source'    => 'nullable|string',
+            'name'             => 'required|string',
+            'phone'            => 'required|string',
+            'email'            => 'nullable|email',
+            'course_id'        => 'nullable|integer|exists:courses,id',
+            'academic_year_id' => 'nullable|integer|exists:academic_years,id',
+            'quota'            => 'nullable|in:management,counselling',
+            'source_category'  => 'nullable|string|max:50',
+            'source_detail'    => 'nullable|string|max:255',
         ]);
 
         // Normalize phone: strip non-digits, prepend +91 if 10 digits
@@ -193,15 +206,20 @@ class LeadController extends Controller
         $isDuplicate = Lead::where('phone', $phone)->exists();
 
         $lead = Lead::create([
-            'lead_code'    => $this->generateLeadCode(),
-            'name'         => $request->name,
-            'phone'        => $phone,
-            'email'        => $request->email,
-            'course_id'    => $request->course_id ?: null,
-            'source'       => $request->source ?? 'manual',
-            'status'       => LeadDefaults::defaultStatus(),
-            'assigned_by'  => Auth::id(),
-            'is_duplicate' => $isDuplicate,
+            'lead_code'        => $this->generateLeadCode(),
+            'name'             => $request->name,
+            'phone'            => $phone,
+            'email'            => $request->email,
+            'course_id'        => $request->course_id ?: null,
+            'academic_year_id' => $request->academic_year_id ?: null,
+            'quota'            => $request->quota ?: null,
+            'source'           => 'manual',
+            'source_type'      => 'manual',
+            'source_category'  => $request->source_category ?: null,
+            'source_detail'    => $request->source_detail ?: null,
+            'status'           => LeadDefaults::defaultStatus(),
+            'assigned_by'      => Auth::id(),
+            'is_duplicate'     => $isDuplicate,
         ]);
 
         if ($isDuplicate) {
@@ -305,10 +323,7 @@ class LeadController extends Controller
 
         $lead = Lead::with([
             'assignedUser',
-            'activities' => function ($q) {
-                $q->latest();
-            },
-            'activities.user'
+            'activities.user',
         ])->findOrFail($id);
 
         $telecallers = User::where('role', 'telecaller')->get();
@@ -316,6 +331,77 @@ class LeadController extends Controller
             ? WhatsAppMessage::where('lead_id', $lead->id)->orderBy('created_at')->get()
             : collect();
         $waTemplateName = Setting::get('meta_whatsapp_template_name', 'welcome_template');
+        $waSessionActive = Schema::hasTable('whatsapp_messages') && WhatsAppMessage::where('lead_id', $lead->id)
+            ->where('direction', 'inbound')
+            ->where('created_at', '>=', now()->subHours(24))
+            ->exists();
+
+        // Build unified descending timeline (activities + call_logs + whatsapp_messages).
+        // Exclude type='call' and type='whatsapp' from lead_activities — sourced from
+        // their dedicated tables which carry richer data and cover inbound records too.
+        $activityItems = $lead->activities
+            ->filter(fn($a) => !in_array($a->type, ['call', 'whatsapp']))
+            ->map(fn($a) => [
+                'id'          => 'a-' . $a->id,
+                'type'        => $a->type,
+                'description' => $a->description,
+                'user'        => $a->user?->name,
+                'time'        => $a->activity_time?->format('d M Y, h:i A'),
+                'sort_ts'     => $a->activity_time?->timestamp ?? 0,
+                'direction'   => null,
+                'duration'    => null,
+                'outcome'     => null,
+                'call_status' => null,
+            ]);
+
+        $callLogItems = CallLog::where('lead_id', $lead->id)
+            ->with('user:id,name')
+            ->get()
+            ->map(function ($c) {
+                $mins = intdiv((int) $c->duration, 60);
+                $secs = (int) $c->duration % 60;
+                $durationStr = $c->duration > 0
+                    ? ($mins > 0 ? "{$mins}m {$secs}s" : "{$secs}s")
+                    : null;
+
+                $desc = ucfirst($c->direction ?? 'outbound') . ' call';
+                if ($durationStr) $desc .= " · {$durationStr}";
+                if ($c->outcome)  $desc .= ' · ' . ucfirst(str_replace('_', ' ', $c->outcome));
+                elseif ($c->status) $desc .= ' · ' . ucfirst(str_replace('-', ' ', $c->status));
+
+                return [
+                    'id'          => 'c-' . $c->id,
+                    'type'        => 'call',
+                    'description' => $desc,
+                    'user'        => $c->user?->name,
+                    'time'        => $c->created_at?->format('d M Y, h:i A'),
+                    'sort_ts'     => $c->created_at?->timestamp ?? 0,
+                    'direction'   => $c->direction ?? 'outbound',
+                    'duration'    => $durationStr,
+                    'outcome'     => $c->outcome,
+                    'call_status' => $c->status,
+                ];
+            });
+
+        $waItems = $whatsappMessages->map(fn($m) => [
+            'id'          => 'w-' . $m->id,
+            'type'        => 'whatsapp',
+            'description' => $m->media_type
+                ? ucfirst($m->direction ?? 'outbound') . ': [' . $m->media_type . ']'
+                : ucfirst($m->direction ?? 'outbound') . ': ' . mb_strimwidth($m->message_body ?? '', 0, 80, '…'),
+            'user'        => null,
+            'time'        => $m->created_at?->format('d M Y, h:i A'),
+            'sort_ts'     => $m->created_at?->timestamp ?? 0,
+            'direction'   => $m->direction ?? 'outbound',
+            'duration'    => null,
+            'outcome'     => null,
+            'call_status' => null,
+        ]);
+
+        $timeline = $activityItems->concat($callLogItems)->concat($waItems)
+            ->sortByDesc('sort_ts')
+            ->values()
+            ->all();
 
         $encId = encrypt($lead->id);
 
@@ -327,17 +413,16 @@ class LeadController extends Controller
                 'phone'         => $lead->phone,
                 'email'         => $lead->email,
                 'course'        => $lead->course,
+                'academic_year' => $lead->academicYear?->name,
                 'status'        => $lead->status,
-                'assigned_to'   => $lead->assigned_to,
-                'assigned_user' => $lead->assignedUser?->name,
-                'is_duplicate'  => $lead->is_duplicate,
-                'activities'    => $lead->activities->map(fn($a) => [
-                    'id'          => $a->id,
-                    'type'        => $a->type,
-                    'description' => $a->description,
-                    'user'        => $a->user?->name,
-                    'time'        => $a->created_at->diffForHumans(),
-                ])->values(),
+                'assigned_to'     => $lead->assigned_to,
+                'assigned_user'   => $lead->assignedUser?->name,
+                'is_duplicate'    => $lead->is_duplicate,
+                'source_type'     => $lead->source_type,
+                'source_category' => $lead->source_category,
+                'source_detail'   => $lead->source_detail,
+                'quota'           => $lead->quota,
+                'activities'      => $timeline,
             ],
             'telecallers'       => $telecallers->map(fn($t) => ['id' => $t->id, 'name' => $t->name])->values(),
             'whatsapp_messages' => $whatsappMessages->map(fn($m) => [
@@ -351,6 +436,23 @@ class LeadController extends Controller
                 'media_filename' => $m->media_filename,
             ])->values(),
             'wa_template_name'  => $waTemplateName,
+            'wa_session_active' => $waSessionActive,
+            'meetings' => Schema::hasTable('lead_meetings')
+                ? LeadMeeting::where('lead_id', $lead->id)
+                    ->with('creator:id,name')
+                    ->orderByDesc('meeting_time')
+                    ->get()
+                    ->map(fn($m) => [
+                        'id'            => $m->id,
+                        'title'         => $m->title,
+                        'meeting_link'  => $m->meeting_link,
+                        'meeting_time'  => $m->meeting_time?->format('d M Y, h:i A'),
+                        'duration'      => $m->duration,
+                        'notes'         => $m->notes,
+                        'status'        => $m->status,
+                        'whatsapp_sent' => $m->whatsapp_sent,
+                    ])->values()
+                : [],
             'urls' => [
                 'assign'         => route('manager.assign', $encId),
                 'change_status'  => route('manager.leads.changeStatus', $encId),
@@ -360,9 +462,72 @@ class LeadController extends Controller
                 'wa_media'       => route('manager.leads.whatsapp.media', $encId),
                 'wa_fetch'       => route('manager.leads.whatsapp.fetch', $encId),
                 'call_outcome'   => route('call.outcome'),
+                'meet_start'     => route('manager.leads.meet.start',    $encId),
+                'meet_schedule'  => route('manager.leads.meet.schedule', $encId),
+                'meet_status'    => route('manager.leads.meet.status', ['meetingId' => '__ID__']),
                 'back'           => route('manager.leads'),
+                'email'          => route('manager.leads.email', $encId),
             ],
+            'email_templates' => EmailTemplate::active()->map(fn($t) => [
+                'id'      => $t->id,
+                'name'    => $t->name,
+                'subject' => $t->subject ?? '',
+                'body'    => $t->body ?? '',
+            ])->values()->all(),
         ]);
+    }
+
+    /* ======================================================
+        SEND EMAIL TO LEAD
+    ======================================================*/
+    public function sendEmail(Request $request, $encryptedId)
+    {
+        $request->validate([
+            'subject'         => 'required|string|max:255',
+            'body'            => 'required|string',
+            'attachments'     => 'nullable|array',
+            'attachments.*'   => 'file|max:10240',
+        ]);
+
+        try {
+            $id = decrypt($encryptedId);
+        } catch (\Throwable) {
+            $id = $encryptedId;
+        }
+
+        $lead = Lead::findOrFail($id);
+
+        if (!$lead->email) {
+            return response()->json(['error' => 'This lead has no email address.'], 422);
+        }
+
+        $paths = [];
+        foreach ($request->file('attachments', []) as $file) {
+            $paths[] = $file->store('email_attachments/tmp', 'local');
+        }
+
+        Mail::to($lead->email, $lead->name)->send(
+            new LeadEmail(
+                $request->subject,
+                $request->body,
+                array_map(fn($p) => storage_path('app/' . $p), $paths)
+            )
+        );
+
+        foreach ($paths as $p) {
+            Storage::disk('local')->delete($p);
+        }
+
+        $lead->activities()->create([
+            'user_id'     => Auth::id(),
+            'type'        => 'email',
+            'title'       => 'Email Sent',
+            'description' => 'Subject: ' . $request->subject,
+        ]);
+
+        AuditLogService::log('lead.email_sent', 'Lead', $lead->id, [], ['subject' => $request->subject]);
+
+        return response()->json(['message' => 'Email sent successfully.']);
     }
 
     public function changeStatus(Request $request, $encryptedId)
@@ -375,6 +540,8 @@ class LeadController extends Controller
             'status' => 'required|in:new,assigned,contacted,interested,not_interested,converted,follow_up',
         ]);
 
+
+        $oldStatus = $lead->status;
 
         // Update lead status
         $lead->status = $request->status;
@@ -408,6 +575,13 @@ class LeadController extends Controller
 
         $lead->save();
 
+        // Track seat enrollment on conversion
+        if ($request->status === 'converted' && $oldStatus !== 'converted') {
+            CourseIntake::incrementEnrolled($lead);
+        } elseif ($oldStatus === 'converted' && $request->status !== 'converted') {
+            CourseIntake::decrementEnrolled($lead);
+        }
+
         // Status activity
         LeadActivity::create([
             'lead_id'     => $lead->id,
@@ -417,7 +591,7 @@ class LeadController extends Controller
             'activity_time' => now(),
         ]);
 
-        AuditLogService::log('lead.status_changed', 'Lead', $lead->id, ['status' => $lead->getOriginal('status')], ['status' => $request->status]);
+        AuditLogService::log('lead.status_changed', 'Lead', $lead->id, ['status' => $oldStatus], ['status' => $request->status]);
 
         return back()->with('success', 'Status updated successfully');
     }
@@ -648,6 +822,13 @@ class LeadController extends Controller
 
         $lead->status = $request->status;
         $lead->save();
+
+        // Track seat enrollment on conversion
+        if ($request->status === 'converted' && $oldStatus !== 'converted') {
+            CourseIntake::incrementEnrolled($lead);
+        } elseif ($oldStatus === 'converted' && $request->status !== 'converted') {
+            CourseIntake::decrementEnrolled($lead);
+        }
 
         LeadActivity::create([
             'lead_id'       => $lead->id,

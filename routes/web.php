@@ -28,6 +28,8 @@ use App\Http\Controllers\Admin\DocumentController;
 use App\Http\Controllers\Admin\EmailTemplateController;
 use App\Http\Controllers\Admin\EmailCampaignController as AdminEmailCampaignController;
 use App\Http\Controllers\Admin\CourseController as AdminCourseController;
+use App\Http\Controllers\Admin\AcademicYearController as AdminAcademicYearController;
+use App\Http\Controllers\Admin\CourseIntakeController as AdminCourseIntakeController;
 use App\Http\Controllers\Admin\CampaignPerformanceController as AdminCampaignPerformanceController;
 use App\Http\Controllers\Admin\Marketing\SocialMediaController;
 use App\Http\Controllers\Admin\Settings\FacebookLeadsSettingController;
@@ -48,8 +50,19 @@ use App\Http\Controllers\Telecaller\PerformanceController as TelePerformanceCont
 use App\Http\Controllers\Telecaller\CallManagementController as TeleCallManagementController;
 use App\Http\Controllers\Telecaller\WhatsAppChatController as TeleWhatsAppChatController;
 use App\Http\Controllers\Telecaller\CampaignController as TeleCampaignController;
+use App\Http\Controllers\Admin\GoogleOAuthController;
+use App\Http\Controllers\MeetController;
+use App\Http\Controllers\Manager\MeetController as ManagerMeetController;
 
 Route::get('/', function () {
+    if (auth()->check()) {
+        return match (auth()->user()->role) {
+            'admin'      => redirect()->route('admin.dashboard'),
+            'manager'    => redirect()->route('manager.dashboard'),
+            'telecaller' => redirect()->route('telecaller.dashboard'),
+            default      => view('auth.login'),
+        };
+    }
     return view('auth.login');
 });
 
@@ -197,7 +210,16 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             // TCN global settings
             Route::get('/tcn',  [TcnSettingsController::class, 'index'])->name('tcn');
             Route::post('/tcn', [TcnSettingsController::class, 'update'])->name('tcn.update');
+
+            // Google Meet OAuth
+            Route::get('/google-meet',             [GoogleOAuthController::class, 'settings'])->name('google-meet');
+            Route::post('/google-meet/credentials',[GoogleOAuthController::class, 'saveCredentials'])->name('google-meet.credentials');
+            Route::post('/google-meet/disconnect', [GoogleOAuthController::class, 'disconnect'])->name('google-meet.disconnect');
         });
+
+        // Google OAuth callback (outside settings prefix — registered at /admin/google-oauth/*)
+        Route::get('/google-oauth/redirect',  [GoogleOAuthController::class, 'redirect'])->name('google.redirect');
+        Route::get('/google-oauth/callback',  [GoogleOAuthController::class, 'callback'])->name('google.callback');
 
         /*
         |------------------------------------------------------------------
@@ -217,6 +239,7 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::get('/create', [EmailTemplateController::class, 'create'])->name('create');
             Route::post('/', [EmailTemplateController::class, 'store'])->name('store');
             Route::post('/upload-image', [EmailTemplateController::class, 'uploadImage'])->name('upload-image');
+            Route::post('/upload-attachment', [EmailTemplateController::class, 'uploadAttachment'])->name('upload-attachment');
             Route::post('/send-test', [EmailTemplateController::class, 'sendTest'])->name('send-test');
             Route::get('/{emailTemplate}/edit', [EmailTemplateController::class, 'edit'])->name('edit');
             Route::put('/{emailTemplate}', [EmailTemplateController::class, 'update'])->name('update');
@@ -251,6 +274,35 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::put('/{course}', [AdminCourseController::class, 'update'])->name('update');
             Route::delete('/{course}', [AdminCourseController::class, 'destroy'])->name('destroy');
             Route::patch('/{course}/toggle-status', [AdminCourseController::class, 'toggleStatus'])->name('toggle-status');
+        });
+
+        /*
+        |------------------------------------------------------------------
+        | Academic Years
+        |------------------------------------------------------------------
+        */
+        Route::prefix('academic-years')->name('academic-years.')->group(function () {
+            Route::get('/', [AdminAcademicYearController::class, 'index'])->name('index');
+            Route::get('/create', [AdminAcademicYearController::class, 'create'])->name('create');
+            Route::post('/', [AdminAcademicYearController::class, 'store'])->name('store');
+            Route::get('/{academicYear}/edit', [AdminAcademicYearController::class, 'edit'])->name('edit');
+            Route::put('/{academicYear}', [AdminAcademicYearController::class, 'update'])->name('update');
+            Route::patch('/{academicYear}/toggle-active', [AdminAcademicYearController::class, 'toggleActive'])->name('toggle-active');
+            Route::delete('/{academicYear}', [AdminAcademicYearController::class, 'destroy'])->name('destroy');
+        });
+
+        /*
+        |------------------------------------------------------------------
+        | Course Intakes
+        |------------------------------------------------------------------
+        */
+        Route::prefix('course-intakes')->name('course-intakes.')->group(function () {
+            Route::get('/', [AdminCourseIntakeController::class, 'index'])->name('index');
+            Route::get('/create', [AdminCourseIntakeController::class, 'create'])->name('create');
+            Route::post('/', [AdminCourseIntakeController::class, 'store'])->name('store');
+            Route::get('/{courseIntake}/edit', [AdminCourseIntakeController::class, 'edit'])->name('edit');
+            Route::put('/{courseIntake}', [AdminCourseIntakeController::class, 'update'])->name('update');
+            Route::delete('/{courseIntake}', [AdminCourseIntakeController::class, 'destroy'])->name('destroy');
         });
 
         /*
@@ -305,6 +357,14 @@ Route::middleware(['auth'])
         Route::post('/leads/{id}/whatsapp/template', [MetaWhatsAppController::class, 'sendLeadTemplate'])->name('leads.whatsapp.template');
         Route::post('/leads/{id}/whatsapp/media', [MetaWhatsAppController::class, 'sendMedia'])->name('leads.whatsapp.media');
         Route::get('/leads/{id}/whatsapp/messages', [MetaWhatsAppController::class, 'fetchMessages'])->name('leads.whatsapp.fetch');
+
+        // Google Meet
+        Route::post('/leads/{id}/meet/start',         [ManagerMeetController::class, 'startMeet'])->name('leads.meet.start');
+        Route::post('/leads/{id}/meet/schedule',      [ManagerMeetController::class, 'scheduleMeet'])->name('leads.meet.schedule');
+        Route::patch('/leads/meet/{meetingId}/status',[ManagerMeetController::class, 'updateStatus'])->name('leads.meet.status');
+
+        // Email
+        Route::post('/leads/{id}/email', [ManagerLeadController::class, 'sendEmail'])->name('leads.email');
 
         /*
         |------------------------------------------------------------------
@@ -436,8 +496,10 @@ Route::middleware(['auth'])
         |------------------------------------------------------------------
         */
         Route::get('/leads', [TeleLeadController::class, 'index'])->name('leads');
+        Route::get('/leads/export', [TeleLeadController::class, 'export'])->name('leads.export');
         Route::get('/leads/pipeline', [TeleLeadController::class, 'pipeline'])->name('leads.pipeline');
         Route::post('/leads/pipeline-status', [TeleLeadController::class, 'updatePipelineStatus'])->name('leads.pipeline.status');
+        Route::post('/leads/bulk-status', [TeleLeadController::class, 'bulkUpdateStatus'])->name('leads.bulk_status');
         Route::get('/leads/{id}', [TeleLeadController::class, 'show'])->name('leads.show');
         Route::post('/leads/status/{id}', [TeleLeadController::class, 'changeStatus'])->name('leads.changeStatus');
         Route::post('/leads/note/{id}', [TeleLeadController::class, 'addNote'])->name('leads.addNote');
@@ -445,6 +507,14 @@ Route::middleware(['auth'])
         Route::post('/leads/{id}/whatsapp/template', [MetaWhatsAppController::class, 'sendLeadTemplate'])->name('leads.whatsapp.template');
         Route::post('/leads/{id}/whatsapp/media', [MetaWhatsAppController::class, 'sendMedia'])->name('leads.whatsapp.media');
         Route::get('/leads/{id}/whatsapp/messages', [MetaWhatsAppController::class, 'fetchMessages'])->name('leads.whatsapp.fetch');
+
+        // Google Meet
+        Route::post('/leads/{id}/meet/start',         [MeetController::class, 'startMeet'])->name('leads.meet.start');
+        Route::post('/leads/{id}/meet/schedule',      [MeetController::class, 'scheduleMeet'])->name('leads.meet.schedule');
+        Route::patch('/leads/meet/{meetingId}/status',[MeetController::class, 'updateStatus'])->name('leads.meet.status');
+
+        // Email
+        Route::post('/leads/{id}/email', [TeleLeadController::class, 'sendEmail'])->name('leads.email');
 
         Route::post('/followup/store', [TeleLeadController::class, 'storeFollowup'])->name('followup.store');
         Route::post('/call/{id}', [TeleLeadController::class, 'callLead'])->name('call');
@@ -460,6 +530,7 @@ Route::middleware(['auth'])
             Route::get('/upcoming', [TeleFollowupController::class, 'upcoming'])->name('upcoming');
             Route::get('/completed', [TeleFollowupController::class, 'completed'])->name('completed');
             Route::get('/calendar-data', [TeleFollowupController::class, 'calendarData'])->name('calendar-data');
+            Route::get('/{scope}/export', [TeleFollowupController::class, 'export'])->name('export');
             Route::post('/{id}/reschedule', [TeleFollowupController::class, 'reschedule'])->name('reschedule');
             Route::post('/{id}/complete', [TeleFollowupController::class, 'markCompleted'])->name('mark-complete');
         });
@@ -473,6 +544,7 @@ Route::middleware(['auth'])
             Route::get('/daily', [TelePerformanceController::class, 'daily'])->name('daily');
             Route::get('/weekly', [TelePerformanceController::class, 'weekly'])->name('weekly');
             Route::get('/monthly', [TelePerformanceController::class, 'monthly'])->name('monthly');
+            Route::get('/{scope}/export', [TelePerformanceController::class, 'export'])->name('export');
         });
 
         /*
@@ -485,6 +557,7 @@ Route::middleware(['auth'])
             Route::get('/inbound', [TeleCallManagementController::class, 'inbound'])->name('inbound');
             Route::get('/missed', [TeleCallManagementController::class, 'missed'])->name('missed');
             Route::get('/history', [TeleCallManagementController::class, 'history'])->name('history');
+            Route::get('/{scope}/export', [TeleCallManagementController::class, 'export'])->name('export');
         });
 
         /*
@@ -653,8 +726,10 @@ Route::middleware('auth')->prefix('tcn')->name('tcn.')->group(function () {
     Route::post('/set-status',     [TcnController::class, 'setAgentStatus'])->name('set-status');
     Route::post('/disconnect',     [TcnController::class, 'disconnect'])->name('disconnect');
     Route::post('/set-ready',      [TcnController::class, 'setReady'])->name('set-ready');
-    Route::post('/approve-call',   [TcnController::class, 'approveCall'])->name('approve-call');
-    Route::post('/reject-call',    [TcnController::class, 'rejectCall'])->name('reject-call');
+    Route::post('/current-session', [TcnController::class, 'getCurrentSession'])->name('current-session');
+    Route::post('/approve-call',    [TcnController::class, 'approveCall'])->name('approve-call');
+    Route::post('/reject-call',     [TcnController::class, 'rejectCall'])->name('reject-call');
+    Route::post('/incoming-caller', [TcnController::class, 'incomingCallerLookup'])->name('incoming-caller');
 
     // Outbound call initiation (Manual Dial Operator API flow)
     Route::post('/dial',           [TcnController::class, 'dial'])->name('dial');

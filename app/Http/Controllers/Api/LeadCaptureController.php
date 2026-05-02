@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\ActivityType;
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\Course;
 use App\Models\Lead;
 use App\Models\LeadActivity;
@@ -34,14 +35,19 @@ class LeadCaptureController extends Controller
 
         // Two-step creation: placeholder first, then derive code from actual ID
         $lead = Lead::create([
-            'lead_code'   => LeadCodeGenerator::placeholder(),
-            'name'        => $request->name,
-            'email'       => $request->email,
-            'phone'       => $request->phone,
-            'course_id'   => $courseId,
-            'source'      => 'Landing Page',
-            'assigned_by' => $managerId,
-            'status'      => LeadDefaults::defaultStatus(),
+            'lead_code'       => LeadCodeGenerator::placeholder(),
+            'name'            => $request->name,
+            'email'           => $request->email,
+            'phone'           => $request->phone,
+            'course_id'       => $courseId,
+            'academic_year_id'=> AcademicYear::current()?->id,
+            'quota'           => 'counselling',
+            'source'          => 'Landing Page',
+            'source_type'     => 'landing_page',
+            'source_category' => 'website',
+            'source_detail'   => $request->input('utm_source'),
+            'assigned_by'     => $managerId,
+            'status'          => LeadDefaults::defaultStatus(),
         ]);
 
         // Derive final code from auto-increment ID — race-condition free

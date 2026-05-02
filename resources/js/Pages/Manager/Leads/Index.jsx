@@ -81,17 +81,22 @@ export default function Index({ leads, telecallers, totalLeads, newLeads, assign
                     Add Lead
                 </Link>
 
-                <a href="/manager/leads/import" className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
+                <a href="/manager/leads/import"
+                    onClick={e => { e.preventDefault(); window.location.href = '/manager/leads/import'; }}
+                    className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1">
                     <span className="material-icons" style={{ fontSize: 16 }}>upload_file</span>
                     Import Excel
                 </a>
 
-                <a href={exportUrl()} className="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
+                <a href={exportUrl()}
+                    onClick={e => { e.preventDefault(); window.location.href = exportUrl(); }}
+                    className="btn btn-sm btn-outline-success d-flex align-items-center gap-1">
                     <span className="material-icons" style={{ fontSize: 16 }}>download</span>
                     Export Excel
                 </a>
 
-                <a href={exportUrl({ format: 'pdf' })} target="_blank" rel="noreferrer"
+                <a href={exportUrl({ format: 'pdf' })}
+                    onClick={e => { e.preventDefault(); window.location.href = exportUrl({ format: 'pdf' }); }}
                     className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1">
                     <span className="material-icons" style={{ fontSize: 16 }}>picture_as_pdf</span>
                     Export PDF

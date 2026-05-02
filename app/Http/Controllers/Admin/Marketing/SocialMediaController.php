@@ -169,12 +169,16 @@ class SocialMediaController extends Controller
         $courseId = $course ? Course::where('name', trim($course))->value('id') : null;
 
         Lead::create([
-            'name'      => $name ?? ($email ?? 'Unknown'),
-            'phone'     => $phone ?? '',
-            'email'     => $email,
-            'course_id' => $courseId,
-            'source'    => $source,
-            'status'    => 'new',
+            'name'            => $name ?? ($email ?? 'Unknown'),
+            'phone'           => $phone ?? '',
+            'email'           => $email,
+            'course_id'       => $courseId,
+            'academic_year_id'=> \App\Models\AcademicYear::current()?->id,
+            'quota'           => 'counselling',
+            'source'          => $source,
+            'source_type'     => 'landing_page',
+            'source_category' => $source,
+            'status'          => 'new',
         ]);
 
         Log::info('Facebook lead created', ['name' => $name, 'phone' => $phone, 'source' => $source]);

@@ -223,9 +223,37 @@ export default function Index({ scope, title, followups }) {
             <div className="custom-table">
                 <div className="table-header">
                     <h3>Followup List</h3>
-                    <span className="text-muted" style={{ fontSize: 12 }}>
-                        {followups.total} records
-                    </span>
+                    <div className="d-flex align-items-center gap-3">
+                        <span className="text-muted" style={{ fontSize: 12 }}>{followups.total} records</span>
+                        <div className="dropdown">
+                            <button
+                                type="button"
+                                className="btn btn-outline-success btn-sm px-3 d-flex align-items-center gap-1"
+                                data-bs-toggle="dropdown"
+                            >
+                                <span className="material-icons" style={{ fontSize: 15 }}>download</span>
+                                Export
+                            </button>
+                            <ul className="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <a className="dropdown-item d-flex align-items-center gap-2"
+                                        href={`/telecaller/followups/${scope}/export?format=excel`}
+                                        target="_blank" rel="noreferrer">
+                                        <span className="material-icons" style={{ fontSize: 16, color: '#10b981' }}>table_view</span>
+                                        Excel (.xlsx)
+                                    </a>
+                                </li>
+                                <li>
+                                    <a className="dropdown-item d-flex align-items-center gap-2"
+                                        href={`/telecaller/followups/${scope}/export?format=pdf`}
+                                        target="_blank" rel="noreferrer">
+                                        <span className="material-icons" style={{ fontSize: 16, color: '#ef4444' }}>picture_as_pdf</span>
+                                        PDF
+                                    </a>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="table-responsive">

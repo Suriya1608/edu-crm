@@ -24,7 +24,7 @@
         </div>
     @endif
 
-    <form action="{{ route('manager.email-campaigns.store') }}" method="POST" id="ecForm">
+    <form action="{{ route('manager.email-campaigns.store') }}" method="POST" id="ecForm" data-turbo="false">
         @csrf
 
         <div class="row g-4">
@@ -55,7 +55,7 @@
                             @foreach ($templates as $tpl)
                                 <option value="{{ $tpl->id }}"
                                     data-subject="{{ $tpl->subject }}"
-                                    data-body="{{ htmlspecialchars($tpl->body, ENT_QUOTES) }}"
+                                    data-body="{{ $tpl->body }}"
                                     {{ old('template_id') == $tpl->id ? 'selected' : '' }}>
                                     {{ $tpl->name }}
                                 </option>

@@ -184,6 +184,54 @@ function FollowupCalendar({ initialData }) {
     );
 }
 
+// ─── Call outcome chart ───────────────────────────────────────────────────────
+const OUTCOME_CONFIG = {
+    interested:      { label: 'Interested',      color: '#10b981' },
+    not_interested:  { label: 'Not Interested',  color: '#ef4444' },
+    wrong_number:    { label: 'Wrong Number',    color: '#f59e0b' },
+    call_back_later: { label: 'Call Back Later', color: '#6366f1' },
+    switched_off:    { label: 'Switched Off',    color: '#94a3b8' },
+};
+
+function CallOutcomeChart({ outcomes }) {
+    const entries = Object.entries(outcomes ?? {}).filter(([, v]) => v > 0);
+    if (entries.length === 0) {
+        return (
+            <div className="text-muted small text-center py-3">
+                No call outcomes recorded today.
+            </div>
+        );
+    }
+    const total = entries.reduce((s, [, v]) => s + Number(v), 0);
+
+    return (
+        <div className="d-flex flex-column gap-2">
+            {entries.map(([key, count]) => {
+                const cfg  = OUTCOME_CONFIG[key] ?? { label: key, color: '#64748b' };
+                const pct  = total > 0 ? Math.round((count / total) * 100) : 0;
+                return (
+                    <div key={key}>
+                        <div className="d-flex justify-content-between mb-1" style={{ fontSize: 12 }}>
+                            <span className="fw-semibold" style={{ color: cfg.color }}>{cfg.label}</span>
+                            <span className="text-muted">{count} ({pct}%)</span>
+                        </div>
+                        <div style={{ background: '#f1f5f9', borderRadius: 6, height: 8, overflow: 'hidden' }}>
+                            <div style={{
+                                width: `${pct}%`, height: '100%',
+                                background: cfg.color, borderRadius: 6,
+                                transition: 'width .4s ease',
+                            }} />
+                        </div>
+                    </div>
+                );
+            })}
+            <div className="text-muted text-end mt-1" style={{ fontSize: 11 }}>
+                Total outcomes today: {total}
+            </div>
+        </div>
+    );
+}
+
 // ─── Missed callbacks panel ───────────────────────────────────────────────────
 function MissedCallbacksPanel({ callbacks }) {
     if (!callbacks || callbacks.length === 0) {
@@ -214,9 +262,10 @@ function MissedCallbacksPanel({ callbacks }) {
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function Dashboard({ stats: initialStats, missed_callbacks: initialCallbacks, followup_calendar }) {
+export default function Dashboard({ stats: initialStats, missed_callbacks: initialCallbacks, followup_calendar, call_outcomes: initialOutcomes }) {
     const [stats,     setStats]     = useState(initialStats     ?? {});
     const [callbacks, setCallbacks] = useState(initialCallbacks ?? []);
+    const [outcomes,  setOutcomes]  = useState(initialOutcomes  ?? {});
     const missedPanelRef = useRef(null);
 
     const fetchSnapshot = useCallback(async () => {
@@ -236,6 +285,9 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
             if (Array.isArray(data.missed_callbacks)) {
                 setCallbacks(data.missed_callbacks);
             }
+            if (data.call_outcomes && typeof data.call_outcomes === 'object') {
+                setOutcomes(data.call_outcomes);
+            }
         } catch (_) {}
     }, []);
 
@@ -245,23 +297,12 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
         return () => clearInterval(t);
     }, [fetchSnapshot]);
 
-    const activeCalls = stats.active_calls ?? 0;
-    const showAlert   = (stats.followups ?? 0) > 0 || (stats.overdue ?? 0) > 0;
+    const showAlert = (stats.followups ?? 0) > 0 || (stats.overdue ?? 0) > 0;
 
     return (
         <>
             <Head title="Dashboard" />
 
-            {/* ── Call-status badges (replaces @section header_actions) ────── */}
-            <div className="d-flex align-items-center gap-2 flex-wrap mb-4">
-                <span className="badge rounded-pill text-bg-light border px-3 py-2 d-flex align-items-center gap-1">
-                    <span className="material-icons" style={{ fontSize: 15 }}>call</span>
-                    {activeCalls > 0 ? 'On Call' : 'Idle'}
-                </span>
-                <span className={`badge rounded-pill px-3 py-2 ${activeCalls > 0 ? 'text-bg-danger' : 'text-bg-success'}`}>
-                    Active Calls: {activeCalls}
-                </span>
-            </div>
 
             {/* ── Follow-up reminder alert ─────────────────────────────────── */}
             {showAlert && (
@@ -319,9 +360,9 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
                 </div>
             </div>
 
-            {/* ── Quick actions + Missed callbacks ─────────────────────────── */}
+            {/* ── Quick actions + Missed callbacks + Outcome chart ─────────── */}
             <div className="row g-3">
-                <div className="col-lg-8">
+                <div className="col-lg-4">
                     <div className="chart-card h-100">
                         <div className="chart-header mb-3">
                             <h3>Quick Actions</h3>
@@ -353,6 +394,16 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
                                 Refresh Status
                             </button>
                         </div>
+                    </div>
+                </div>
+
+                <div className="col-lg-4">
+                    <div className="chart-card h-100">
+                        <div className="chart-header mb-3">
+                            <h3>Today's Call Outcomes</h3>
+                            <p>Outcome breakdown for calls made today</p>
+                        </div>
+                        <CallOutcomeChart outcomes={outcomes} />
                     </div>
                 </div>
 

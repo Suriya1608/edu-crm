@@ -12,7 +12,7 @@
     </div>
 </div>
 
-<form id="templateForm" action="{{ route('admin.email-templates.store') }}" method="POST">
+<form id="templateForm" action="{{ route('admin.email-templates.store') }}" method="POST" data-turbo="false">
     @csrf
     <input type="hidden" name="body"          id="hiddenBody">
     <input type="hidden" name="template_type" id="hiddenTemplateType" value="simple">

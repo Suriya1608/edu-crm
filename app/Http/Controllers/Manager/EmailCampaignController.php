@@ -14,7 +14,6 @@ use App\Models\Lead;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
-use Inertia\Inertia;
 
 class EmailCampaignController extends Controller
 {
@@ -23,24 +22,9 @@ class EmailCampaignController extends Controller
         $campaigns = EmailCampaign::where('created_by', Auth::id())
             ->latest()
             ->paginate(20)
-            ->withQueryString()
-            ->through(fn($ec) => [
-                'id'               => $ec->id,
-                'name'             => $ec->name,
-                'description'      => $ec->description,
-                'template_name'    => $ec->template_name,
-                'status'           => $ec->status,
-                'recipients_count' => $ec->recipients_count,
-                'sent_count'       => $ec->sent_count,
-                'opened_count'     => $ec->opened_count,
-                'failed_count'     => $ec->failed_count,
-                'delivery_rate'    => $ec->delivery_rate,
-                'open_rate'        => $ec->open_rate,
-                'scheduled_at'     => $ec->scheduled_at?->format('d M, h:i A'),
-                'created_at'       => $ec->created_at->format('d M Y'),
-            ]);
+            ->withQueryString();
 
-        return Inertia::render('Manager/EmailCampaigns/Index', compact('campaigns'));
+        return view('manager.email-campaigns.index', compact('campaigns'));
     }
 
     public function create()
@@ -123,39 +107,12 @@ class EmailCampaignController extends Controller
         $recipients = $emailCampaign->recipients()
             ->orderByRaw("FIELD(status,'sent','opened','failed','bounced','pending')")
             ->paginate(50)
-            ->withQueryString()
-            ->through(fn($r) => [
-                'id'        => $r->id,
-                'email'     => $r->email,
-                'name'      => $r->name,
-                'status'    => $r->status,
-                'opened_at' => $r->opened_at?->format('d M, h:i A'),
-                'sent_at'   => $r->sent_at?->format('d M, h:i A'),
-            ]);
+            ->withQueryString();
 
-        $campaign = [
-            'id'               => $emailCampaign->id,
-            'name'             => $emailCampaign->name,
-            'description'      => $emailCampaign->description,
-            'template_name'    => $emailCampaign->template_name,
-            'course_filter'    => $emailCampaign->course_filter,
-            'status'           => $emailCampaign->status,
-            'recipients_count' => $emailCampaign->recipients_count,
-            'sent_count'       => $emailCampaign->sent_count,
-            'opened_count'     => $emailCampaign->opened_count,
-            'click_count'      => $emailCampaign->click_count,
-            'bounced_count'    => $emailCampaign->bounced_count,
-            'failed_count'     => $emailCampaign->failed_count,
-            'delivery_rate'    => $emailCampaign->delivery_rate,
-            'open_rate'        => $emailCampaign->open_rate,
-            'click_rate'       => $emailCampaign->click_rate,
-            'bounce_rate'      => $emailCampaign->bounce_rate,
-            'scheduled_at'     => $emailCampaign->scheduled_at?->format('d M, h:i A'),
-            'created_at'       => $emailCampaign->created_at->format('d M Y'),
-            'delete_url'       => route('manager.email-campaigns.destroy', $emailCampaign),
-        ];
-
-        return Inertia::render('Manager/EmailCampaigns/Show', compact('campaign', 'recipients'));
+        return view('manager.email-campaigns.show', [
+            'campaign'   => $emailCampaign,
+            'recipients' => $recipients,
+        ]);
     }
 
     public function destroy(EmailCampaign $emailCampaign)
@@ -173,9 +130,9 @@ class EmailCampaignController extends Controller
     // AJAX: distinct emails from Leads + Campaign Contacts with filters
     public function emailList(Request $request)
     {
-        $source     = $request->get('source', 'all');      // all | leads | campaign_contacts
-        $course     = $request->get('course');
-        $campaignId = $request->get('campaign_id');
+        $source     = $request->query('source', 'all');
+        $course     = $request->query('course');
+        $campaignId = $request->query('campaign_id');
 
         $results = collect();
 

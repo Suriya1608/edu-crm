@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Exports\ManagerLeadsExport;
 use App\Models\Lead;
 use App\Services\AuditLogService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Maatwebsite\Excel\Facades\Excel;
@@ -71,11 +72,13 @@ class LeadExportController extends Controller
                 $l->created_at->format('d M Y H:i'),
             ])->all();
 
-            return view('admin.reports.print', [
+            $pdf = Pdf::loadView('manager.leads.export-pdf', [
                 'title'   => 'Leads Export — ' . now()->format('d M Y'),
                 'headers' => $headers,
                 'rows'    => $rows,
-            ]);
+            ])->setPaper('a4', 'landscape');
+
+            return $pdf->download('leads_' . now()->format('Y-m-d') . '.pdf');
         }
 
         $filename = 'leads_' . now()->format('Y-m-d_His') . '.xlsx';
