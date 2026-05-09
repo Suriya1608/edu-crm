@@ -41,10 +41,32 @@
     })();
     </script>
 
+    {{-- Broadcast / Echo config (injected before Vite bundle so echo.js can read it synchronously) --}}
+    @php
+        $bDriver = \App\Models\Setting::get('broadcast_driver', 'null');
+        $bKey    = $bDriver === 'pusher'
+                    ? \App\Models\Setting::getSecure('pusher_app_key', '')
+                    : \App\Models\Setting::getSecure('reverb_app_key', '');
+        $bConfig = [
+            'driver'  => $bDriver,
+            'key'     => $bKey,
+            'cluster' => \App\Models\Setting::get('pusher_app_cluster', 'mt1'),
+            'reverb'  => [
+                'host'   => \App\Models\Setting::get('reverb_host', '127.0.0.1'),
+                'port'   => (int) \App\Models\Setting::get('reverb_port', '8080'),
+                'scheme' => \App\Models\Setting::get('reverb_scheme', 'http'),
+            ],
+        ];
+    @endphp
+    @if($bDriver !== 'null')
+    <script>window.__BROADCAST__ = @json($bConfig);</script>
+    @endif
+
     @vite(['resources/js/app.js'])
 </head>
 
 <body>
+    <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
     @include('layouts.manager.sidebar')
     <div class="main-content" id="mainContent">
         @include('layouts.manager.header')
@@ -57,6 +79,18 @@
                             <li>{{ $error }}</li>
                         @endforeach
                     </ul>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            @endif
+            @if (session('success'))
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    {{ session('success') }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            @endif
+            @if (session('error'))
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    {{ session('error') }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             @endif
@@ -311,6 +345,311 @@
         </div>
     </div>
 
+    {{-- AI Assistant is rendered by the React ChatWidget in inertia-app.jsx --}}
+    @if(false)
+    <button id="aiToggleBtn" title="AI Assistant" data-turbo-permanent
+        onclick="toggleAiDrawer()"
+        style="position:fixed;bottom:84px;right:20px;z-index:1070;
+               width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
+               background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;
+               display:flex;align-items:center;justify-content:center;
+               box-shadow:0 4px 20px rgba(99,102,241,.45);
+               transition:transform .2s,box-shadow .2s;">
+        <span class="material-icons" style="font-size:24px;pointer-events:none;" id="aiToggleIco">smart_toy</span>
+    </button>
+
+    {{-- Chat drawer panel --}}
+    <div id="aiChatDrawer" data-turbo-permanent
+        style="position:fixed;right:20px;top:74px;bottom:148px;width:370px;max-width:calc(100vw - 40px);
+               background:#fff;border-radius:16px;border:1px solid #e2e8f0;
+               box-shadow:0 8px 40px rgba(0,0,0,.18);
+               display:flex;flex-direction:column;z-index:1069;overflow:hidden;
+               transform:scale(.92) translateY(20px);opacity:0;pointer-events:none;
+               transition:transform .22s cubic-bezier(.34,1.36,.64,1),opacity .18s ease;">
+
+        {{-- Header --}}
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;
+                    background:linear-gradient(135deg,#6366f1,#8b5cf6);flex-shrink:0;">
+            <div style="width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,.2);
+                        display:flex;align-items:center;justify-content:center;">
+                <span class="material-icons" style="color:#fff;font-size:18px;">smart_toy</span>
+            </div>
+            <div style="flex:1;">
+                <div style="font-weight:700;font-size:14px;color:#fff;line-height:1.2;">AI Assistant</div>
+                <div style="font-size:11px;color:rgba(255,255,255,.75);">Manager mode · Claude</div>
+            </div>
+            <button onclick="clearAiDrawer()" title="New chat"
+                style="background:rgba(255,255,255,.15);border:none;border-radius:8px;color:#fff;
+                       width:30px;height:30px;cursor:pointer;display:flex;align-items:center;
+                       justify-content:center;margin-right:4px;">
+                <span class="material-icons" style="font-size:16px;">refresh</span>
+            </button>
+            <button onclick="toggleAiDrawer()" title="Close"
+                style="background:rgba(255,255,255,.15);border:none;border-radius:8px;color:#fff;
+                       width:30px;height:30px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                <span class="material-icons" style="font-size:18px;">close</span>
+            </button>
+        </div>
+
+        {{-- Quick chips --}}
+        <div style="display:flex;flex-wrap:nowrap;gap:6px;padding:8px 12px;overflow-x:auto;
+                    flex-shrink:0;border-bottom:1px solid #f1f5f9;">
+            <button onclick="aiChip('Show unassigned leads')"
+                style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;
+                       border:1px solid #e2e8f0;background:#fff;font-size:11.5px;color:#334155;
+                       cursor:pointer;white-space:nowrap;font-family:inherit;">
+                <span class="material-icons" style="font-size:13px;">person_off</span>Unassigned
+            </button>
+            <button onclick="aiChip('Show today\'s new leads')"
+                style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;
+                       border:1px solid #e2e8f0;background:#fff;font-size:11.5px;color:#334155;
+                       cursor:pointer;white-space:nowrap;font-family:inherit;">
+                <span class="material-icons" style="font-size:13px;">today</span>Today
+            </button>
+            <button onclick="aiChip('Show overdue follow-ups')"
+                style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;
+                       border:1px solid #e2e8f0;background:#fff;font-size:11.5px;color:#334155;
+                       cursor:pointer;white-space:nowrap;font-family:inherit;">
+                <span class="material-icons" style="font-size:13px;">schedule</span>Overdue
+            </button>
+            <button onclick="aiChip('Telecaller performance summary')"
+                style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;
+                       border:1px solid #e2e8f0;background:#fff;font-size:11.5px;color:#334155;
+                       cursor:pointer;white-space:nowrap;font-family:inherit;">
+                <span class="material-icons" style="font-size:13px;">leaderboard</span>Performance
+            </button>
+            <button onclick="aiChip('Lead pipeline overview this month')"
+                style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:16px;
+                       border:1px solid #e2e8f0;background:#fff;font-size:11.5px;color:#334155;
+                       cursor:pointer;white-space:nowrap;font-family:inherit;">
+                <span class="material-icons" style="font-size:13px;">bar_chart</span>Insights
+            </button>
+        </div>
+
+        {{-- Messages --}}
+        <div id="aiDrawerMessages"
+            style="flex:1;overflow-y:auto;padding:12px;display:flex;
+                   flex-direction:column;gap:10px;background:#f8fafc;">
+            <div id="aiWelcomeMsg" style="display:flex;align-items:flex-start;gap:8px;">
+                <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#8b5cf6);
+                            display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <span class="material-icons" style="font-size:14px;color:#fff;">smart_toy</span>
+                </div>
+                <div style="max-width:82%;padding:9px 12px;border-radius:12px;border-top-left-radius:3px;
+                            background:#fff;border:1px solid #e2e8f0;font-size:13px;line-height:1.55;color:#0f172a;">
+                    <strong>Hi, {{ auth()->user()->name }}!</strong><br>
+                    Ask me about leads, telecallers, or insights. Try the chips above!
+                </div>
+            </div>
+        </div>
+
+        {{-- Input --}}
+        <div style="padding:10px;border-top:1px solid #f1f5f9;display:flex;gap:7px;align-items:flex-end;flex-shrink:0;">
+            <textarea id="aiDrawerInput" rows="1" placeholder="Ask anything…"
+                style="resize:none;border:1px solid #e2e8f0;border-radius:10px;padding:8px 12px;
+                       font-size:13px;font-family:inherit;line-height:1.4;height:38px;max-height:90px;
+                       outline:none;flex:1;background:#fff;"></textarea>
+            <button id="aiDrawerSend" onclick="aiDrawerSend()" title="Send"
+                style="width:38px;height:38px;border-radius:10px;border:none;background:#6366f1;
+                       color:#fff;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+                <span class="material-icons" style="font-size:17px;">send</span>
+            </button>
+        </div>
+    </div>
+
+    <style>
+    #aiChatDrawer.ai-open {
+        transform: scale(1) translateY(0) !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+    }
+    #aiToggleBtn:hover { transform: scale(1.1) !important; }
+    .ai-dmsg-row { display:flex;align-items:flex-start;gap:8px; }
+    .ai-dmsg-row.ai-u-row { flex-direction:row-reverse; }
+    .ai-av { width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+    .ai-av-bot { background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff; }
+    .ai-av-usr { background:#0f172a;color:#fff;font-size:11px;font-weight:700; }
+    .ai-bbl { max-width:82%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.55;word-break:break-word; }
+    .ai-bbl-bot { background:#fff;border:1px solid #e2e8f0;border-top-left-radius:3px;color:#0f172a; }
+    .ai-bbl-usr { background:#6366f1;color:#fff;border-top-right-radius:3px; }
+    .ai-bbl-err { background:#fef2f2;border:1px solid #fecaca;border-top-left-radius:3px;color:#dc2626; }
+    .ai-bbl-bot p { margin:0 0 6px; }
+    .ai-bbl-bot p:last-child { margin-bottom:0; }
+    .ai-bbl-bot ul,.ai-bbl-bot ol { margin:3px 0 6px 16px;padding:0; }
+    .ai-bbl-bot li { margin-bottom:2px; }
+    .ai-bbl-bot strong { color:#0f172a; }
+    .ai-bbl-bot code { background:#f1f5f9;border-radius:3px;padding:1px 4px;font-size:12px;color:#6366f1; }
+    .ai-bbl-bot table { border-collapse:collapse;width:100%;margin:6px 0;font-size:12px; }
+    .ai-bbl-bot th { background:#f8fafc;font-weight:600; }
+    .ai-bbl-bot td,.ai-bbl-bot th { border:1px solid #e2e8f0;padding:4px 8px; }
+    .ai-bbl-bot h1,.ai-bbl-bot h2,.ai-bbl-bot h3 { font-size:14px;font-weight:700;margin:8px 0 3px; }
+    .ai-think-dot { display:inline-block;width:6px;height:6px;background:#94a3b8;border-radius:50%;margin:0 2px;animation:aiDot 1.2s infinite ease-in-out; }
+    .ai-think-dot:nth-child(2){ animation-delay:.2s; }
+    .ai-think-dot:nth-child(3){ animation-delay:.4s; }
+    @@keyframes aiDot { 0%,80%,100%{transform:translateY(0);opacity:.4} 40%{transform:translateY(-5px);opacity:1} }
+    #aiDrawerInput:focus { border-color:#6366f1 !important;box-shadow:0 0 0 2px rgba(99,102,241,.1); }
+    #aiDrawerInput:disabled { background:#f8fafc !important;color:#94a3b8; }
+    #aiDrawerSend:hover { background:#4f46e5 !important; }
+    #aiDrawerSend:disabled { background:#c7d2fe !important;cursor:not-allowed; }
+    </style>
+
+    <script data-turbo-eval="false">
+    (function () {
+        var CHAT_URL  = @json(route('manager.agent.chat'));
+        var USER_INIT = @json(strtoupper(substr(auth()->user()->name, 0, 1)));
+        var HIST_KEY  = 'mgr_ai_hist_{{ auth()->id() }}';
+
+        var _open = false, _busy = false, _history = [];
+        try { _history = JSON.parse(sessionStorage.getItem(HIST_KEY) || '[]'); } catch(e){}
+
+        // Restore previous session messages
+        if (_history.length) {
+            var wm = document.getElementById('aiWelcomeMsg');
+            if (wm) wm.style.display = 'none';
+            _history.forEach(function(h) {
+                if (h.role === 'user') _addUser(h.content);
+                else if (h.role === 'ai') _addBot(h.content, false);
+            });
+        }
+
+        function _save() { try { sessionStorage.setItem(HIST_KEY, JSON.stringify(_history)); } catch(e){} }
+        function _scroll() { var el=document.getElementById('aiDrawerMessages'); if(el) el.scrollTop=el.scrollHeight; }
+        function _esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+        function _av(cls, icon) {
+            return '<div class="ai-av '+cls+'">' + (icon ? '<span class="material-icons" style="font-size:14px;">'+icon+'</span>' : _esc(USER_INIT)) + '</div>';
+        }
+
+        function _addUser(txt) {
+            var box=document.getElementById('aiDrawerMessages');
+            var row=document.createElement('div');
+            row.className='ai-dmsg-row ai-u-row';
+            row.innerHTML=_av('ai-av-usr',null)+'<div class="ai-bbl ai-bbl-usr">'+_esc(txt)+'</div>';
+            box.appendChild(row); _scroll();
+        }
+
+        function _addBot(md, isErr) {
+            var box=document.getElementById('aiDrawerMessages');
+            var row=document.createElement('div');
+            row.className='ai-dmsg-row';
+            var cls=isErr?'ai-bbl-err':'ai-bbl-bot';
+            var ico=isErr?'error_outline':'smart_toy';
+            var html=isErr?_esc(md):(typeof marked!=='undefined'?marked.parse(md):_esc(md));
+            row.innerHTML=_av('ai-av-bot',ico)+'<div class="ai-bbl '+cls+'">'+html+'</div>';
+            box.appendChild(row); _scroll();
+        }
+
+        function _addThink() {
+            var box=document.getElementById('aiDrawerMessages');
+            var row=document.createElement('div');
+            row.className='ai-dmsg-row'; row.id='aiThinkRow';
+            row.innerHTML=_av('ai-av-bot','smart_toy')+
+                '<div class="ai-bbl ai-bbl-bot" style="padding:10px 14px;">'+
+                '<span class="ai-think-dot"></span><span class="ai-think-dot"></span><span class="ai-think-dot"></span></div>';
+            box.appendChild(row); _scroll();
+        }
+
+        function _rmThink() { var el=document.getElementById('aiThinkRow'); if(el) el.remove(); }
+
+        function _setLoading(on) {
+            _busy=on;
+            var inp=document.getElementById('aiDrawerInput');
+            var btn=document.getElementById('aiDrawerSend');
+            if(inp) inp.disabled=on;
+            if(btn) btn.disabled=on;
+        }
+
+        // ── Position drawer below actual header height ─────────────────────────
+        function _syncDrawerTop() {
+            var header = document.querySelector('.top-header');
+            var drawer = document.getElementById('aiChatDrawer');
+            if (header && drawer) {
+                drawer.style.top = (header.getBoundingClientRect().height + 4) + 'px';
+            }
+        }
+        _syncDrawerTop();
+        var _headerObs = new ResizeObserver(_syncDrawerTop);
+        var _hEl = document.querySelector('.top-header');
+        if (_hEl) _headerObs.observe(_hEl);
+
+        // ── Toggle drawer ──────────────────────────────────────────────────────
+        window.toggleAiDrawer = function() {
+            _syncDrawerTop();
+            _open=!_open;
+            var drawer=document.getElementById('aiChatDrawer');
+            var ico=document.getElementById('aiToggleIco');
+            if(drawer) drawer.classList.toggle('ai-open',_open);
+            if(ico) ico.textContent=_open?'close':'smart_toy';
+            if(_open) { setTimeout(function(){ var i=document.getElementById('aiDrawerInput'); if(i) i.focus(); _scroll(); },230); }
+        };
+
+        window.clearAiDrawer = function() {
+            _history=[]; _save();
+            var box=document.getElementById('aiDrawerMessages');
+            if(!box) return;
+            box.innerHTML='<div id="aiWelcomeMsg" style="display:flex;align-items:flex-start;gap:8px;">'+
+                _av('ai-av-bot','smart_toy')+
+                '<div class="ai-bbl ai-bbl-bot">Chat cleared. How can I help you?</div></div>';
+            var i=document.getElementById('aiDrawerInput'); if(i) i.focus();
+        };
+
+        // ── Textarea auto-resize + Enter to send ───────────────────────────────
+        document.addEventListener('DOMContentLoaded', function() {
+            var ta=document.getElementById('aiDrawerInput');
+            if(!ta) return;
+            ta.addEventListener('input', function(){ this.style.height='auto'; this.style.height=Math.min(this.scrollHeight,90)+'px'; });
+            ta.addEventListener('keydown', function(e){ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); aiDrawerSend(); } });
+        });
+
+        // ── Send message ───────────────────────────────────────────────────────
+        window.aiDrawerSend = async function() {
+            if(_busy) return;
+            var inp=document.getElementById('aiDrawerInput');
+            if(!inp) return;
+            var msg=inp.value.trim(); if(!msg) return;
+            inp.value=''; inp.style.height='auto';
+            _addUser(msg); _addThink(); _setLoading(true);
+
+            var apiHist=_history
+                .filter(function(h){ return h.role==='user'||h.role==='ai'; })
+                .map(function(h){ return {role:h.role==='ai'?'assistant':h.role,content:h.content}; });
+
+            var csrf='';
+            var csrfEl=document.querySelector('meta[name="csrf-token"]');
+            if(csrfEl) csrf=csrfEl.getAttribute('content');
+
+            try {
+                var res=await fetch(CHAT_URL,{
+                    method:'POST',
+                    headers:{'Content-Type':'application/json','X-CSRF-TOKEN':csrf,'Accept':'application/json'},
+                    body:JSON.stringify({message:msg,history:apiHist})
+                });
+                var data=await res.json();
+                _rmThink();
+                var isErr=data.type==='error';
+                _addBot(data.message||'No response.',isErr);
+                _history.push({role:'user',content:msg});
+                _history.push({role:isErr?'error':'ai',content:data.message||''});
+                if(_history.length>20) _history=_history.slice(_history.length-20);
+                _save();
+            } catch(err) {
+                _rmThink();
+                _addBot('Network error. Please try again.',true);
+            } finally {
+                _setLoading(false);
+                var i=document.getElementById('aiDrawerInput'); if(i) i.focus();
+            }
+        };
+
+        window.aiChip = function(text) {
+            if(!_open) toggleAiDrawer();
+            setTimeout(function(){ var i=document.getElementById('aiDrawerInput'); if(i) i.value=text; aiDrawerSend(); }, _open?0:260);
+        };
+    })();
+    </script>
+
+    @endif
+
     {{-- data-turbo-eval="false" keeps GC as a true singleton across Turbo navigations --}}
     <script src="{{ asset('js/global-call.js') }}" data-turbo-eval="false"></script>
 
@@ -334,12 +673,71 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+        // ── Sidebar helpers ──────────────────────────────────────────────────────
+        function openSidebar() {
+            const sidebar  = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar)  sidebar.classList.add('show');
+            if (backdrop) backdrop.classList.add('show');
+        }
+
+        function closeSidebar() {
+            const sidebar  = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar)  sidebar.classList.remove('show');
+            if (backdrop) backdrop.classList.remove('show');
+        }
+
         function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            if (sidebar) {
-                sidebar.classList.toggle('show');
+            const sidebar     = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            if (!sidebar) return;
+
+            if (window.innerWidth > 991) {
+                const collapsed = sidebar.classList.toggle('desktop-collapsed');
+                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
+                // Persist across Turbo navigations
+                try { localStorage.setItem('mgrSidebarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+            } else {
+                if (sidebar.classList.contains('show')) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
             }
         }
+
+        // Restore sidebar collapse state after every Turbo Drive navigation
+        function _restoreSidebarState() {
+            if (window.innerWidth <= 991) return;
+            const sidebar     = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            if (!sidebar) return;
+            try {
+                const collapsed = localStorage.getItem('mgrSidebarCollapsed') === '1';
+                sidebar.classList.toggle('desktop-collapsed', collapsed);
+                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
+            } catch(e) {}
+        }
+
+        document.addEventListener('turbo:load', _restoreSidebarState);
+        document.addEventListener('DOMContentLoaded', _restoreSidebarState);
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                if (window.innerWidth > 991) {
+                    const sidebar     = document.getElementById('sidebar');
+                    const mainContent = document.getElementById('mainContent');
+                    if (sidebar && sidebar.classList.contains('desktop-collapsed')) {
+                        sidebar.classList.remove('desktop-collapsed');
+                        mainContent && mainContent.classList.remove('desktop-expanded');
+                        try { localStorage.setItem('mgrSidebarCollapsed', '0'); } catch(e) {}
+                    }
+                } else {
+                    closeSidebar();
+                }
+            }
+        });
     </script>
 
     @if (auth()->check() && auth()->user()->role === 'manager')
@@ -620,6 +1018,19 @@
 
         poll();
         setInterval(poll, 30000);
+
+        // ── Pusher real-time: fire poll immediately on new inbound message ───
+        // app.js loads echo.js; DOMContentLoaded fires after module scripts.
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!window.Echo) return;
+            try {
+                window.Echo.private('whatsapp.inbox.{{ auth()->id() }}')
+                    .listen('.message.new', function (data) {
+                        poll();
+                        window.dispatchEvent(new CustomEvent('wa:message.new', { detail: data }));
+                    });
+            } catch (e) {}
+        });
     })();
     </script>
     @endauth

@@ -20,6 +20,10 @@ function formatDuration(seconds) {
 }
 
 export default function CallEfficiency({ filters, filterOptions, rows }) {
+    const exportUrl = (fmt) => {
+        const p = new URLSearchParams({ date_range: filters?.date_range ?? '30', source: filters?.source ?? 'all', telecaller: filters?.telecaller ?? 'all' });
+        return `/manager/reports/export/call-efficiency/${fmt}?${p}`;
+    };
     const totalCalls     = (rows ?? []).reduce((s, r) => s + (r.total_calls ?? 0), 0);
     const completedCalls = (rows ?? []).reduce((s, r) => s + (r.completed_calls ?? 0), 0);
     const missedCalls    = (rows ?? []).reduce((s, r) => s + (r.missed_calls ?? 0), 0);
@@ -74,8 +78,11 @@ export default function CallEfficiency({ filters, filterOptions, rows }) {
             <div className="custom-table">
                 <div className="table-header">
                     <h3>Call Efficiency by Telecaller</h3>
-                    <a href="/manager/reports/export/call-efficiency/excel" className="btn btn-sm btn-outline-success">
+                    <a href={exportUrl('excel')} className="btn btn-sm btn-outline-success">
                         <span className="material-icons me-1" style={{ fontSize: 15 }}>download</span>Export CSV
+                    </a>
+                    <a href={exportUrl('pdf')} className="btn btn-sm btn-primary" target="_blank">
+                        <span className="material-icons me-1" style={{ fontSize: 15 }}>picture_as_pdf</span>Export PDF
                     </a>
                 </div>
                 <div className="table-responsive">

@@ -12,6 +12,9 @@
             <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
             <p>Manager Panel</p>
         </div>
+        <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu">
+            <span class="material-icons">close</span>
+        </button>
     </div>
 
     <nav class="sidebar-nav">
@@ -50,6 +53,9 @@
             <a href="{{ route('manager.leads.duplicates') }}"
                 class="nav-item {{ request()->routeIs('manager.leads.duplicates') ? 'active' : '' }}"
                 style="padding:8px 12px 8px 36px;font-size:13px;">Duplicate Leads</a>
+            <a href="{{ route('manager.leads.import') }}"
+                class="nav-item {{ request()->routeIs('manager.leads.import*') ? 'active' : '' }}"
+                style="padding:8px 12px 8px 36px;font-size:13px;">Bulk Import</a>
         </div>
 
         <a href="{{ route('manager.telecallers') }}"
@@ -158,6 +164,16 @@
                 class="nav-item {{ $callLogsActive && $callScope === 'missed' ? 'active' : '' }}"
                 style="padding:8px 12px 8px 36px;font-size:13px;">Missed</a>
         </div>
+
+        {{-- ── AI Assistant ── --}}
+        <div class="nav-section-label">AI</div>
+
+        <a href="{{ route('manager.agent.index') }}"
+            class="nav-item {{ request()->routeIs('manager.agent.*') ? 'active' : '' }}">
+            <span class="material-icons">smart_toy</span>
+            <span>AI Assistant</span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;margin-left:auto;">NEW</span>
+        </a>
 
         {{-- ── Analytics ── --}}
         <div class="nav-section-label">Analytics</div>

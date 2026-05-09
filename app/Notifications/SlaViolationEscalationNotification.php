@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Models\Lead;
 use App\Models\Setting;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -48,15 +49,26 @@ class SlaViolationEscalationNotification extends Notification implements ShouldQ
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)
+        $leadId = $this->meta['lead_id'] ?? null;
+        $lead   = $leadId ? Lead::with(['assignedUser', 'assignedBy'])->find($leadId) : null;
+        $level  = (int) ($this->meta['sla_level'] ?? 1);
+
+        $siteUrl   = rtrim(Setting::get('site_url', config('app.url')), '/');
+        $actionUrl = $this->link ?? null;
+
+        return (new MailMessage)
             ->subject($this->title)
-            ->line($this->message);
-
-        if (!empty($this->link)) {
-            $mail->action('Review Escalation', $this->link);
-        }
-
-        return $mail;
+            ->view('emails.sla-escalation', [
+                'title'          => $this->title,
+                'message'        => $this->message,
+                'level'          => $level,
+                'leadName'       => $lead?->name ?? 'N/A',
+                'leadCode'       => $lead?->lead_code ?? ($leadId ? '#' . $leadId : 'N/A'),
+                'telecallerName' => $lead?->assignedUser?->name,
+                'managerName'    => $lead?->assignedBy?->name,
+                'escalatedAt'    => now()->format('d M Y, h:i A'),
+                'actionUrl'      => $actionUrl,
+            ]);
     }
 
     public function toArray(object $notifiable): array

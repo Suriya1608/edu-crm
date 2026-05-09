@@ -1,5 +1,39 @@
 import { Head, Link, router } from '@inertiajs/react';
 
+const TC_PALETTE = [
+    { bg: '#ede9fe', color: '#6d28d9' }, // violet
+    { bg: '#dbeafe', color: '#1d4ed8' }, // blue
+    { bg: '#d1fae5', color: '#065f46' }, // green
+    { bg: '#fef3c7', color: '#92400e' }, // amber
+    { bg: '#fce7f3', color: '#9d174d' }, // pink
+    { bg: '#cffafe', color: '#155e75' }, // cyan
+    { bg: '#fee2e2', color: '#991b1b' }, // red
+    { bg: '#f3e8ff', color: '#7e22ce' }, // purple
+];
+
+function tcColor(name) {
+    if (!name) return TC_PALETTE[0];
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return TC_PALETTE[h % TC_PALETTE.length];
+}
+
+function TelecallerBadge({ name }) {
+    if (!name) return <span className="text-muted">—</span>;
+    const { bg, color } = tcColor(name);
+    const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    return (
+        <div className="d-flex align-items-center gap-2">
+            <span style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 28, height: 28, borderRadius: '50%',
+                background: bg, color, fontSize: 11, fontWeight: 700, flexShrink: 0,
+            }}>{initials}</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color }}>{name}</span>
+        </div>
+    );
+}
+
 const BADGE_MAP = {
     completed: { cls: 'bg-success',          label: 'Completed' },
     overdue:   { cls: 'bg-danger',            label: 'Overdue'   },
@@ -88,7 +122,7 @@ export default function Index({ scope, title, followups }) {
                                             <small className="text-muted">{item.lead_code || '—'}</small>
                                         </td>
                                         <td>{item.lead_phone || '—'}</td>
-                                        <td>{item.telecaller_name || '—'}</td>
+                                        <td><TelecallerBadge name={item.telecaller_name} /></td>
                                         <td style={{ maxWidth: 180 }}>
                                             <span className="text-truncate d-inline-block" style={{ maxWidth: 160 }} title={item.remarks}>
                                                 {item.remarks || '—'}

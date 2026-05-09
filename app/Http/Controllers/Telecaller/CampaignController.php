@@ -112,13 +112,63 @@ class CampaignController extends Controller
             ->where('assigned_to', Auth::id())
             ->findOrFail($contactId);
 
-        $activities      = $contact->activities()->with('createdBy')->latest()->get();
-        $contactMessages = WhatsAppMessage::where('campaign_contact_id', $contact->id)
-            ->latest()->limit(50)->get()->reverse()->values();
+        $activities = $contact->activities()->with('createdBy')->latest()->get()
+            ->map(fn($a) => [
+                'id'          => $a->id,
+                'type'        => $a->type,
+                'description' => $a->description,
+                'meta'        => $a->meta,
+                'created_by'  => $a->createdBy?->name ?? '—',
+                'created_at'  => $a->created_at?->diffForHumans(),
+            ]);
 
-        $provider = 'tcn';
+        $whatsappMessages = WhatsAppMessage::where('campaign_contact_id', $contact->id)
+            ->latest()->limit(50)->get()->reverse()->values()
+            ->map(fn($m) => [
+                'id'             => $m->id,
+                'body'           => $m->message_body,
+                'direction'      => $m->direction,
+                'time'           => $m->created_at?->format('h:i A'),
+                'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
+                'media_type'     => $m->media_type,
+                'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
+                'media_filename' => $m->media_filename,
+            ]);
 
-        return view('telecaller.campaigns.contact', compact('campaign', 'contact', 'activities', 'contactMessages', 'provider'));
+        $encCampaign = encrypt($campaign->id);
+        $encContact  = encrypt($contact->id);
+
+        return Inertia::render('Telecaller/Campaigns/Contact', [
+            'campaign' => [
+                'id'           => $campaign->id,
+                'encrypted_id' => $encCampaign,
+                'name'         => $campaign->name,
+            ],
+            'contact' => [
+                'id'            => $contact->id,
+                'encrypted_id'  => $encContact,
+                'name'          => $contact->name,
+                'phone'         => $contact->phone,
+                'email'         => $contact->email,
+                'course'        => $contact->course,
+                'city'          => $contact->city,
+                'status'        => $contact->status,
+                'call_count'    => $contact->call_count,
+                'next_followup' => $contact->next_followup?->format('Y-m-d'),
+                'followup_time' => $contact->followup_time,
+            ],
+            'activities'       => $activities,
+            'whatsapp_messages'=> $whatsappMessages,
+            'urls' => [
+                'wa_store'      => route('telecaller.campaigns.contact.whatsapp.store',  [$encCampaign, $encContact]),
+                'wa_media'      => route('telecaller.campaigns.contact.whatsapp.media',  [$encCampaign, $encContact]),
+                'wa_fetch'      => route('telecaller.campaigns.contact.whatsapp.fetch',  [$encCampaign, $encContact]),
+                'add_note'      => route('telecaller.campaigns.contact.note',            [$encCampaign, $encContact]),
+                'change_status' => route('telecaller.campaigns.contact.status',          [$encCampaign, $encContact]),
+                'set_followup'  => route('telecaller.campaigns.contact.followup',        [$encCampaign, $encContact]),
+                'log_call'      => route('telecaller.campaigns.contact.call',            [$encCampaign, $encContact]),
+            ],
+        ]);
     }
 
     // ─── Log a Note ──────────────────────────────────────────────────────────

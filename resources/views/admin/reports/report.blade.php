@@ -56,14 +56,15 @@
             </div>
         </form>
 
+        @php $rp = Auth::user()->role === 'report_viewer' ? 'report_viewer' : 'admin'; @endphp
         <div class="d-flex justify-content-end gap-2 mt-3">
             <a class="btn btn-sm btn-outline-secondary"
-                href="{{ route('admin.reports.export', ['report' => $reportKey, 'format' => 'excel'] + request()->query()) }}">
+                href="{{ route($rp . '.reports.export', ['report' => $reportKey, 'format' => 'excel'] + request()->query()) }}">
                 <span class="material-icons me-1" style="font-size:16px;">file_download</span>
                 Export Excel
             </a>
             <a class="btn btn-sm btn-primary"
-                href="{{ route('admin.reports.export', ['report' => $reportKey, 'format' => 'pdf'] + request()->query()) }}"
+                href="{{ route($rp . '.reports.export', ['report' => $reportKey, 'format' => 'pdf'] + request()->query()) }}"
                 target="_blank">
                 <span class="material-icons me-1" style="font-size:16px;">picture_as_pdf</span>
                 Export PDF
@@ -116,9 +117,9 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         (function() {
+            function _init() {
             const ctx = document.getElementById('adminReportChart');
             if (!ctx) return;
 
@@ -163,6 +164,15 @@
                     }
                 }
             });
+            } // end _init
+            if (typeof Chart !== 'undefined') {
+                _init();
+            } else {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+                s.onload = _init;
+                document.head.appendChild(s);
+            }
         })();
     </script>
 @endsection

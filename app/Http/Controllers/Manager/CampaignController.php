@@ -73,8 +73,8 @@ class CampaignController extends Controller
             'created_by'  => Auth::id(),
         ]);
 
-        return redirect()->route('manager.campaigns.import', encrypt($campaign->id))
-            ->with('success', 'Campaign created. Now upload your student database.');
+        session()->flash('success', 'Campaign created. Now upload your student database.');
+        return Inertia::location(route('manager.campaigns.import', encrypt($campaign->id)));
     }
 
     // ─── Show Campaign Detail ─────────────────────────────────────────────────

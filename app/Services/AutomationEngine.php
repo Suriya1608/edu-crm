@@ -153,8 +153,15 @@ class AutomationEngine
             return;
         }
 
+        $this->escalateTelecallerSlaBreaches();
+        $this->escalateManagerSlaBreaches();
+    }
+
+    // Level 0 → Level 1: telecaller didn't respond → notify manager
+    private function escalateTelecallerSlaBreaches(): void
+    {
         $slaMinutes = $this->settings->responseSlaMinutes();
-        $threshold = now()->subMinutes($slaMinutes);
+        $threshold  = now()->subMinutes($slaMinutes);
 
         $leads = Lead::query()
             ->whereNull('sla_escalated_at')
@@ -173,26 +180,77 @@ class AutomationEngine
             return;
         }
 
+        $managerSlaMinutes = $this->settings->managerSlaMinutes();
         $managerIds = $leads->pluck('assigned_by')->filter()->unique()->values();
-        $managers = User::whereIn('id', $managerIds)->where('role', 'manager')->where('status', 1)->get()->keyBy('id');
+        $managers   = User::whereIn('id', $managerIds)->where('role', 'manager')->where('status', 1)->get()->keyBy('id');
 
         foreach ($leads as $lead) {
             $manager = $managers->get((int) $lead->assigned_by);
             if ($manager) {
                 $manager->notify(new SlaViolationEscalationNotification(
                     title: 'Lead Response SLA Breach',
-                    message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' has not been contacted within ' . $slaMinutes . ' minutes.',
+                    message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' was not contacted by telecaller within ' . $slaMinutes . ' minutes.',
                     link: route('manager.leads.show', encrypt($lead->id)),
                     meta: [
-                        'type' => 'response_sla',
-                        'lead_id' => $lead->id,
+                        'type'      => 'response_sla',
+                        'lead_id'   => $lead->id,
                         'lead_code' => $lead->lead_code,
+                        'sla_level' => 1,
                         'sla_minutes' => $slaMinutes,
                     ]
                 ));
             }
 
-            $lead->update(['sla_escalated_at' => now()]);
+            $updates = ['sla_escalated_at' => now()];
+            if (Schema::hasColumn('leads', 'sla_level')) {
+                $updates['sla_level']              = 1;
+                $updates['sla_manager_deadline_at'] = now()->addMinutes($managerSlaMinutes);
+            }
+            $lead->update($updates);
+        }
+    }
+
+    // Level 1 → Level 2: manager didn't respond → notify admin + report_viewer
+    private function escalateManagerSlaBreaches(): void
+    {
+        if (!Schema::hasColumn('leads', 'sla_level') || !Schema::hasColumn('leads', 'sla_manager_deadline_at')) {
+            return;
+        }
+
+        $leads = Lead::query()
+            ->where('sla_level', 1)
+            ->where('sla_manager_deadline_at', '<=', now())
+            ->whereIn('status', ['new', 'open'])
+            ->latest('id')
+            ->limit(100)
+            ->get();
+
+        if ($leads->isEmpty()) {
+            return;
+        }
+
+        $escalatees = User::whereIn('role', ['admin', 'report_viewer'])
+            ->where('status', 1)
+            ->get();
+
+        $managerSlaMinutes = $this->settings->managerSlaMinutes();
+
+        foreach ($leads as $lead) {
+            if ($escalatees->isNotEmpty()) {
+                Notification::send($escalatees, new SlaViolationEscalationNotification(
+                    title: 'Critical: Manager SLA Breach',
+                    message: 'Lead ' . ($lead->lead_code ?? ('#' . $lead->id)) . ' was escalated to manager but still not contacted within ' . $managerSlaMinutes . ' minutes.',
+                    link: route('admin.leads.show', encrypt($lead->id)),
+                    meta: [
+                        'type'      => 'manager_sla',
+                        'lead_id'   => $lead->id,
+                        'lead_code' => $lead->lead_code,
+                        'sla_level' => 2,
+                    ]
+                ));
+            }
+
+            $lead->update(['sla_level' => 2]);
         }
     }
 }

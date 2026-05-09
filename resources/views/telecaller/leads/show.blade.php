@@ -580,8 +580,13 @@
                 } finally { setSending(false); }
             }
 
-            const pollTimer = setInterval(poll, 15000);
+            const pollTimer = setInterval(poll, 7000);
             document.addEventListener('visibilitychange', () => { if (document.hidden) clearInterval(pollTimer); });
+
+            // Real-time: inbox Echo channel (in layout) fires this event when a message arrives
+            window.addEventListener('wa:message.new', function(e) {
+                if (!e.detail || e.detail.lead_id == {{ $lead->id }}) { poll(); }
+            });
 
             async function poll() {
                 try {

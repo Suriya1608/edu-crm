@@ -156,6 +156,24 @@ function ProfileCard({ lead, telecallers, assignUrl }) {
     );
 }
 
+// ─── WaDateSeparator ──────────────────────────────────────────────────────────
+function WaDateSeparator({ dateStr }) {
+    const today     = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    const d = new Date(dateStr);
+    const label = d.toDateString() === today.toDateString()     ? 'Today'
+                : d.toDateString() === yesterday.toDateString() ? 'Yesterday'
+                : dateStr;
+    return (
+        <div style={{ display:'flex', alignItems:'center', gap:8, margin:'10px 4px', color:'#64748b', fontSize:12 }}>
+            <div style={{ flex:1, height:1, background:'#e2e8f0' }} />
+            <span style={{ background:'#f0f2f5', padding:'2px 12px', borderRadius:10, whiteSpace:'nowrap' }}>{label}</span>
+            <div style={{ flex:1, height:1, background:'#e2e8f0' }} />
+        </div>
+    );
+}
+
 // ─── WaBubble ─────────────────────────────────────────────────────────────────
 function WaBubble({ msg }) {
     const out = msg.direction !== 'inbound';
@@ -244,7 +262,12 @@ function WaChat({ lead, initialMessages, templateName, urls, initialSessionActiv
         } catch (_) {}
     }, [urls.wa_fetch]);
 
-    useEffect(() => { const t = setInterval(poll, 15_000); return () => clearInterval(t); }, [poll]);
+    useEffect(() => {
+        const t = setInterval(poll, 7_000);
+        const onWaMsg = (e) => { if (!e.detail || e.detail.lead_id == lead.id) poll(); };
+        window.addEventListener('wa:message.new', onWaMsg);
+        return () => { clearInterval(t); window.removeEventListener('wa:message.new', onWaMsg); };
+    }, [poll]);
 
     function addToast(msg, color) {
         const id = Date.now();
@@ -385,7 +408,18 @@ function WaChat({ lead, initialMessages, templateName, urls, initialSessionActiv
                                 <small>Start the conversation below</small>
                             </div>
                         )}
-                        {messages.map(m => <WaBubble key={m.id} msg={m} />)}
+                        {(() => {
+                            let lastDate = null;
+                            return messages.flatMap(m => {
+                                const items = [];
+                                if (m.date && m.date !== lastDate) {
+                                    lastDate = m.date;
+                                    items.push(<WaDateSeparator key={`d-${m.date}`} dateStr={m.date} />);
+                                }
+                                items.push(<WaBubble key={m.id} msg={m} />);
+                                return items;
+                            });
+                        })()}
                     </div>
 
                     <div className="wa-chat-footer">
@@ -561,8 +595,9 @@ const STATUS_OPTIONS_MGR = [
 ];
 
 function StatusPanel({ lead, url, onClose }) {
-    const form          = useForm({ status: lead.status, next_followup: '', followup_time: '', remarks: '' });
+    const form          = useForm({ status: lead.status, quota: lead.quota ?? '', next_followup: '', followup_time: '', remarks: '' });
     const needsFollowup = form.data.status === 'follow_up';
+    const needsQuota    = form.data.status === 'converted';
 
     function submit(e) {
         e.preventDefault();
@@ -590,7 +625,7 @@ function StatusPanel({ lead, url, onClose }) {
             </div>
 
             {/* Status pills */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: needsFollowup ? 12 : 14 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, marginBottom: 14 }}>
                 {STATUS_OPTIONS_MGR.map(s => {
                     const active = form.data.status === s.value;
                     return (
@@ -611,6 +646,36 @@ function StatusPanel({ lead, url, onClose }) {
                     );
                 })}
             </div>
+
+            {/* Quota picker — shown only when converting */}
+            {needsQuota && (
+                <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: 12, marginBottom: 12 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                        <span className="material-icons" style={{ fontSize: 13, verticalAlign: 'middle', marginRight: 3 }}>how_to_reg</span>
+                        Quota <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                        {[{ value: 'management', label: 'Management' }, { value: 'counselling', label: 'Counselling' }].map(q => {
+                            const active = form.data.quota === q.value;
+                            return (
+                                <button key={q.value} type="button"
+                                    onClick={() => form.setData('quota', q.value)}
+                                    style={{
+                                        flex: 1, padding: '7px 0', borderRadius: 8,
+                                        border: `1.5px solid ${active ? '#8b5cf6' : '#e2e8f0'}`,
+                                        background: active ? '#8b5cf6' : '#f8fafc',
+                                        color: active ? '#fff' : '#64748b',
+                                        fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                    }}>
+                                    {active && <span className="material-icons" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>check</span>}
+                                    {q.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {form.errors.quota && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{form.errors.quota}</div>}
+                </div>
+            )}
 
             {/* Follow-up fields */}
             {needsFollowup && (
@@ -640,7 +705,7 @@ function StatusPanel({ lead, url, onClose }) {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>Cancel</button>
                 <button type="submit" className="btn btn-sm btn-primary"
-                    disabled={form.processing || form.data.status === lead.status}>
+                    disabled={form.processing || form.data.status === lead.status || (needsQuota && !form.data.quota)}>
                     {form.processing ? 'Saving…' : 'Apply Status'}
                 </button>
             </div>

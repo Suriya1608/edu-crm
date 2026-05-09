@@ -10,13 +10,14 @@ const MANUAL_CATEGORIES = [
 ];
 
 export default function Create({ courses, academic_years, store_url }) {
+    const activeYear = academic_years?.find(y => y.is_active);
+
     const form = useForm({
         name:             '',
         phone:            '',
         email:            '',
         course_id:        '',
-        academic_year_id: '',
-        quota:            '',
+        academic_year_id: activeYear ? String(activeYear.id) : '',
         source_category:  '',
         source_detail:    '',
     });
@@ -26,7 +27,6 @@ export default function Create({ courses, academic_years, store_url }) {
         form.post(store_url);
     }
 
-    const activeYear      = academic_years?.find(y => y.is_active);
     const selectedCat     = MANUAL_CATEGORIES.find(c => c.value === form.data.source_category);
     const showDetailField = selectedCat && selectedCat.detailPlaceholder !== null;
 
@@ -100,18 +100,6 @@ export default function Create({ courses, academic_years, store_url }) {
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                             </select>
-                        </div>
-
-                        <div className="col-md-6">
-                            <label className="form-label">Quota</label>
-                            <select className={`form-select${form.errors.quota ? ' is-invalid' : ''}`}
-                                value={form.data.quota}
-                                onChange={e => form.setData('quota', e.target.value)}>
-                                <option value="">— Select Quota —</option>
-                                <option value="management">Management</option>
-                                <option value="counselling">Counselling</option>
-                            </select>
-                            {form.errors.quota && <div className="invalid-feedback">{form.errors.quota}</div>}
                         </div>
 
                         {/* ── Source ── */}

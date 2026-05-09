@@ -25,6 +25,7 @@ use App\Mail\LeadEmail;
 use App\Models\EmailTemplate;
 use App\Services\AuditLogService;
 use App\Services\LeadAssignmentService;
+use App\Services\WhatsAppService;
 use App\Services\LeadDefaults;
 use App\Models\TelecallerUnavailability;
 use Illuminate\Support\Facades\Mail;
@@ -205,6 +206,11 @@ class LeadController extends Controller
         $lead->status = 'assigned';
         $lead->save();
 
+        // Send WhatsApp welcome template on first assignment
+        if (!$oldAssignedTo && $lead->phone) {
+            $this->sendWelcomeWhatsApp($lead);
+        }
+
         AuditLogService::log('lead.assigned', 'Lead', $lead->id, ['assigned_to' => $oldAssignedTo], ['assigned_to' => $newUser->id, 'assigned_to_name' => $newUser->name]);
 
         $newUser->notify(new LeadAssignmentNotification(
@@ -260,8 +266,17 @@ class LeadController extends Controller
         $rawPhone = preg_replace('/\D+/', '', $request->phone);
         $phone    = (strlen($rawPhone) === 10) ? '+91' . $rawPhone : '+' . ltrim($rawPhone, '+');
 
-        // Duplicate detection: flag if phone already exists in DB
-        $isDuplicate = Lead::where('phone', $phone)->exists();
+        // Block duplicate phone and email before creating
+        $errors = [];
+        if (Lead::where('phone', $phone)->exists()) {
+            $errors['phone'] = 'This mobile number already exists in the system.';
+        }
+        if ($request->filled('email') && Lead::where('email', $request->email)->exists()) {
+            $errors['email'] = 'This email address already exists in the system.';
+        }
+        if (!empty($errors)) {
+            throw \Illuminate\Validation\ValidationException::withMessages($errors);
+        }
 
         $lead = Lead::create([
             'lead_code'        => $this->generateLeadCode(),
@@ -269,7 +284,7 @@ class LeadController extends Controller
             'phone'            => $phone,
             'email'            => $request->email,
             'course_id'        => $request->course_id ?: null,
-            'academic_year_id' => $request->academic_year_id ?: null,
+            'academic_year_id' => $request->academic_year_id ?: AcademicYear::current()?->id,
             'quota'            => $request->quota ?: null,
             'source'           => 'manual',
             'source_type'      => 'manual',
@@ -277,12 +292,7 @@ class LeadController extends Controller
             'source_detail'    => $request->source_detail ?: null,
             'status'           => LeadDefaults::defaultStatus(),
             'assigned_by'      => Auth::id(),
-            'is_duplicate'     => $isDuplicate,
         ]);
-
-        if ($isDuplicate) {
-            AuditLogService::log('lead.duplicate_detected', 'Lead', $lead->id, [], ['phone' => $phone]);
-        }
 
         LeadActivity::create([
             'lead_id'       => $lead->id,
@@ -292,11 +302,7 @@ class LeadController extends Controller
             'activity_time' => now(),
         ]);
 
-        $successMsg = $isDuplicate
-            ? 'Lead Added — Warning: this phone number already exists in the system (flagged as duplicate).'
-            : 'Lead Added Successfully';
-
-        return redirect()->route('manager.leads')->with('success', $successMsg);
+        return redirect()->route('manager.leads')->with('success', 'Lead Added Successfully');
     }
     private function generateLeadCode()
     {
@@ -502,6 +508,7 @@ class LeadController extends Controller
                 'direction'      => $m->direction,
                 'body'           => $m->message_body,
                 'time'           => $m->created_at?->format('h:i A'),
+                'date'           => $m->created_at?->format('d M Y'),
                 'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
                 'media_type'     => $m->media_type,
                 'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
@@ -613,13 +620,16 @@ class LeadController extends Controller
 
         $request->validate([
             'status' => 'required|in:new,assigned,contacted,interested,not_interested,converted,follow_up',
+            'quota'  => 'required_if:status,converted|nullable|in:management,counselling',
         ]);
-
 
         $oldStatus = $lead->status;
 
-        // Update lead status
+        // Update lead status (and quota when converting)
         $lead->status = $request->status;
+        if ($request->status === 'converted' && $request->filled('quota')) {
+            $lead->quota = $request->quota;
+        }
 
         // If followup selected
         if ($request->status === 'follow_up') {
@@ -852,6 +862,10 @@ class LeadController extends Controller
             return response()->json(['success' => false, 'message' => 'Please select a telecaller.'], 422);
         }
 
+        if ($request->status === 'converted') {
+            return response()->json(['success' => false, 'message' => 'To convert a lead, open the lead profile and select a quota first.'], 422);
+        }
+
         try {
             $id = decrypt($request->lead_id);
         } catch (\Exception $e) {
@@ -872,6 +886,10 @@ class LeadController extends Controller
             $telecaller    = User::findOrFail($telecallerId);
             $oldAssignedTo = $lead->assigned_to;
             $lead->assigned_to = $telecaller->id;
+
+            if (!$oldAssignedTo && $lead->phone) {
+                $this->sendWelcomeWhatsApp($lead);
+            }
 
             $telecaller->notify(new LeadAssignmentNotification(
                 title:   'Lead Assigned by Manager',
@@ -980,5 +998,46 @@ class LeadController extends Controller
             'time' => optional($whatsappMessage->created_at)->format('H:i'),
             'wa_url' => $phone ? ('https://wa.me/' . $phone . '?text=' . urlencode($whatsappMessage->message_body)) : null,
         ]);
+    }
+
+    // ── Send WhatsApp welcome template to a newly assigned lead ───────────────
+    private function sendWelcomeWhatsApp(\App\Models\Lead $lead): void
+    {
+        try {
+            $wa = app(WhatsAppService::class);
+            if (!$wa->isConfigured()) {
+                return;
+            }
+
+            $templateName = (string) Setting::get('meta_whatsapp_template_name', 'welcome_template');
+
+            $result = $wa->send(
+                toPhone:       $lead->phone,
+                message:       '',
+                inbound24h:    false,
+                recipientName: $lead->name,
+            );
+
+            if ($result['ok']) {
+                $templateBody = (string) Setting::get('meta_whatsapp_template_body', '');
+                $displayBody  = $templateBody !== ''
+                    ? str_replace('{{1}}', $lead->name, $templateBody)
+                    : "📋 Template sent ({$templateName}) — welcome message on assignment";
+                WhatsAppMessage::create([
+                    'lead_id'             => $lead->id,
+                    'from_number'         => $lead->phone,
+                    'message_body'        => $displayBody,
+                    'direction'           => 'outbound',
+                    'provider_message_id' => $result['provider_message_id'],
+                    'provider'            => $result['provider'],
+                    'sent_at'             => now(),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp welcome on assignment failed', [
+                'lead_id' => $lead->id,
+                'error'   => $e->getMessage(),
+            ]);
+        }
     }
 }

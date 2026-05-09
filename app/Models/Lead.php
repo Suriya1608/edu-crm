@@ -27,15 +27,18 @@ class Lead extends Model
         'assigned_to',
         'manager_assigned_at',
         'status',
-        'next_followup',
         'sla_escalated_at',
+        'sla_level',
+        'sla_manager_deadline_at',
         'is_duplicate',
         'merged_into_lead_id',
     ];
 
     protected $casts = [
-        'sla_escalated_at'     => 'datetime',
-        'manager_assigned_at'  => 'datetime',
+        'sla_escalated_at'      => 'datetime',
+        'sla_level'             => 'integer',
+        'sla_manager_deadline_at' => 'datetime',
+        'manager_assigned_at'   => 'datetime',
         'is_duplicate'        => 'boolean',
         'email_valid'         => 'boolean',
         'merged_into_lead_id'  => 'integer',
