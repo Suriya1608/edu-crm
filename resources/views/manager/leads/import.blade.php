@@ -51,21 +51,39 @@
     {{-- Upload form + sample download ────────────────────────────────────── --}}
     <form method="POST" action="{{ route('manager.leads.import.preview') }}"
           enctype="multipart/form-data"
-          class="d-flex align-items-center gap-2 flex-wrap"
           id="previewForm">
         @csrf
-        <input type="file" name="file" class="form-control form-control-sm"
-               style="max-width:280px;" accept=".xlsx,.csv" required>
-        <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" id="previewBtn">
-            <span class="spinner-border spinner-border-sm d-none" id="previewSpinner" role="status"></span>
-            <span class="material-icons" style="font-size:16px;">preview</span>
-            Preview
-        </button>
-        <a href="{{ route('manager.leads.import.sample') }}"
-           class="btn btn-outline-success btn-sm d-flex align-items-center gap-1">
-            <span class="material-icons" style="font-size:16px;">download</span>
-            Download Sample Excel
-        </a>
+        <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label fw-semibold" style="font-size:13px;">Academic Year <span class="text-danger">*</span></label>
+                <select name="academic_year_id" class="form-select form-select-sm" required>
+                    <option value="">— Select Academic Year —</option>
+                    @foreach ($academicYears ?? [] as $ay)
+                        <option value="{{ $ay->id }}"
+                            {{ (old('academic_year_id', $academicYearId ?? '') == $ay->id) ? 'selected' : '' }}>
+                            {{ $ay->name }}{{ $ay->is_active ? ' (Active)' : '' }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label fw-semibold" style="font-size:13px;">Select File</label>
+                <input type="file" name="file" class="form-control form-control-sm"
+                       accept=".xlsx,.csv" required>
+            </div>
+            <div class="col-auto d-flex gap-2">
+                <button class="btn btn-primary btn-sm d-flex align-items-center gap-1" id="previewBtn">
+                    <span class="spinner-border spinner-border-sm d-none" id="previewSpinner" role="status"></span>
+                    <span class="material-icons" style="font-size:16px;">preview</span>
+                    Preview
+                </button>
+                <a href="{{ route('manager.leads.import.sample') }}"
+                   class="btn btn-outline-success btn-sm d-flex align-items-center gap-1">
+                    <span class="material-icons" style="font-size:16px;">download</span>
+                    Download Sample Excel
+                </a>
+            </div>
+        </div>
     </form>
 </div>
 
@@ -91,6 +109,22 @@
         ];
     @endphp
 
+    @php
+        $dupCount    = collect($enriched)->filter(fn($e) => $e['duplicate'])->count();
+        $importCount = count($enriched) - $dupCount;
+    @endphp
+
+    @if ($dupCount > 0)
+        <div class="alert d-flex align-items-center gap-2 mb-3"
+             style="background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:13px;border-radius:10px;">
+            <span class="material-icons" style="font-size:18px;flex-shrink:0;">block</span>
+            <div>
+                <strong>{{ $dupCount }} duplicate row(s) detected</strong> — highlighted below and will be <strong>skipped</strong>.
+                Duplicates are matched by Phone or Email against existing leads and within the file itself.
+            </div>
+        </div>
+    @endif
+
     @if ($unmatchedCourses > 0)
         <div class="alert d-flex align-items-center gap-2 mb-3"
              style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:13px;border-radius:10px;">
@@ -106,7 +140,14 @@
     <div class="custom-table mb-4">
         <div class="table-header">
             <h3>Preview — {{ count($enriched) }} rows</h3>
-            <span class="text-muted" style="font-size:12px;">Review carefully before confirming</span>
+            <span class="text-muted" style="font-size:12px;">
+                @if ($dupCount > 0)
+                    <span style="color:#dc2626;">{{ $dupCount }} duplicate</span> &nbsp;·&nbsp;
+                    <span style="color:#16a34a;">{{ $importCount }} to import</span>
+                @else
+                    Review carefully before confirming
+                @endif
+            </span>
         </div>
 
         <div class="table-responsive">
@@ -119,18 +160,19 @@
                         <th>Email</th>
                         <th>Course</th>
                         <th>Source</th>
+                        <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach ($enriched as $i => $e)
-                        <tr>
+                        <tr @if ($e['duplicate']) style="background:#fef9f9;" @endif>
                             <td class="text-muted" style="font-size:12px;">{{ $i + 1 }}</td>
-                            <td class="fw-semibold">{{ $e['row'][0] ?? '—' }}</td>
-                            <td>{{ $e['row'][1] ?? '—' }}</td>
-                            <td class="text-muted" style="font-size:12px;">{{ $e['row'][2] ?? '—' }}</td>
+                            <td class="fw-semibold" @if ($e['duplicate']) style="opacity:.55;" @endif>{{ $e['row'][0] ?? '—' }}</td>
+                            <td @if ($e['duplicate']) style="opacity:.55;" @endif>{{ $e['row'][1] ?? '—' }}</td>
+                            <td class="text-muted" style="font-size:12px;" @if ($e['duplicate']) style="opacity:.55;" @endif>{{ $e['row'][2] ?? '—' }}</td>
 
                             {{-- Course with match indicator --}}
-                            <td>
+                            <td @if ($e['duplicate']) style="opacity:.55;" @endif>
                                 @if ($e['course_name'] === '')
                                     <span class="text-muted">—</span>
                                 @elseif ($e['course_matched'])
@@ -148,7 +190,7 @@
                             </td>
 
                             {{-- Source with mapped badge --}}
-                            <td>
+                            <td @if ($e['duplicate']) style="opacity:.55;" @endif>
                                 @php
                                     $b = $sourceBadgeMap[$e['source_mapped']] ?? ['label' => $e['source_raw'] ?: 'Other', 'bg' => '#f8fafc', 'color' => '#94a3b8'];
                                 @endphp
@@ -162,6 +204,23 @@
                                     <span class="text-muted" style="font-size:12px;">—</span>
                                 @endif
                             </td>
+
+                            {{-- Duplicate / Ready status --}}
+                            <td>
+                                @if ($e['duplicate'])
+                                    <span class="badge d-inline-flex align-items-center gap-1"
+                                          style="background:#fef2f2;color:#dc2626;border:1px solid #fca5a5;font-size:11px;font-weight:600;">
+                                        <span class="material-icons" style="font-size:12px;">block</span>
+                                        {{ $e['duplicate_reason'] }}
+                                    </span>
+                                @else
+                                    <span class="badge d-inline-flex align-items-center gap-1"
+                                          style="background:#f0fdf4;color:#16a34a;border:1px solid #86efac;font-size:11px;font-weight:600;">
+                                        <span class="material-icons" style="font-size:12px;">check_circle</span>
+                                        Ready
+                                    </span>
+                                @endif
+                            </td>
                         </tr>
                     @endforeach
                 </tbody>
@@ -172,16 +231,28 @@
              style="background:#f8fafc;">
             <small class="text-muted">
                 <span class="material-icons" style="font-size:14px;vertical-align:middle;color:#16a34a;">check_circle</span> = course matched &nbsp;
-                <span class="material-icons" style="font-size:14px;vertical-align:middle;color:#d97706;">warning</span> = course not found (will import without course)
+                <span class="material-icons" style="font-size:14px;vertical-align:middle;color:#d97706;">warning</span> = course not found (will import without course) &nbsp;
+                <span class="material-icons" style="font-size:14px;vertical-align:middle;color:#dc2626;">block</span> = duplicate (skipped)
             </small>
-            <form method="POST" action="{{ route('manager.leads.import.store') }}" id="confirmForm">
+            <form method="POST" action="{{ route('manager.leads.import.store') }}" id="confirmForm" data-turbo="false">
                 @csrf
-                <input type="hidden" name="leads_data" value="{{ json_encode($rows) }}">
-                <button class="btn btn-success btn-sm px-4 d-flex align-items-center gap-1" id="confirmBtn">
-                    <span class="spinner-border spinner-border-sm d-none" id="confirmSpinner" role="status"></span>
-                    <span class="material-icons" style="font-size:16px;">check_circle</span>
-                    Confirm &amp; Import {{ count($enriched) }} Leads
-                </button>
+                <input type="hidden" name="leads_data" value="{{ json_encode($cleanRows ?? []) }}">
+                <input type="hidden" name="academic_year_id" value="{{ $academicYearId ?? '' }}">
+                @if ($importCount > 0)
+                    <button class="btn btn-success btn-sm px-4 d-flex align-items-center gap-1" id="confirmBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="confirmSpinner" role="status"></span>
+                        <span class="material-icons" style="font-size:16px;">check_circle</span>
+                        Confirm &amp; Import {{ $importCount }} Lead(s)
+                        @if ($dupCount > 0)
+                            <span style="font-size:11px;opacity:.8;">({{ $dupCount }} skipped)</span>
+                        @endif
+                    </button>
+                @else
+                    <div class="alert alert-warning mb-0" style="font-size:13px;">
+                        <span class="material-icons me-1" style="font-size:16px;vertical-align:middle;">info</span>
+                        All rows are duplicates — nothing to import.
+                    </div>
+                @endif
             </form>
         </div>
     </div>
@@ -196,14 +267,32 @@
 
 @push('scripts')
 <script>
-    document.getElementById('previewForm')?.addEventListener('submit', function () {
-        document.getElementById('previewSpinner').classList.remove('d-none');
-        document.getElementById('previewBtn').disabled = true;
-    });
+(function () {
+    // Preview: intercept button click and use native form.submit() so Turbo Drive
+    // cannot intercept the multipart file-upload (data-turbo="false" alone is
+    // unreliable for enctype=multipart/form-data in some Turbo versions).
+    var previewBtn  = document.getElementById('previewBtn');
+    var previewForm = document.getElementById('previewForm');
+    if (previewBtn && previewForm) {
+        previewBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (!previewForm.checkValidity()) {
+                previewForm.reportValidity();
+                return;
+            }
+            document.getElementById('previewSpinner').classList.remove('d-none');
+            previewBtn.disabled = true;
+            // HTMLFormElement.prototype.submit bypasses Turbo (no submit event fired)
+            HTMLFormElement.prototype.submit.call(previewForm);
+        });
+    }
+
+    // Confirm: same pattern for the confirm form after preview
     document.getElementById('confirmForm')?.addEventListener('submit', function () {
         document.getElementById('confirmSpinner').classList.remove('d-none');
         document.getElementById('confirmBtn').disabled = true;
     });
+})();
 </script>
 @endpush
 

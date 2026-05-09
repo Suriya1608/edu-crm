@@ -191,16 +191,12 @@ export default function Show({ campaign, contacts, stats, filters }) {
                                             <td className="text-muted small">{fmtDate(contact.next_followup)}</td>
                                             <td className="text-muted small">{contact.call_count}</td>
                                             <td>
-                                                {/*
-                                                  * Contact detail page is still Blade — use a plain <a> so
-                                                  * the browser does a full load into the Blade layout.
-                                                  */}
-                                                <a
+                                                <Link
                                                     href={`/telecaller/campaigns/${campaign.encrypted_id}/contacts/${contact.encrypted_id}`}
                                                     className="btn btn-sm btn-outline-primary"
                                                 >
                                                     <span className="material-icons" style={{ fontSize: 15 }}>open_in_new</span>
-                                                </a>
+                                                </Link>
                                             </td>
                                         </tr>
                                     ))}

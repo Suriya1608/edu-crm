@@ -132,7 +132,7 @@
                                     </span>
                                 </td>
                                 <td class="small">
-                                    {{ $contact->assignedUser?->name ?? '<span class="text-muted">Unassigned</span>' }}
+                                    {!! $contact->assignedUser?->name ?? '<span class="text-muted">Unassigned</span>' !!}
                                 </td>
                                 <td class="text-center">
                                     <span class="badge bg-light text-dark border">{{ $contact->call_count }}</span>

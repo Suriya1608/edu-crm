@@ -37,7 +37,11 @@ document.getElementById("leadForm").addEventListener("submit", function(e) {
     })
     .then(response => response.json())
     .then(data => {
-        alert(JSON.stringify(data));
+        if (data.success) {
+            alert("Success: " + data.message);
+        } else {
+            alert("Error: " + data.message);
+        }
         console.log(data);
     })
     .catch(error => {

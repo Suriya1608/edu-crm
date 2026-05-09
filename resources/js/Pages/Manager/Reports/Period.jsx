@@ -38,6 +38,10 @@ function PeriodTable({ title, rows, colLabel }) {
 
 export default function Period({ filters, filterOptions, daily, weekly, monthly }) {
     const [tab, setTab] = useState('daily');
+    const exportUrl = (fmt) => {
+        const p = new URLSearchParams({ date_range: filters?.date_range ?? '30', source: filters?.source ?? 'all', telecaller: filters?.telecaller ?? 'all' });
+        return `/manager/reports/export/period/${fmt}?${p}`;
+    };
 
     return (
         <>
@@ -61,8 +65,11 @@ export default function Period({ filters, filterOptions, daily, weekly, monthly 
                         {label}
                     </button>
                 ))}
-                <a href="/manager/reports/export/period/excel" className="btn btn-sm btn-outline-success ms-auto">
+                <a href={exportUrl('excel')} className="btn btn-sm btn-outline-success ms-auto">
                     <span className="material-icons me-1" style={{ fontSize: 15 }}>download</span>Export CSV
+                </a>
+                <a href={exportUrl('pdf')} className="btn btn-sm btn-primary" target="_blank">
+                    <span className="material-icons me-1" style={{ fontSize: 15 }}>picture_as_pdf</span>Export PDF
                 </a>
             </div>
 

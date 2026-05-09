@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 // ─── Template quick-replies ───────────────────────────────────────────────────
@@ -516,15 +516,14 @@ export default function Index({
                                         <div className="wa-chat-head-phone">{activeLead.phone}</div>
                                     </div>
                                     <div className="wa-chat-head-actions">
-                                        <a
-                                            href={activeLead.lead_url}
+                                        <button
+                                            type="button"
                                             className="btn btn-sm btn-outline-primary"
-                                            target="_blank"
-                                            rel="noreferrer"
+                                            onClick={() => router.visit(activeLead.lead_url)}
                                         >
-                                            <span className="material-icons" style={{ fontSize: 16 }}>open_in_new</span>
+                                            <span className="material-icons" style={{ fontSize: 16 }}>person</span>
                                             Lead Profile
-                                        </a>
+                                        </button>
                                     </div>
                                 </div>
 

@@ -82,6 +82,17 @@
                 </div>
 
                 <div class="col-12">
+                    <label class="form-label fw-semibold">Template Message Body</label>
+                    <textarea class="form-control font-monospace" rows="3"
+                              name="meta_whatsapp_template_body"
+                              placeholder="e.g. Hello {{1}}, thank you for your interest in our programs!">{{ $templateBody }}</textarea>
+                    <small class="text-muted">
+                        Copy the exact body text of your approved template from WhatsApp Manager. Use <code>{{1}}</code> where the contact's name appears.
+                        This text will be shown in the chat when a template is sent.
+                    </small>
+                </div>
+
+                <div class="col-12">
                     <div class="alert alert-warning mb-0 border-0" style="background:#fff8e1;">
                         <div class="d-flex align-items-center gap-2 mb-2">
                             <span class="material-icons text-warning" style="font-size:20px;">webhook</span>

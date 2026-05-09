@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>TCN Softphone</title>
+    <title>Softphone</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <style>
@@ -94,7 +94,7 @@
 <div class="sp-hdr">
     <div class="sp-hdr-title">
         <span class="material-icons" style="font-size:17px;">phone</span>
-        TCN Softphone
+        Softphone
     </div>
     <button class="sp-min-btn" id="spMinBtn" title="Minimize">
         <span class="material-icons" style="font-size:17px;" id="spMinIcon">remove</span>

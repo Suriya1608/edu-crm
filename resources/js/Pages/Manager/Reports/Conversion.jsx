@@ -18,6 +18,10 @@ const STATUS_COLORS = {
 };
 
 export default function Conversion({ filters, filterOptions, statusRows, teleRows }) {
+    const exportUrl = (fmt) => {
+        const p = new URLSearchParams({ date_range: filters?.date_range ?? '30', source: filters?.source ?? 'all', telecaller: filters?.telecaller ?? 'all' });
+        return `/manager/reports/export/conversion/${fmt}?${p}`;
+    };
     return (
         <>
             <Head title="Conversion Report" />
@@ -38,8 +42,11 @@ export default function Conversion({ filters, filterOptions, statusRows, teleRow
                     <div className="custom-table">
                         <div className="table-header">
                             <h3>Lead Status Breakdown</h3>
-                            <a href="/manager/reports/export/conversion/excel" className="btn btn-sm btn-outline-success">
+                            <a href={exportUrl('excel')} className="btn btn-sm btn-outline-success">
                                 <span className="material-icons me-1" style={{ fontSize: 15 }}>download</span>CSV
+                            </a>
+                            <a href={exportUrl('pdf')} className="btn btn-sm btn-primary" target="_blank">
+                                <span className="material-icons me-1" style={{ fontSize: 15 }}>picture_as_pdf</span>PDF
                             </a>
                         </div>
                         <div className="table-responsive">

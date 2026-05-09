@@ -272,8 +272,20 @@ export default function Index({ scope, title, followups }) {
                         <tbody>
                             {followups.data.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="text-center py-4 text-muted">
-                                        No followups found.
+                                    <td colSpan={7}>
+                                        <div style={{ textAlign: 'center', padding: '52px 0 44px' }}>
+                                            <div style={{ width: 72, height: 72, borderRadius: 20,
+                                                background: '#f0fdf4', display: 'flex', alignItems: 'center',
+                                                justifyContent: 'center', margin: '0 auto 16px' }}>
+                                                <span className="material-icons" style={{ fontSize: 36, color: '#86efac' }}>event_available</span>
+                                            </div>
+                                            <div style={{ fontSize: 15, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                                All clear!
+                                            </div>
+                                            <div style={{ fontSize: 13, color: '#94a3b8', maxWidth: 260, margin: '0 auto' }}>
+                                                No follow-ups found in this view. Check another tab or schedule one from a lead.
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : followups.data.map((item, idx) => {

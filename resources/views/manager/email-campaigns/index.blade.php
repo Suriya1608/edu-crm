@@ -99,14 +99,7 @@
                                             class="btn btn-sm btn-outline-primary">
                                             <span class="material-icons" style="font-size:15px;">bar_chart</span>
                                         </a>
-                                        <form action="{{ route('manager.email-campaigns.destroy', $ec) }}"
-                                            method="POST"
-                                            onsubmit="return confirm('Delete this campaign?')">
-                                            @csrf @method('DELETE')
-                                            <button class="btn btn-sm btn-outline-danger">
-                                                <span class="material-icons" style="font-size:15px;">delete</span>
-                                            </button>
-                                        </form>
+
                                     </div>
                                 </td>
                             </tr>

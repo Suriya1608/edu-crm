@@ -44,6 +44,21 @@
         This script tag renders ONCE for the entire tab lifetime.
         React handles all navigation — no page reloads after this point.
     --}}
+    @php
+        $bDriver = \App\Models\Setting::get('broadcast_driver', 'null');
+        $bKey    = $bDriver === 'pusher'
+                    ? \App\Models\Setting::getSecure('pusher_app_key', '')
+                    : \App\Models\Setting::getSecure('reverb_app_key', '');
+        $bConfig = [
+            'driver'  => $bDriver,
+            'key'     => $bKey,
+            'cluster' => \App\Models\Setting::get('pusher_app_cluster', 'mt1'),
+        ];
+    @endphp
+    @if($bDriver !== 'null')
+    <script>window.__BROADCAST__ = @json($bConfig);</script>
+    @endif
+
     @vite(['resources/js/inertia-app.jsx'])
 </head>
 
@@ -227,6 +242,8 @@
     </script>
     <style>@keyframes tcnBtnPulse{0%,100%{opacity:1}50%{opacity:.55}}</style>
     @endif
+
+    {{-- AI Assistant for managers is rendered by the React ChatWidget in inertia-app.jsx --}}
 
     @if (auth()->check() && auth()->user()->role === 'telecaller')
         {{-- global-call.js runs once — in SPA there is no re-evaluation risk --}}
@@ -449,10 +466,66 @@
 
     {{-- Sidebar toggle --}}
     <script>
-        function toggleSidebar() {
-            var sidebar = document.getElementById('sidebar');
-            if (sidebar) sidebar.classList.toggle('show');
+        function openSidebar() {
+            var sidebar  = document.getElementById('sidebar');
+            var backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar)  sidebar.classList.add('show');
+            if (backdrop) backdrop.classList.add('show');
         }
+
+        function closeSidebar() {
+            var sidebar  = document.getElementById('sidebar');
+            var backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar)  sidebar.classList.remove('show');
+            if (backdrop) backdrop.classList.remove('show');
+        }
+
+        function toggleSidebar() {
+            var sidebar     = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
+            if (!sidebar) return;
+
+            if (window.innerWidth > 991) {
+                var collapsed = sidebar.classList.toggle('desktop-collapsed');
+                if (mainContent) mainContent.classList.toggle('desktop-expanded', collapsed);
+                try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
+            } else {
+                if (sidebar.classList.contains('show')) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
+            }
+        }
+
+        // Restore collapse state on load (persists across Inertia navigations)
+        (function () {
+            if (window.innerWidth <= 991) return;
+            var sidebar     = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
+            if (!sidebar) return;
+            try {
+                var collapsed = localStorage.getItem('sidebarCollapsed') === '1';
+                sidebar.classList.toggle('desktop-collapsed', collapsed);
+                if (mainContent) mainContent.classList.toggle('desktop-expanded', collapsed);
+            } catch(e) {}
+        })();
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                if (window.innerWidth > 991) {
+                    var sidebar     = document.getElementById('sidebar');
+                    var mainContent = document.getElementById('mainContent');
+                    if (sidebar && sidebar.classList.contains('desktop-collapsed')) {
+                        sidebar.classList.remove('desktop-collapsed');
+                        if (mainContent) mainContent.classList.remove('desktop-expanded');
+                        try { localStorage.setItem('sidebarCollapsed', '0'); } catch(e) {}
+                    }
+                } else {
+                    closeSidebar();
+                }
+            }
+        });
     </script>
 
     {{-- The Blade-sidebar link guard lives in inertia-app.jsx (router.on('before')).
@@ -485,6 +558,131 @@
 
     {{-- Flash toasts — reads from Inertia shared props via window.__inertiaFlash injected by React --}}
     <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:1090;" id="toastContainer"></div>
+
+    {{-- WhatsApp Real-Time Inbound Notifications (Pusher + fallback polling) --}}
+    @auth
+    @php $waRole = auth()->user()->role; @endphp
+    @if($waRole === 'telecaller' || $waRole === 'manager')
+    <div id="waToastStack" style="position:fixed;top:76px;right:20px;z-index:9999;width:320px;display:flex;flex-direction:column;gap:8px;pointer-events:none;"></div>
+    <script>
+    (function () {
+        @if($waRole === 'telecaller')
+        const pollUrl = @json(route('telecaller.whatsapp.inbox-poll'));
+        @else
+        const pollUrl = @json(route('manager.whatsapp.inbox-poll'));
+        @endif
+
+        const LS_KEY = 'wa_notif_ts_{{ auth()->id() }}';
+        let   lastTs   = localStorage.getItem(LS_KEY) || null;
+        let   audioCtx = null;
+        const shownIds = new Set();
+
+        function playWaSound() {
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                [[1100, 0], [880, 0.18]].forEach(function(pair) {
+                    const osc  = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.connect(gain); gain.connect(audioCtx.destination);
+                    osc.type = 'sine'; osc.frequency.value = pair[0];
+                    const t = audioCtx.currentTime + pair[1];
+                    gain.gain.setValueAtTime(0, t);
+                    gain.gain.linearRampToValueAtTime(0.35, t + 0.01);
+                    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+                    osc.start(t); osc.stop(t + 0.22);
+                });
+            } catch (e) {}
+        }
+
+        function esc(s) {
+            return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function showToast(title, message, link) {
+            const stack = document.getElementById('waToastStack');
+            if (!stack) return;
+            const div = document.createElement('div');
+            div.style.cssText = 'background:#fff;border:1px solid #e2e8f0;border-left:4px solid #25D366;border-radius:10px;padding:12px 14px;box-shadow:0 4px 16px rgba(0,0,0,0.13);pointer-events:auto;animation:waSlideIn .25s ease;';
+            div.innerHTML =
+                '<div style="display:flex;align-items:flex-start;gap:10px;">' +
+                  '<span class="material-icons" style="color:#25D366;font-size:22px;flex-shrink:0;margin-top:1px;">chat</span>' +
+                  '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-weight:700;font-size:13px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(title) + '</div>' +
+                    '<div style="font-size:12px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(message) + '</div>' +
+                    (link ? '<a href="' + esc(link) + '" style="display:inline-block;margin-top:6px;font-size:12px;font-weight:600;color:#6366f1;text-decoration:none;">Open Chat &rarr;</a>' : '') +
+                  '</div>' +
+                  '<button onclick="this.parentElement.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:20px;line-height:1;padding:0;flex-shrink:0;">&times;</button>' +
+                '</div>';
+            stack.appendChild(div);
+            setTimeout(function() { try { div.remove(); } catch(e){} }, 9000);
+        }
+
+        async function poll() {
+            try {
+                const url = pollUrl + (lastTs ? '?after=' + encodeURIComponent(lastTs) : '');
+                const res = await fetch(url, { headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.ok) return;
+
+                const currentPath = window.location.pathname;
+                const items = (data.items || []).filter(function(item) {
+                    if (!item.id || shownIds.has(item.id)) return false;
+                    if (item.link) {
+                        try { if (new URL(item.link).pathname === currentPath) return false; } catch(e) {}
+                    }
+                    return true;
+                });
+                items.forEach(function(item) { if (item.id) shownIds.add(item.id); });
+
+                if (items.length > 0) {
+                    playWaSound();
+                    if (data.is_first) {
+                        showToast(
+                            items.length + ' unread WhatsApp message' + (items.length > 1 ? 's' : ''),
+                            'Messages received while you were away.',
+                            null
+                        );
+                    } else {
+                        items.forEach(function(item) { showToast(item.title, item.message, item.link); });
+                    }
+                }
+
+                if (data.ts) {
+                    lastTs = data.ts;
+                    localStorage.setItem(LS_KEY, data.ts);
+                }
+            } catch (e) {}
+        }
+
+        if (!document.getElementById('waToastStyle')) {
+            const s = document.createElement('style');
+            s.id = 'waToastStyle';
+            s.textContent = '@keyframes waSlideIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}';
+            document.head.appendChild(s);
+        }
+
+        poll();
+        setInterval(poll, 30000);
+
+        // ── Pusher real-time: subscribe after ES module scripts execute ──────────
+        // <script type="module"> (Vite bundle) executes before DOMContentLoaded,
+        // so window.Echo is guaranteed set by the time this listener fires.
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!window.Echo) return;
+            try {
+                window.Echo.private('whatsapp.inbox.{{ auth()->id() }}')
+                    .listen('.message.new', function (data) {
+                        poll();
+                        // Relay to any open React chat window on this page
+                        window.dispatchEvent(new CustomEvent('wa:message.new', { detail: data }));
+                    });
+            } catch (e) {}
+        });
+    })();
+    </script>
+    @endif
+    @endauth
 
 </body>
 </html>

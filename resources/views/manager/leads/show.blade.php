@@ -778,7 +778,12 @@
                 } catch (_) { /* silent on network errors */ }
             }
 
-            setInterval(poll, 15000);
+            setInterval(poll, 7000);
+
+            // Real-time: inbox Echo channel (in layout) fires this event when a message arrives
+            window.addEventListener('wa:message.new', function(e) {
+                if (!e.detail || e.detail.lead_id == {{ $lead->id }}) { poll(); }
+            });
 
             function showWaError(msg) {
                 const err = document.createElement('div');

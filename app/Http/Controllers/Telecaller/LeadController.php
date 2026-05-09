@@ -288,6 +288,7 @@ class LeadController extends Controller
                     'body'           => $m->message_body,
                     'direction'      => $m->direction,
                     'time'           => $m->created_at?->format('h:i A'),
+                    'date'           => $m->created_at?->format('d M Y'),
                     'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
                     'media_type'     => $m->media_type,
                     'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
@@ -593,6 +594,7 @@ class LeadController extends Controller
         $id = decrypt($encryptedId);
         $request->validate([
             'status'        => 'required',
+            'quota'         => 'required_if:status,converted|nullable|in:management,counselling',
             'next_followup' => 'nullable|date',
             'followup_time' => 'nullable|date_format:H:i',
             'remarks'       => 'nullable|string',
@@ -603,7 +605,12 @@ class LeadController extends Controller
 
         $oldStatus = $lead->status;
 
-        $lead->update(['status' => $request->status]);
+        // Save quota when converting
+        if ($request->status === 'converted' && $request->filled('quota')) {
+            $lead->quota = $request->quota;
+        }
+        $lead->status = $request->status;
+        $lead->save();
 
         // Track seat enrollment on conversion
         if ($request->status === 'converted' && $oldStatus !== 'converted') {
@@ -663,10 +670,11 @@ class LeadController extends Controller
             ->findOrFail($id);
 
         $lead->activities()->create([
-            'user_id' => Auth::id(),
-            'type' => 'note',
-            'title' => 'Note Added',
-            'description' => $request->note
+            'user_id'       => Auth::id(),
+            'type'          => 'note',
+            'title'         => 'Note Added',
+            'description'   => $request->note,
+            'activity_time' => now(),
         ]);
 
         return back()->with('success', 'Note added');

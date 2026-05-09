@@ -6,6 +6,7 @@ use App\Models\CallLog;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\Setting;
+use App\Models\TcnRelayClient;
 use App\Models\TcnUserAccount;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -30,21 +31,67 @@ class TcnController extends Controller
 
     public function authRedirect(): RedirectResponse
     {
-        $clientId    = Setting::getSecure('tcn_client_id', env('TCN_CLIENT_ID'));
-        $redirectUri = Setting::get('tcn_redirect_uri', env('TCN_REDIRECT_URI'));
+        $clientId  = Setting::getSecure('tcn_client_id', env('TCN_CLIENT_ID'));
+        $relayUri  = $this->relayUri();
 
-        $state = Str::random(32);
-        session(['tcn_oauth_state' => $state]);
+        // Encode this client's callback URL into state so the relay knows where to forward
+        $csrf  = Str::random(32);
+        $state = $csrf . '|' . base64_encode(route('tcn.auth.callback'));
+        session(['tcn_oauth_state' => $csrf]);
 
         $url = 'https://auth.tcn.com/auth?' . http_build_query([
             'response_type' => 'code',
             'client_id'     => $clientId,
-            'redirect_uri'  => $redirectUri,
+            'redirect_uri'  => $relayUri,
             'scope'         => 'openid offline_access',
             'state'         => $state,
         ]);
 
         return redirect($url);
+    }
+
+    // ---------------------------------------------------------------
+    // OAuth Relay — single URL registered with TCN, forwards to client
+    // Route: GET /tcn/auth/relay   (no auth)
+    // ---------------------------------------------------------------
+
+    public function authRelay(Request $request): RedirectResponse
+    {
+        $state = $request->query('state', '');
+        $code  = $request->query('code');
+        $error = $request->query('error');
+
+        // state format: {csrf}|{base64(return_callback_url)}
+        $parts = explode('|', $state, 2);
+        if (count($parts) !== 2 || empty($parts[1])) {
+            abort(400, 'Invalid relay state — missing return URL.');
+        }
+
+        $returnCallback = base64_decode($parts[1]);
+        if (!filter_var($returnCallback, FILTER_VALIDATE_URL)) {
+            abort(400, 'Invalid return URL in relay state.');
+        }
+
+        // Extract domain from the return URL
+        $parsed = parse_url($returnCallback);
+        $domain = ($parsed['scheme'] ?? 'https') . '://' . ($parsed['host'] ?? '');
+        if (!empty($parsed['port'])) {
+            $domain .= ':' . $parsed['port'];
+        }
+
+        // Allow if it's this server itself; otherwise must be in the whitelist
+        $ownDomain = rtrim(config('app.url'), '/');
+        if (rtrim($domain, '/') !== rtrim($ownDomain, '/')) {
+            $client = TcnRelayClient::findByDomain($domain);
+            if (!$client || !$client->is_active) {
+                abort(403, 'Domain "' . $domain . '" is not registered for the TCN relay.');
+            }
+            $client->update(['last_relayed_at' => now()]);
+        }
+
+        // Forward code + state (and any error) to the client's own callback
+        $params = array_filter(['code' => $code, 'state' => $state, 'error' => $error]);
+        return redirect($returnCallback . '?' . http_build_query($params));
     }
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -54,7 +101,7 @@ class TcnController extends Controller
     public function authCallback(Request $request): RedirectResponse
     {
         $code  = $request->query('code');
-        $state = $request->query('state');
+        $state = $request->query('state', '');
 
         // Detect per-user flow (admin connecting a user's account)
         $userId      = session('tcn_oauth_user_id');
@@ -71,8 +118,10 @@ class TcnController extends Controller
             return redirect($errorRoute)->with('error', 'TCN OAuth cancelled or failed.');
         }
 
-        // CSRF state check
-        if ($state && $state !== session('tcn_oauth_state')) {
+        // CSRF check — state is now "{csrf}|{base64(return_url)}", extract just the csrf part
+        $stateParts = explode('|', $state, 2);
+        $csrfToken  = $stateParts[0] ?? '';
+        if ($csrfToken && $csrfToken !== session('tcn_oauth_state')) {
             session()->forget(['tcn_oauth_state', 'tcn_oauth_user_id', 'tcn_oauth_encrypted_id']);
             return redirect($errorRoute)->with('error', 'TCN OAuth state mismatch. Please try again.');
         }
@@ -81,8 +130,8 @@ class TcnController extends Controller
 
         $clientId     = Setting::getSecure('tcn_client_id',     env('TCN_CLIENT_ID'));
         $clientSecret = Setting::getSecure('tcn_client_secret', env('TCN_CLIENT_SECRET'));
-        // Must exactly match the redirect_uri sent during the authorize request
-        $redirectUri  = route('tcn.auth.callback');
+        // Must exactly match the redirect_uri sent during the authorize request (the relay URL)
+        $redirectUri  = $this->relayUri();
 
         $response = Http::asForm()->post(self::AUTH_URL, [
             'grant_type'    => 'authorization_code',
@@ -185,14 +234,13 @@ class TcnController extends Controller
     {
         $userId = decrypt($encryptedId);
 
-        $clientId    = Setting::getSecure('tcn_client_id', env('TCN_CLIENT_ID'));
-        // Always use the static callback URI that is registered in TCN's OAuth app.
-        // Dynamic URIs like /tcn/callback/{encryptedId} cause redirect_uri mismatch errors.
-        $redirectUri = route('tcn.auth.callback');
+        $clientId  = Setting::getSecure('tcn_client_id', env('TCN_CLIENT_ID'));
+        $relayUri  = $this->relayUri();
 
-        $state = Str::random(32);
+        $csrf  = Str::random(32);
+        $state = $csrf . '|' . base64_encode(route('tcn.auth.callback'));
         session([
-            'tcn_oauth_state'         => $state,
+            'tcn_oauth_state'         => $csrf,
             'tcn_oauth_user_id'       => $userId,       // resolved later in authCallback
             'tcn_oauth_encrypted_id'  => $encryptedId,  // for redirect back to user edit page
         ]);
@@ -200,7 +248,7 @@ class TcnController extends Controller
         $url = 'https://auth.tcn.com/auth?' . http_build_query([
             'response_type' => 'code',
             'client_id'     => $clientId,
-            'redirect_uri'  => $redirectUri,
+            'redirect_uri'  => $relayUri,
             'scope'         => 'openid offline_access',
             'state'         => $state,
         ]);
@@ -1844,5 +1892,15 @@ class TcnController extends Controller
             'tcn_username'   => $account->tcn_username,
             'caller_id'      => Setting::get('tcn_caller_id', env('TCN_CALLER_ID', '')),
         ]);
+    }
+
+    // ---------------------------------------------------------------
+    // The single redirect_uri registered with TCN — all OAuth flows
+    // route through this. Falls back to this app's own relay route.
+    // ---------------------------------------------------------------
+
+    private function relayUri(): string
+    {
+        return rtrim(Setting::get('tcn_relay_url', env('TCN_RELAY_URL', route('tcn.auth.relay'))), '/');
     }
 }

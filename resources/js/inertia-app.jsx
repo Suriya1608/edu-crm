@@ -10,9 +10,11 @@
  * once on mount and is never touched during page navigation.
  */
 
+import './echo';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';
 import { Component, createElement, useEffect } from 'react';
+import ChatWidget from './Components/ChatWidget';
 
 // Expose router immediately at module-load time so the Blade-rendered sidebar
 // and header links can call router.visit() without waiting for setup() to run.
@@ -29,8 +31,10 @@ window._inertiaRouter = router;
 (function () {
     var INERTIA_PATTERNS = [
         /\/manager\/dashboard/,
-        /\/manager\/leads/,
+        /\/manager\/leads(?!\/import|\/export|\/pool|\/pipeline)(\/[A-Za-z0-9%._~-]+|$|\?)/,
         /\/manager\/telecallers/,
+        /\/manager\/followups\//,
+        /\/manager\/campaigns(?:-performance)?(?:\/[^/?#]*)?(?:[?#]|$)/,
         /\/telecaller\//,
         /\/report-viewer\/dashboard/,
     ];
@@ -39,6 +43,8 @@ window._inertiaRouter = router;
         try {
             var visit = event.detail && event.detail.visit;
             if (!visit) return;
+            // Never intercept POST/PUT/PATCH/DELETE — only GET navigations need the Blade guard
+            if (visit.method && visit.method.toLowerCase() !== 'get') return;
             var raw = visit.url;
             var href = raw instanceof URL ? raw.href : String(raw || '');
             if (!href) return;
@@ -108,6 +114,14 @@ class ErrorBoundary extends Component {
 // Runs once on app boot — attaches a permanent router listener that fires
 // on every Inertia navigation and shows Bootstrap toasts for flash messages.
 function initFlashToasts() {
+    // Close mobile sidebar overlay after every Inertia navigation
+    router.on('navigate', function () {
+        var sidebar  = document.getElementById('sidebar');
+        var backdrop = document.getElementById('sidebarBackdrop');
+        if (sidebar  && sidebar.classList.contains('show'))  sidebar.classList.remove('show');
+        if (backdrop && backdrop.classList.contains('show')) backdrop.classList.remove('show');
+    });
+
     router.on('navigate', function (event) {
         const flash = event.detail?.page?.props?.flash;
         if (!flash) return;
@@ -197,7 +211,8 @@ createInertiaApp({
         createRoot(el).render(
             createElement(ErrorBoundary, null,
                 createElement(SipProvider, { user },
-                    createElement(App, props)
+                    createElement(App, props),
+                    createElement(ChatWidget, { userRole: user?.role })
                 )
             )
         );

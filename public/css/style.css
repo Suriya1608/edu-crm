@@ -67,6 +67,14 @@ body {
     transform: translateX(-100%);
 }
 
+/* Desktop sidebar collapse (hamburger on wide screens) */
+.sidebar.desktop-collapsed {
+    transform: translateX(-100%);
+}
+.main-content.desktop-expanded {
+    margin-left: 0;
+}
+
 /* Scrollbar inside sidebar */
 .sidebar-nav::-webkit-scrollbar { width: 3px; }
 .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
@@ -299,6 +307,60 @@ body {
 
 .sidebar-telecaller .sidebar-header {
     border-bottom-color: rgba(16,185,129,0.12);
+}
+
+/* ── Sidebar submenu: fix parent/child active overlap ─────────────── */
+
+/* Parent toggle (button) active: subtle tint, no left-bar indicator */
+button.nav-item.active {
+    background: rgba(99, 102, 241, 0.08);
+    color: #c7d2fe;
+}
+
+button.nav-item.active::before {
+    display: none;
+}
+
+button.nav-item.active:hover {
+    background: rgba(99, 102, 241, 0.14);
+}
+
+/* Fix the negative inline margin that caused submenu to sit on top of parent */
+.sidebar-nav .collapse {
+    margin-top: 4px !important;
+    margin-bottom: 8px !important;
+}
+
+/* Sub-items inherit base nav-item but get a tighter border-radius */
+.sidebar-nav .collapse .nav-item {
+    border-radius: 8px;
+    margin-bottom: 2px;
+}
+
+/* Sub-item active: full active card + left bar indicator (same as regular active) */
+.sidebar-nav .collapse .nav-item.active {
+    background: var(--sidebar-active);
+    color: #a5b4fc;
+    font-weight: 600;
+}
+
+.sidebar-nav .collapse .nav-item.active::before {
+    display: block;
+}
+
+/* Telecaller theme: parent toggle active */
+.sidebar-telecaller button.nav-item.active {
+    background: rgba(16, 185, 129, 0.08);
+    color: #a7f3d0;
+}
+
+.sidebar-telecaller button.nav-item.active::before {
+    display: none;
+}
+
+.sidebar-telecaller .collapse .nav-item.active {
+    background: rgba(16, 185, 129, 0.13);
+    color: #6ee7b7;
 }
 
 /* ========================================
@@ -1058,6 +1120,7 @@ body {
    ======================================== */
 
 .mobile-menu-btn {
+    display: flex; /* visible on all sizes — collapses sidebar on desktop, overlays on mobile */
     width: 36px;
     height: 36px;
     border: none;
@@ -1206,13 +1269,18 @@ body {
         margin-left: 0;
     }
 
+    /* Button sits in the document root stacking context (header has z-index:auto
+       below), so z-index:1055 puts it above backdrop (1049) and sidebar (1050). */
     .mobile-menu-btn {
         display: flex;
+        position: relative;
+        z-index: 1055;
     }
 
-    /* Header stays above backdrop so hamburger is always clickable */
+    /* Must NOT have a numeric z-index — that would create a stacking context and
+       cap all child z-indexes at 1045, which is below the backdrop (1049). */
     .top-header {
-        z-index: 1045;
+        z-index: auto;
         padding: 12px 16px;
     }
 
@@ -4112,3 +4180,14 @@ body {
 
 /* ── Active call bar offset ────────────────────────────── */
 body.gc-call-active .main-content { padding-top: 50px; }
+
+/* ── Skeleton shimmer (used in React pages) ────────────── */
+@keyframes shimmer {
+    0%   { background-position: -400px 0; }
+    100% { background-position:  400px 0; }
+}
+.skeleton-box {
+    background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+    background-size: 800px 100%;
+    animation: shimmer 1.4s infinite linear;
+}

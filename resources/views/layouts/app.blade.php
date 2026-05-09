@@ -50,6 +50,27 @@
     })();
     </script>
 
+    {{-- Broadcast / Echo config (injected before Vite bundle so echo.js can read it synchronously) --}}
+    @php
+        $bDriver = \App\Models\Setting::get('broadcast_driver', 'null');
+        $bKey    = $bDriver === 'pusher'
+                    ? \App\Models\Setting::getSecure('pusher_app_key', '')
+                    : \App\Models\Setting::getSecure('reverb_app_key', '');
+        $bConfig = [
+            'driver'  => $bDriver,
+            'key'     => $bKey,
+            'cluster' => \App\Models\Setting::get('pusher_app_cluster', 'mt1'),
+            'reverb'  => [
+                'host'   => \App\Models\Setting::get('reverb_host', '127.0.0.1'),
+                'port'   => (int) \App\Models\Setting::get('reverb_port', '8080'),
+                'scheme' => \App\Models\Setting::get('reverb_scheme', 'http'),
+            ],
+        ];
+    @endphp
+    @if($bDriver !== 'null')
+    <script>window.__BROADCAST__ = @json($bConfig);</script>
+    @endif
+
     @vite(['resources/js/app.js'])
 </head>
 
@@ -426,7 +447,7 @@
             Using inline display:flex (not Bootstrap d-flex) so JS display:none works.
         --}}
         <button id="tcnToggleBtn" title="Toggle Softphone"
-            style="position:fixed;bottom:20px;right:20px;z-index:1066;
+            style="position:fixed;bottom:24px;right:26px;z-index:1066;
                    width:52px;height:52px;border-radius:50%;border:none;cursor:pointer;
                    background:#64748b;color:#fff;display:flex;
                    align-items:center;justify-content:center;
@@ -660,18 +681,52 @@
         }
 
         function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
+            const sidebar     = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
             if (!sidebar) return;
-            if (sidebar.classList.contains('show')) {
-                closeSidebar();
+
+            if (window.innerWidth > 991) {
+                const collapsed = sidebar.classList.toggle('desktop-collapsed');
+                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
+                try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
             } else {
-                openSidebar();
+                if (sidebar.classList.contains('show')) {
+                    closeSidebar();
+                } else {
+                    openSidebar();
+                }
             }
         }
 
-        // Close sidebar on Escape key
+        function _restoreSidebarState() {
+            if (window.innerWidth <= 991) return;
+            const sidebar     = document.getElementById('sidebar');
+            const mainContent = document.getElementById('mainContent');
+            if (!sidebar) return;
+            try {
+                const collapsed = localStorage.getItem('sidebarCollapsed') === '1';
+                sidebar.classList.toggle('desktop-collapsed', collapsed);
+                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
+            } catch(e) {}
+        }
+
+        document.addEventListener('turbo:load', _restoreSidebarState);
+        document.addEventListener('DOMContentLoaded', _restoreSidebarState);
+
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeSidebar();
+            if (e.key === 'Escape') {
+                if (window.innerWidth > 991) {
+                    const sidebar     = document.getElementById('sidebar');
+                    const mainContent = document.getElementById('mainContent');
+                    if (sidebar && sidebar.classList.contains('desktop-collapsed')) {
+                        sidebar.classList.remove('desktop-collapsed');
+                        mainContent && mainContent.classList.remove('desktop-expanded');
+                        try { localStorage.setItem('sidebarCollapsed', '0'); } catch(e) {}
+                    }
+                } else {
+                    closeSidebar();
+                }
+            }
         });
     </script>
 
@@ -810,8 +865,14 @@
                 const data = await res.json();
                 if (!data.ok) return;
 
+                const currentPath = window.location.pathname;
                 const items = (data.items || []).filter(function(item) {
-                    return !item.id || !shownIds.has(item.id);
+                    if (!item.id || shownIds.has(item.id)) return false;
+                    // Suppress if user is already viewing this lead's chat page
+                    if (item.link) {
+                        try { if (new URL(item.link).pathname === currentPath) return false; } catch(e) {}
+                    }
+                    return true;
                 });
                 items.forEach(function(item) { if (item.id) shownIds.add(item.id); });
 
@@ -840,6 +901,22 @@
 
         poll();
         setInterval(poll, 30000);
+
+        // Real-time: subscribe after ES modules load (DOMContentLoaded fires after module scripts)
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('[WA-RT] Echo:', window.Echo ? 'initialized' : 'NULL', '| __BROADCAST__:', JSON.stringify(window.__BROADCAST__));
+            if (window.Echo) {
+                try {
+                    window.Echo.private('whatsapp.inbox.{{ auth()->id() }}')
+                        .listen('.message.new', function(data) {
+                            console.log('[WA-RT] Pusher event received:', data);
+                            poll();
+                            window.dispatchEvent(new CustomEvent('wa:message.new', { detail: data }));
+                        });
+                    console.log('[WA-RT] Subscribed to whatsapp.inbox.{{ auth()->id() }}');
+                } catch (e) { console.error('[WA-RT] Subscribe error:', e); }
+            }
+        });
     })();
     </script>
     @endauth
