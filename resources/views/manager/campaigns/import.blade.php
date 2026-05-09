@@ -29,7 +29,7 @@
                     </div>
 
                     <form action="{{ route('manager.campaigns.import.preview', encrypt($campaign->id)) }}"
-                        method="POST" enctype="multipart/form-data">
+                        method="POST" enctype="multipart/form-data" data-turbo="false">
                         @csrf
 
                         <div class="mb-4">
@@ -109,7 +109,7 @@
             </div>
 
             @if ($insertable > 0)
-                <form action="{{ route('manager.campaigns.import.store', encrypt($campaign->id)) }}" method="POST">
+                <form action="{{ route('manager.campaigns.import.store', encrypt($campaign->id)) }}" method="POST" data-turbo="false">
                     @csrf
                     @php
                         $validRows = array_filter($preview, fn($r) => !$r['is_duplicate'] && !$r['is_invalid']);

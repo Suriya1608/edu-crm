@@ -21,6 +21,7 @@ class AutomationSettings
     public const ESCALATE_MISSED_FOLLOWUPS = 'automation_escalate_missed_followups_enabled';
     public const ESCALATE_RESPONSE_SLA = 'automation_escalate_response_sla_enabled';
     public const RESPONSE_SLA_MINUTES = 'automation_response_sla_minutes';
+    public const MANAGER_SLA_MINUTES = 'automation_manager_sla_minutes';
     public const BUSINESS_HOURS_ENABLED = 'business_hours_enabled';
     public const BUSINESS_START_TIME = 'business_start_time';
     public const BUSINESS_END_TIME = 'business_end_time';
@@ -85,6 +86,11 @@ class AutomationSettings
     public function responseSlaMinutes(): int
     {
         return max(5, min(10080, $this->int(self::RESPONSE_SLA_MINUTES, 60)));
+    }
+
+    public function managerSlaMinutes(): int
+    {
+        return max(5, min(10080, $this->int(self::MANAGER_SLA_MINUTES, 120)));
     }
 
     public function businessHoursEnabled(): bool

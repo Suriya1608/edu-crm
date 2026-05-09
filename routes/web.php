@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\LeadCaptureController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SystemSettingsController;
+use App\Http\Controllers\Admin\TcnRelayClientController;
 use App\Http\Controllers\Admin\TcnSettingsController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\LeadManagementController as AdminLeadManagementController;
@@ -45,6 +46,8 @@ use App\Http\Controllers\Manager\TelecallerPerformanceController;
 use App\Http\Controllers\Manager\WhatsAppChatController;
 use App\Http\Controllers\Manager\CampaignController as ManagerCampaignController;
 use App\Http\Controllers\Manager\EmailCampaignController as ManagerEmailCampaignController;
+use App\Http\Controllers\Manager\AgentController as ManagerAgentController;
+use App\Http\Controllers\Telecaller\AgentController as TeleAgentController;
 use App\Http\Controllers\Telecaller\LeadController as TeleLeadController;
 use App\Http\Controllers\Telecaller\FollowupController as TeleFollowupController;
 use App\Http\Controllers\Telecaller\PerformanceController as TelePerformanceController;
@@ -125,6 +128,7 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::post('/bulk-assign', [AdminLeadManagementController::class, 'bulkAssign'])->name('bulk-assign');
             Route::post('/{id}/merge/{targetId}', [AdminLeadManagementController::class, 'merge'])->name('merge');
             Route::get('/import/form', [AdminLeadManagementController::class, 'importForm'])->name('import.form');
+            Route::get('/import/sample', [AdminLeadManagementController::class, 'downloadSample'])->name('import.sample');
             Route::post('/import/preview', [AdminLeadManagementController::class, 'importPreview'])->name('import.preview');
             Route::post('/import/store', [AdminLeadManagementController::class, 'importStore'])->name('import.store');
             Route::get('/export', [AdminLeadManagementController::class, 'export'])->name('export');
@@ -221,6 +225,13 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::get('/tcn',  [TcnSettingsController::class, 'index'])->name('tcn');
             Route::post('/tcn', [TcnSettingsController::class, 'update'])->name('tcn.update');
 
+            // Real-time / WebSocket settings
+            Route::get('/realtime',  [SystemSettingsController::class, 'realtime'])->name('realtime');
+            Route::post('/realtime', [SystemSettingsController::class, 'updateRealtime'])->name('realtime.update');
+        });
+
+        Route::prefix('settings')->name('settings.')->group(function () {
+
             // Google Meet OAuth
             Route::get('/google-meet',             [GoogleOAuthController::class, 'settings'])->name('google-meet');
             Route::post('/google-meet/credentials',[GoogleOAuthController::class, 'saveCredentials'])->name('google-meet.credentials');
@@ -231,6 +242,15 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::post('/zoom/credentials',[ZoomController::class, 'saveCredentials'])->name('zoom.credentials');
             Route::post('/zoom/test',       [ZoomController::class, 'testConnection'])->name('zoom.test');
             Route::post('/zoom/disconnect', [ZoomController::class, 'disconnect'])->name('zoom.disconnect');
+        });
+
+        // TCN Relay Client whitelist (outside settings prefix)
+        Route::prefix('tcn-relay-clients')->name('tcn-relay-clients.')->group(function () {
+            Route::get('/',                         [TcnRelayClientController::class, 'index'])->name('index');
+            Route::post('/',                        [TcnRelayClientController::class, 'store'])->name('store');
+            Route::put('/{tcnRelayClient}',         [TcnRelayClientController::class, 'update'])->name('update');
+            Route::delete('/{tcnRelayClient}',      [TcnRelayClientController::class, 'destroy'])->name('destroy');
+            Route::post('/{tcnRelayClient}/toggle', [TcnRelayClientController::class, 'toggle'])->name('toggle');
         });
 
         // Google OAuth callback (outside settings prefix — registered at /admin/google-oauth/*)
@@ -344,6 +364,10 @@ Route::middleware(['auth'])
         Route::get('/dashboard', [ManagerDashboardController::class, 'index'])->name('dashboard');
         Route::get('/call-logs', [ManagerCallLogController::class, 'index'])->name('call-logs.index');
 
+        // AI Assistant
+        Route::get('/agent', [ManagerAgentController::class, 'index'])->name('agent.index');
+        Route::post('/agent/chat', [ManagerAgentController::class, 'chat'])->name('agent.chat');
+
         /*
         |------------------------------------------------------------------
         | Leads Module
@@ -413,7 +437,7 @@ Route::middleware(['auth'])
             Route::get('/today', [FollowupManagementController::class, 'today'])->name('today');
             Route::get('/overdue', [FollowupManagementController::class, 'overdue'])->name('overdue');
             Route::get('/upcoming', [FollowupManagementController::class, 'upcoming'])->name('upcoming');
-            Route::get('/missed-by-telecaller', [FollowupManagementController::class, 'missedByTelecaller'])->name('missed');
+            Route::get('/missed', [FollowupManagementController::class, 'missedByTelecaller'])->name('missed');
             Route::get('/calendar-data', [FollowupManagementController::class, 'calendarData'])->name('calendar-data');
         });
 
@@ -540,6 +564,7 @@ Route::middleware(['auth'])
     ->group(function () {
 
         Route::get('/dashboard', [TeleLeadController::class, 'dashboard'])->name('dashboard');
+        Route::post('/agent/chat', [TeleAgentController::class, 'chat'])->name('agent.chat');
 
         /*
         |------------------------------------------------------------------
@@ -763,6 +788,9 @@ Route::middleware('auth')->get('/api/tcn/config', [TcnController::class, 'userCo
 // TCN OAuth — connect redirect and callback (no auth middleware needed)
 Route::get('/tcn/auth/connect',  [TcnController::class, 'authRedirect'])->name('tcn.auth.connect')->middleware('auth');
 Route::get('/tcn/auth/callback', [TcnController::class, 'authCallback'])->name('tcn.auth.callback');
+
+// TCN OAuth Relay — single URL registered with TCN; forwards callback to originating client
+Route::get('/tcn/auth/relay', [TcnController::class, 'authRelay'])->name('tcn.auth.relay');
 
 // TCN per-user OAuth — admin connects individual user accounts.
 // The static /tcn/auth/callback URI is reused for the callback so that the

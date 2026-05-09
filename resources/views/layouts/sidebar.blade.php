@@ -10,7 +10,7 @@
         </div>
         <div class="sidebar-title">
             <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
-            <p>{{ ucfirst(auth()->user()->role) }} Panel</p>
+            <p>{{ ucwords(str_replace('_', ' ', auth()->user()->role)) }} Panel</p>
         </div>
         <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu">
             <span class="material-icons">close</span>
@@ -693,7 +693,7 @@
                         @else headset_mic
                         @endif
                     </span>
-                    {{ ucfirst(auth()->user()->role) }}
+                    {{ ucwords(str_replace('_', ' ', auth()->user()->role)) }}
                 </span>
             </div>
 

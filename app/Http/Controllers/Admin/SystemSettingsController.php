@@ -94,6 +94,7 @@ class SystemSettingsController extends Controller
             'verifyToken'      => Setting::get('meta_whatsapp_webhook_verify_token', 'crm_verify_token'),
             'templateName'     => Setting::get('meta_whatsapp_template_name', config('services.meta.whatsapp_default_template', 'hello_world')),
             'templateLanguage' => Setting::get('meta_whatsapp_template_language', config('services.meta.whatsapp_default_template_language', 'en')),
+            'templateBody'     => Setting::get('meta_whatsapp_template_body', ''),
         ]);
     }
 
@@ -105,6 +106,7 @@ class SystemSettingsController extends Controller
             'meta_whatsapp_webhook_verify_token' => 'nullable|string|max:255',
             'meta_whatsapp_template_name'        => 'nullable|string|max:255',
             'meta_whatsapp_template_language'    => 'nullable|string|max:20',
+            'meta_whatsapp_template_body'        => 'nullable|string|max:1024',
         ]);
 
         if (!empty($data['meta_whatsapp_token'])) {
@@ -114,44 +116,21 @@ class SystemSettingsController extends Controller
         Setting::set('meta_whatsapp_webhook_verify_token', $data['meta_whatsapp_webhook_verify_token'] ?? 'crm_verify_token');
         Setting::set('meta_whatsapp_template_name', $data['meta_whatsapp_template_name'] ?? 'welcome_template');
         Setting::set('meta_whatsapp_template_language', $data['meta_whatsapp_template_language'] ?? 'en');
+        Setting::set('meta_whatsapp_template_body', $data['meta_whatsapp_template_body'] ?? '');
 
         return back()->with('success', 'WhatsApp settings saved successfully.');
     }
 
-    // ── Call Settings (TCN) ───────────────────────────────────────────────────
+    // ── Call Settings — redirects to the unified TCN page ───────────────────
 
     public function callSettings()
     {
-        return view('admin.settings.call');
+        return redirect()->route('admin.settings.tcn');
     }
 
-    public function updateCallSettings(Request $request)
+    public function updateCallSettings()
     {
-        $data = $request->validate([
-            // TCN
-            'tcn_client_id'     => 'nullable|string|max:255',
-            'tcn_client_secret' => 'nullable|string|max:255',
-            'tcn_refresh_token' => 'nullable|string|max:500',
-            'tcn_redirect_uri'  => 'nullable|url|max:500',
-            'tcn_caller_id'     => 'nullable|string|max:20',
-        ]);
-
-        Setting::set('primary_call_provider', 'tcn');
-
-        // TCN — blank means "keep existing secret"
-        if (!empty($data['tcn_client_id'])) {
-            Setting::setSecure('tcn_client_id', $data['tcn_client_id']);
-        }
-        if (!empty($data['tcn_client_secret'])) {
-            Setting::setSecure('tcn_client_secret', $data['tcn_client_secret']);
-        }
-        if (!empty($data['tcn_refresh_token'])) {
-            Setting::setSecure('tcn_refresh_token', $data['tcn_refresh_token']);
-        }
-        Setting::set('tcn_redirect_uri', $data['tcn_redirect_uri'] ?? '');
-        Setting::set('tcn_caller_id',   $data['tcn_caller_id']   ?? '');
-
-        return back()->with('success', 'Call settings saved.');
+        return redirect()->route('admin.settings.tcn');
     }
 
     public function businessHours()
@@ -273,6 +252,55 @@ class SystemSettingsController extends Controller
         }
 
         return back()->with('success', 'Instagram settings saved successfully.');
+    }
+
+    public function realtime()
+    {
+        return view('admin.settings.realtime', [
+            'driver'        => Setting::get('broadcast_driver', 'null'),
+            'pusherKey'     => Setting::getSecure('pusher_app_key', ''),
+            'pusherSecret'  => Setting::getSecure('pusher_app_secret', ''),
+            'pusherAppId'   => Setting::getSecure('pusher_app_id', ''),
+            'pusherCluster' => Setting::get('pusher_app_cluster', 'mt1'),
+            'reverbKey'     => Setting::getSecure('reverb_app_key', ''),
+            'reverbSecret'  => Setting::getSecure('reverb_app_secret', ''),
+            'reverbAppId'   => Setting::getSecure('reverb_app_id', ''),
+            'reverbHost'    => Setting::get('reverb_host', '127.0.0.1'),
+            'reverbPort'    => Setting::get('reverb_port', '8080'),
+            'reverbScheme'  => Setting::get('reverb_scheme', 'http'),
+        ]);
+    }
+
+    public function updateRealtime(Request $request)
+    {
+        $data = $request->validate([
+            'broadcast_driver'   => 'required|in:null,pusher,reverb',
+            'pusher_app_key'     => 'nullable|string|max:255',
+            'pusher_app_secret'  => 'nullable|string|max:255',
+            'pusher_app_id'      => 'nullable|string|max:100',
+            'pusher_app_cluster' => 'nullable|string|max:20',
+            'reverb_app_key'     => 'nullable|string|max:255',
+            'reverb_app_secret'  => 'nullable|string|max:255',
+            'reverb_app_id'      => 'nullable|string|max:100',
+            'reverb_host'        => 'nullable|string|max:255',
+            'reverb_port'        => 'nullable|integer|min:1|max:65535',
+            'reverb_scheme'      => 'nullable|in:http,https',
+        ]);
+
+        Setting::set('broadcast_driver', $data['broadcast_driver']);
+        Setting::set('pusher_app_cluster', $data['pusher_app_cluster'] ?? 'mt1');
+        Setting::set('reverb_host',   $data['reverb_host']   ?? '127.0.0.1');
+        Setting::set('reverb_port',   (string) ($data['reverb_port'] ?? 8080));
+        Setting::set('reverb_scheme', $data['reverb_scheme'] ?? 'http');
+
+        if (!empty($data['pusher_app_key']))    Setting::setSecure('pusher_app_key',    $data['pusher_app_key']);
+        if (!empty($data['pusher_app_secret'])) Setting::setSecure('pusher_app_secret', $data['pusher_app_secret']);
+        if (!empty($data['pusher_app_id']))     Setting::setSecure('pusher_app_id',     $data['pusher_app_id']);
+        if (!empty($data['reverb_app_key']))    Setting::setSecure('reverb_app_key',    $data['reverb_app_key']);
+        if (!empty($data['reverb_app_secret'])) Setting::setSecure('reverb_app_secret', $data['reverb_app_secret']);
+        if (!empty($data['reverb_app_id']))     Setting::setSecure('reverb_app_id',     $data['reverb_app_id']);
+
+        return back()->with('success', 'Real-time settings updated successfully.');
     }
 
     public function notifications()

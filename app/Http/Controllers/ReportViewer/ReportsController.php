@@ -17,28 +17,128 @@ class ReportsController extends Controller
 {
     public function telecallerPerformance(Request $request)
     {
-        [$filters, $filterOptions, $startAt, $endAt] = $this->base($request);
-        $rows = $this->telecallerPerformanceRows($startAt, $endAt, $filters);
+        $filters = [
+            'date_range' => $request->get('date_range', '30'),
+            'source'     => $request->get('source', 'all'),
+            'telecaller' => $request->get('telecaller', 'all'),
+        ];
+        [$startAt, $endAt] = $this->periodRange($filters['date_range']);
+        $filterOptions = [
+            'sources'     => Lead::select('source')->distinct()->orderBy('source')->pluck('source'),
+            'telecallers' => User::where('role', 'telecaller')->where('status', 1)->orderBy('name')->get(['id', 'name']),
+        ];
 
-        return $this->renderReport(
-            'Telecaller Performance',
-            'telecaller-performance',
-            route('report_viewer.reports.telecaller-performance'),
-            ['Telecaller', 'Assigned Leads', 'Calls', 'Avg Talk Time', 'Followups', 'Conversions', 'Efficiency'],
-            $rows->map(fn($r) => [$r['name'], $r['assigned'], $r['calls'], $r['avg_talk_time'], $r['followups'], $r['converted'], $r['efficiency_score']])->all(),
-            [
-                'type'     => 'bar',
-                'labels'   => $rows->pluck('name')->values()->all(),
-                'datasets' => [['label' => 'Efficiency', 'data' => $rows->pluck('efficiency_score')->values()->all()]],
-            ],
-            $filters,
-            $filterOptions
-        );
+        $rows = User::where('role', 'telecaller')
+            ->where('status', 1)
+            ->when($filters['telecaller'] !== 'all', fn($q) => $q->where('id', (int) $filters['telecaller']))
+            ->get(['id', 'name'])
+            ->map(function ($t) use ($startAt, $endAt, $filters) {
+                $leadQ = Lead::where('assigned_to', $t->id)->whereBetween('created_at', [$startAt, $endAt]);
+                if ($filters['source'] !== 'all') {
+                    $leadQ->where('source', $filters['source']);
+                }
+
+                $assigned  = (clone $leadQ)->count();
+                $converted = (clone $leadQ)->where('status', 'converted')->count();
+                $active    = (clone $leadQ)->whereNotIn('status', ['converted', 'lost', 'disqualified'])->count();
+                $lost      = (clone $leadQ)->where('status', 'lost')->count();
+
+                $callsQ     = CallLog::where('user_id', $t->id)->whereBetween('created_at', [$startAt, $endAt]);
+                $calls      = (clone $callsQ)->count();
+                $answered   = (clone $callsQ)->where('status', 'completed')->count();
+                $missed     = (clone $callsQ)->whereIn('status', ['no-answer', 'busy', 'failed', 'canceled', 'missed'])->count();
+                $avgDur     = (float) ((clone $callsQ)->avg('duration') ?: 0);
+                $totalMins  = round((clone $callsQ)->sum('duration') / 60, 1);
+                $answerRate = $calls > 0 ? round(($answered / $calls) * 100, 1) : 0;
+
+                $fuQ              = Followup::where('user_id', $t->id)->whereBetween('created_at', [$startAt, $endAt]);
+                $followupsTotal   = (clone $fuQ)->count();
+                $followupsDone    = (clone $fuQ)->whereNotNull('completed_at')->count();
+                $pendingFollowups = (clone $fuQ)->whereDate('next_followup', '<=', now()->toDateString())->whereNull('completed_at')->count();
+                $followupRate     = $followupsTotal > 0 ? round(($followupsDone / $followupsTotal) * 100, 1) : 0;
+
+                $convRate  = $assigned > 0 ? round(($converted / $assigned) * 100, 1) : 0;
+                $callScore = $calls > 0 ? min(100, round(($answered / max(1, $calls)) * 100)) : 0;
+                $effScore  = round(($convRate * 0.40) + ($followupRate * 0.35) + ($callScore * 0.25), 1);
+
+                return [
+                    'id'               => $t->id,
+                    'name'             => $t->name,
+                    'assigned'         => $assigned,
+                    'converted'        => $converted,
+                    'active'           => $active,
+                    'lost'             => $lost,
+                    'calls'            => $calls,
+                    'answered'         => $answered,
+                    'missed'           => $missed,
+                    'answer_rate'      => $answerRate,
+                    'avg_talk_time'    => sprintf('%02d:%02d', floor($avgDur / 60), (int) $avgDur % 60),
+                    'total_talk_mins'  => $totalMins,
+                    'followups_total'  => $followupsTotal,
+                    'followups_done'   => $followupsDone,
+                    'followup_rate'    => $followupRate,
+                    'pending_followups'=> $pendingFollowups,
+                    'conversion_rate'  => $convRate,
+                    'efficiency_score' => $effScore,
+                ];
+            })->sortByDesc('efficiency_score')->values();
+
+        $summary = [
+            'total_telecallers' => $rows->count(),
+            'total_calls'       => $rows->sum('calls'),
+            'total_converted'   => $rows->sum('converted'),
+            'avg_conversion'    => $rows->count() > 0 ? round($rows->avg('conversion_rate'), 1) : 0,
+            'total_talk_mins'   => $rows->sum('total_talk_mins'),
+        ];
+
+        $monthLabels    = [];
+        $monthAssigned  = [];
+        $monthConverted = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $mStart = now()->subMonths($i)->startOfMonth();
+            $mEnd   = now()->subMonths($i)->endOfMonth();
+            $monthLabels[] = $mStart->format('M Y');
+            $q = Lead::whereHas('assignedUser', fn($q) => $q->where('role', 'telecaller'))
+                ->whereBetween('created_at', [$mStart, $mEnd]);
+            if ($filters['telecaller'] !== 'all') {
+                $q->where('assigned_to', (int) $filters['telecaller']);
+            }
+            if ($filters['source'] !== 'all') {
+                $q->where('source', $filters['source']);
+            }
+            $monthAssigned[]  = (clone $q)->count();
+            $monthConverted[] = (clone $q)->where('status', 'converted')->count();
+        }
+
+        $title        = 'Telecaller Performance';
+        $tableHeaders = ['Rank', 'Telecaller', 'Assigned', 'Converted', 'Active', 'Lost', 'Calls', 'Answered', 'Missed', 'Answer %', 'Avg Talk', 'Followup %', 'Pending', 'Conv %', 'Score'];
+        $tableRows    = $rows->map(fn($r, $i) => [
+            '#' . ($i + 1), $r['name'], $r['assigned'], $r['converted'],
+            $r['active'], $r['lost'], $r['calls'], $r['answered'], $r['missed'],
+            $r['answer_rate'] . '%', $r['avg_talk_time'],
+            $r['followup_rate'] . '%', $r['pending_followups'],
+            $r['conversion_rate'] . '%', $r['efficiency_score'],
+        ])->all();
+
+        return view('admin.reports.telecaller_performance', compact(
+            'title', 'rows', 'filters', 'filterOptions', 'summary',
+            'tableHeaders', 'tableRows', 'monthLabels', 'monthAssigned', 'monthConverted'
+        ));
     }
 
     public function managerPerformance(Request $request)
     {
-        [$filters, $filterOptions, $startAt, $endAt] = $this->base($request);
+        $filters = [
+            'date_range' => $request->get('date_range', '30'),
+            'source'     => $request->get('source', 'all'),
+            'manager'    => $request->get('manager', 'all'),
+        ];
+        [$startAt, $endAt] = $this->periodRange($filters['date_range']);
+        $filterOptions = [
+            'sources'  => Lead::select('source')->distinct()->orderBy('source')->pluck('source'),
+            'managers' => User::where('role', 'manager')->where('status', 1)->orderBy('name')->get(['id', 'name']),
+        ];
+
         $rows = User::where('role', 'manager')
             ->when($filters['manager'] !== 'all', fn($q) => $q->where('id', (int) $filters['manager']))
             ->get(['id', 'name'])
@@ -47,35 +147,84 @@ class ReportsController extends Controller
                 if ($filters['source'] !== 'all') {
                     $leadQ->where('source', $filters['source']);
                 }
-                $total            = (clone $leadQ)->count();
-                $converted        = (clone $leadQ)->where('status', 'converted')->count();
-                $pendingFollowups = Followup::whereHas('lead', fn($q) => $q->where('assigned_by', $manager->id))
-                    ->whereDate('next_followup', '<=', now()->toDateString())
-                    ->count();
-                $rate = $total > 0 ? round(($converted / $total) * 100, 2) : 0;
-                return [
-                    'name'             => $manager->name,
-                    'assigned'         => $total,
-                    'converted'        => $converted,
-                    'pending_followups'=> $pendingFollowups,
-                    'conversion_rate'  => $rate,
-                ];
-            })->values();
 
-        return $this->renderReport(
-            'Manager Performance',
-            'manager-performance',
-            route('report_viewer.reports.manager-performance'),
-            ['Manager', 'Assigned Leads', 'Converted Leads', 'Pending Followups', 'Conversion %'],
-            $rows->map(fn($r) => [$r['name'], $r['assigned'], $r['converted'], $r['pending_followups'], $r['conversion_rate'] . '%'])->all(),
-            [
-                'type'     => 'bar',
-                'labels'   => $rows->pluck('name')->values()->all(),
-                'datasets' => [['label' => 'Conversion %', 'data' => $rows->pluck('conversion_rate')->values()->all()]],
-            ],
-            $filters,
-            $filterOptions
-        );
+                $total     = (clone $leadQ)->count();
+                $converted = (clone $leadQ)->where('status', 'converted')->count();
+                $active    = (clone $leadQ)->whereNotIn('status', ['converted', 'lost', 'disqualified'])->count();
+                $lost      = (clone $leadQ)->where('status', 'lost')->count();
+                $teamSize  = (clone $leadQ)->whereNotNull('assigned_to')->distinct('assigned_to')->count('assigned_to');
+
+                $leadIds     = (clone $leadQ)->pluck('id');
+                $callCount   = CallLog::whereIn('lead_id', $leadIds)->count();
+                $avgDuration = (float) (CallLog::whereIn('lead_id', $leadIds)->avg('duration') ?: 0);
+
+                $totalFollowups     = Followup::whereIn('lead_id', $leadIds)->count();
+                $completedFollowups = Followup::whereIn('lead_id', $leadIds)->whereNotNull('completed_at')->count();
+                $pendingFollowups   = Followup::whereIn('lead_id', $leadIds)
+                    ->whereDate('next_followup', '<=', now()->toDateString())
+                    ->whereNull('completed_at')->count();
+                $followupRate = $totalFollowups > 0 ? round(($completedFollowups / $totalFollowups) * 100, 1) : 0;
+
+                $convRate  = $total > 0 ? round(($converted / $total) * 100, 1) : 0;
+                $actScore  = $total > 0 ? min(100, round(($callCount / max(1, $total)) * 25)) : 0;
+                $perfScore = round(($convRate * 0.4) + ($followupRate * 0.35) + ($actScore * 0.25), 1);
+
+                return [
+                    'id'                => $manager->id,
+                    'name'              => $manager->name,
+                    'assigned'          => $total,
+                    'converted'         => $converted,
+                    'active'            => $active,
+                    'lost'              => $lost,
+                    'team_size'         => $teamSize,
+                    'calls'             => $callCount,
+                    'avg_talk_time'     => sprintf('%02d:%02d', floor($avgDuration / 60), (int) $avgDuration % 60),
+                    'followup_rate'     => $followupRate,
+                    'pending_followups' => $pendingFollowups,
+                    'conversion_rate'   => $convRate,
+                    'performance_score' => $perfScore,
+                ];
+            })->sortByDesc('performance_score')->values();
+
+        $summary = [
+            'total_managers'  => $rows->count(),
+            'total_leads'     => $rows->sum('assigned'),
+            'total_converted' => $rows->sum('converted'),
+            'avg_conversion'  => $rows->count() > 0 ? round($rows->avg('conversion_rate'), 1) : 0,
+            'total_calls'     => $rows->sum('calls'),
+        ];
+
+        $monthLabels    = [];
+        $monthAssigned  = [];
+        $monthConverted = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $mStart = now()->subMonths($i)->startOfMonth();
+            $mEnd   = now()->subMonths($i)->endOfMonth();
+            $monthLabels[] = $mStart->format('M Y');
+            $q = Lead::whereHas('assignedBy', fn($q) => $q->where('role', 'manager'))
+                ->whereBetween('created_at', [$mStart, $mEnd]);
+            if ($filters['manager'] !== 'all') {
+                $q->where('assigned_by', (int) $filters['manager']);
+            }
+            if ($filters['source'] !== 'all') {
+                $q->where('source', $filters['source']);
+            }
+            $monthAssigned[]  = (clone $q)->count();
+            $monthConverted[] = (clone $q)->where('status', 'converted')->count();
+        }
+
+        $title        = 'Manager Performance';
+        $tableHeaders = ['Rank', 'Manager', 'Team', 'Assigned', 'Converted', 'Active', 'Lost', 'Calls', 'Followup %', 'Conversion %', 'Score'];
+        $tableRows    = $rows->map(fn($r, $i) => [
+            '#' . ($i + 1), $r['name'], $r['team_size'], $r['assigned'],
+            $r['converted'], $r['active'], $r['lost'], $r['calls'],
+            $r['followup_rate'] . '%', $r['conversion_rate'] . '%', $r['performance_score'],
+        ])->all();
+
+        return view('admin.reports.manager_performance', compact(
+            'title', 'rows', 'filters', 'filterOptions', 'summary',
+            'tableHeaders', 'tableRows', 'monthLabels', 'monthAssigned', 'monthConverted'
+        ));
     }
 
     public function conversion(Request $request)
@@ -367,38 +516,6 @@ class ReportsController extends Controller
             'managers'    => User::where('role', 'manager')->where('status', 1)->orderBy('name')->get(['id', 'name']),
         ];
         return [$filters, $filterOptions, $startAt, $endAt];
-    }
-
-    private function telecallerPerformanceRows($startAt, $endAt, array $filters): Collection
-    {
-        return User::where('role', 'telecaller')
-            ->when($filters['telecaller'] !== 'all', fn($q) => $q->where('id', (int) $filters['telecaller']))
-            ->get(['id', 'name'])
-            ->map(function ($t) use ($startAt, $endAt, $filters) {
-                $leadQ = Lead::where('assigned_to', $t->id)->whereBetween('created_at', [$startAt, $endAt]);
-                if ($filters['source'] !== 'all') {
-                    $leadQ->where('source', $filters['source']);
-                }
-                if ($filters['manager'] !== 'all') {
-                    $leadQ->where('assigned_by', (int) $filters['manager']);
-                }
-                $assigned  = (clone $leadQ)->count();
-                $converted = (clone $leadQ)->where('status', 'converted')->count();
-                $followups = Followup::where('user_id', $t->id)->whereBetween('created_at', [$startAt, $endAt])->count();
-                $callsQ    = CallLog::where('user_id', $t->id)->whereBetween('created_at', [$startAt, $endAt]);
-                $calls     = (clone $callsQ)->count();
-                $avg       = (clone $callsQ)->avg('duration') ?: 0;
-                $eff       = $assigned > 0 ? round((($converted / $assigned) * 70) + min(30, $calls), 2) : min(30, $calls);
-                return [
-                    'name'             => $t->name,
-                    'assigned'         => $assigned,
-                    'calls'            => $calls,
-                    'avg_talk_time'    => sprintf('%02d:%02d:%02d', floor($avg / 3600), floor(($avg % 3600) / 60), $avg % 60),
-                    'followups'        => $followups,
-                    'converted'        => $converted,
-                    'efficiency_score' => $eff,
-                ];
-            })->sortByDesc('efficiency_score')->values();
     }
 
     private function responseTimeRows($startAt, $endAt, array $filters): Collection

@@ -127,7 +127,7 @@
                                 <small class="text-muted">{{ $user->email }} | {{ $user->phone ?: '-' }}</small>
                             </td>
                             <td>
-                                <span class="badge bg-light text-dark">{{ ucfirst($user->role) }}</span>
+                                <span class="badge bg-light text-dark">{{ ucwords(str_replace('_', ' ', $user->role)) }}</span>
                             </td>
                             <td>
                                 <div class="d-flex flex-column gap-1">

@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 // ─── Relative time helper ─────────────────────────────────────────────────────
 function relativeTime(isoStr) {
@@ -143,6 +143,25 @@ function QuickCallBtn({ phone, leadId }) {
     );
 }
 
+// ─── Skeleton table rows ──────────────────────────────────────────────────────
+function SkeletonRows({ count = 8 }) {
+    return Array.from({ length: count }).map((_, i) => (
+        <tr key={i}>
+            {Array.from({ length: 10 }).map((__, j) => (
+                <td key={j}>
+                    <div style={{
+                        height: j === 3 ? 14 : 10, borderRadius: 6,
+                        width: j === 3 ? '80%' : j === 5 ? '60%' : '70%',
+                        background: 'linear-gradient(90deg,#e2e8f0 25%,#f1f5f9 50%,#e2e8f0 75%)',
+                        backgroundSize: '800px 100%',
+                        animation: 'shimmer 1.4s infinite linear',
+                    }} />
+                </td>
+            ))}
+        </tr>
+    ));
+}
+
 // ─── Empty state ──────────────────────────────────────────────────────────────
 function EmptyState() {
     return (
@@ -218,6 +237,13 @@ export default function Index({ stats, leads, filters, courses, sources }) {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkStatus, setBulkStatus]   = useState('');
     const [bulkLoading, setBulkLoading] = useState(false);
+    const [navigating,  setNavigating]  = useState(false);
+
+    useEffect(() => {
+        const off1 = router.on('start',  () => setNavigating(true));
+        const off2 = router.on('finish', () => setNavigating(false));
+        return () => { off1(); off2(); };
+    }, []);
 
     function buildParams(overrides = {}) {
         const base = {};
@@ -484,7 +510,8 @@ export default function Index({ stats, leads, filters, courses, sources }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {leads.data.length === 0 ? <EmptyState /> : leads.data.map((lead, idx) => {
+                            {navigating ? <SkeletonRows count={leads.data.length || 8} /> :
+                            leads.data.length === 0 ? <EmptyState /> : leads.data.map((lead, idx) => {
                                 const sno  = (leads.current_page - 1) * leads.per_page + idx + 1;
                                 const href = `/telecaller/leads/${lead.encrypted_id}`;
                                 const isSelected = selectedIds.has(lead.id);

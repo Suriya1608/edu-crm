@@ -100,7 +100,7 @@
         var hdr = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;border-bottom:1px solid ' + C.border + ';' });
         var hdrLeft = el('div', { style: 'display:flex;align-items:center;gap:8px;' });
         var hdrIcon = el('span', { class: 'material-icons', style: 'color:' + C.primary + ';font-size:20px;' }, 'phone');
-        var hdrTitle = el('span', { style: 'font-weight:700;font-size:13px;color:' + C.dark + ';' }, 'TCN Softphone');
+        var hdrTitle = el('span', { style: 'font-weight:700;font-size:13px;color:' + C.dark + ';' }, 'Softphone');
         hdrLeft.appendChild(hdrIcon);
         hdrLeft.appendChild(hdrTitle);
         var minBtn = el('button', { style: 'background:none;border:none;cursor:pointer;color:' + C.muted + ';padding:2px;line-height:1;display:flex;align-items:center;' });

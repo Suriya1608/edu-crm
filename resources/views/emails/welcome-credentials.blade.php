@@ -11,7 +11,7 @@
 @section('content')
 <p style="font-size:16px;color:#0f172a;font-weight:600;margin:0 0 10px 0;">Hello, {{ $userName }}</p>
 <p style="font-size:14px;color:#64748b;line-height:1.6;margin:0 0 28px 0;">
-    Your <span style="display:inline-block;background:#c62828;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:3px 10px;border-radius:20px;">{{ ucfirst($role) }}</span>
+    Your <span style="display:inline-block;background:#c62828;color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;padding:3px 10px;border-radius:20px;">{{ ucwords(str_replace('_', ' ', $role)) }}</span>
     account is ready. Use the credentials below to log in.
 </p>
 

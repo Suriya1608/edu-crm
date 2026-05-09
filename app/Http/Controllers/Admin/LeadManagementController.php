@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\ActivityType;
+use App\Exports\LeadImportSampleExport;
 use App\Exports\LeadsExport;
 use App\Http\Controllers\Controller;
+use App\Models\AcademicYear;
 use App\Models\Course;
 use App\Models\Lead;
 use App\Models\LeadActivity;
@@ -246,61 +248,155 @@ class LeadManagementController extends Controller
 
     public function importForm()
     {
-        return view('admin.leads.import');
+        $academicYears  = AcademicYear::orderBy('id', 'desc')->get();
+        $academicYearId = AcademicYear::current()?->id;
+        return view('admin.leads.import', compact('academicYears', 'academicYearId'));
+    }
+
+    public function downloadSample()
+    {
+        return Excel::download(new LeadImportSampleExport, 'lead_import_sample.xlsx');
     }
 
     public function importPreview(Request $request)
     {
         $request->validate([
-            'file' => 'required|mimes:xlsx,csv',
+            'file'             => 'required|mimes:xlsx,csv',
+            'academic_year_id' => 'required|exists:academic_years,id',
         ]);
 
-        $file = $request->file('file');
-        $data = Excel::toArray([], $file);
-        $rows = $data[0] ?? [];
-        if (!empty($rows)) {
-            array_shift($rows);
-        }
+        $academicYears    = AcademicYear::orderBy('id', 'desc')->get();
+        $academicYearId   = $request->academic_year_id;
 
-        return view('admin.leads.import', compact('rows'));
+        $data = Excel::toArray([], $request->file('file'));
+        $rows = $data[0] ?? [];
+        if (!empty($rows)) array_shift($rows);
+
+        $rows = array_values(array_filter($rows, fn($r) =>
+            !empty(trim((string) ($r[0] ?? ''))) || !empty(trim((string) ($r[1] ?? '')))));
+
+        // Batch DB lookups for phone and email
+        $inPhones = collect($rows)->pluck(1)->filter()
+            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))->filter()->unique()->values()->toArray();
+        $inEmails = collect($rows)->pluck(2)->filter()
+            ->map(fn($e) => strtolower(trim((string) $e)))->filter()->unique()->values()->toArray();
+
+        $dbPhones = Lead::whereIn('phone', $inPhones)->pluck('phone')
+            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))->flip()->toArray();
+        $dbEmails = !empty($inEmails)
+            ? Lead::whereIn('email', $inEmails)->pluck('email')
+                ->map(fn($e) => strtolower(trim((string) $e)))->flip()->toArray()
+            : [];
+
+        $seenPhones = [];
+        $seenEmails = [];
+
+        $enriched = array_map(function ($row) use ($dbPhones, $dbEmails, &$seenPhones, &$seenEmails) {
+            $phone  = preg_replace('/\D+/', '', (string) ($row[1] ?? ''));
+            $email  = strtolower(trim((string) ($row[2] ?? '')));
+            $dup    = false;
+            $reason = '';
+
+            if ($phone !== '' && isset($dbPhones[$phone])) {
+                $dup = true; $reason = 'Phone exists in database';
+            } elseif ($email !== '' && isset($dbEmails[$email])) {
+                $dup = true; $reason = 'Email exists in database';
+            } elseif ($phone !== '' && isset($seenPhones[$phone])) {
+                $dup = true; $reason = 'Phone repeated in file';
+            } elseif ($email !== '' && isset($seenEmails[$email])) {
+                $dup = true; $reason = 'Email repeated in file';
+            }
+
+            if (!$dup) {
+                if ($phone !== '') $seenPhones[$phone] = true;
+                if ($email !== '') $seenEmails[$email] = true;
+            }
+
+            return ['row' => $row, 'duplicate' => $dup, 'duplicate_reason' => $reason];
+        }, $rows);
+
+        $duplicateCount = collect($enriched)->filter(fn($e) => $e['duplicate'])->count();
+        $cleanRows      = collect($enriched)->reject(fn($e) => $e['duplicate'])->pluck('row')->values()->toArray();
+
+        return view('admin.leads.import', compact('enriched', 'duplicateCount', 'cleanRows', 'academicYears', 'academicYearId'));
     }
 
     public function importStore(Request $request)
     {
-        $rows = json_decode((string) $request->input('leads_data'), true) ?: [];
+        $request->validate(['academic_year_id' => 'required|exists:academic_years,id']);
+
+        $rows           = json_decode((string) $request->input('leads_data'), true) ?: [];
+        $academicYearId = $request->academic_year_id;
+
+        // Safety-net duplicate check (catches race conditions after preview)
+        $inPhones = collect($rows)->pluck(1)->filter()
+            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))->filter()->unique()->values()->toArray();
+        $inEmails = collect($rows)->pluck(2)->filter()
+            ->map(fn($e) => strtolower(trim((string) $e)))->filter()->unique()->values()->toArray();
+
+        $dbPhones = Lead::whereIn('phone', $inPhones)->pluck('phone')
+            ->map(fn($p) => preg_replace('/\D+/', '', (string) $p))->flip()->toArray();
+        $dbEmails = !empty($inEmails)
+            ? Lead::whereIn('email', $inEmails)->pluck('email')
+                ->map(fn($e) => strtolower(trim((string) $e)))->flip()->toArray()
+            : [];
+
+        $seenPhones    = [];
+        $seenEmails    = [];
+        $importedCount = 0;
+        $skippedCount  = 0;
 
         foreach ($rows as $row) {
-            if (empty($row[0]) || empty($row[1])) {
+            if (empty($row[0]) || empty($row[1])) continue;
+
+            $phone = preg_replace('/\D+/', '', (string) ($row[1] ?? ''));
+            $email = strtolower(trim((string) ($row[2] ?? '')));
+
+            $isDuplicate = ($phone !== '' && isset($dbPhones[$phone]))
+                || ($email !== '' && isset($dbEmails[$email]))
+                || ($phone !== '' && isset($seenPhones[$phone]))
+                || ($email !== '' && isset($seenEmails[$email]));
+
+            if ($isDuplicate) {
+                $skippedCount++;
                 continue;
             }
+
+            if ($phone !== '') $seenPhones[$phone] = true;
+            if ($email !== '') $seenEmails[$email] = true;
 
             $courseId = isset($row[3]) && $row[3] !== ''
                 ? Course::where('name', trim($row[3]))->value('id')
                 : null;
 
             $lead = Lead::create([
-                'lead_code'   => LeadCodeGenerator::placeholder(),
-                'name'        => $row[0],
-                'phone'       => $row[1],
-                'email'       => $row[2] ?? null,
-                'course_id'   => $courseId,
-                'source'      => $row[4] ?? 'manual',
-                'status'      => LeadDefaults::defaultStatus(),
-                'assigned_by' => Auth::id(),
+                'lead_code'        => LeadCodeGenerator::placeholder(),
+                'name'             => $row[0],
+                'phone'            => $row[1],
+                'email'            => $row[2] ?? null,
+                'course_id'        => $courseId,
+                'academic_year_id' => $academicYearId,
+                'source'           => $row[4] ?? 'manual',
+                'status'           => LeadDefaults::defaultStatus(),
+                'assigned_by'      => Auth::id(),
             ]);
             LeadCodeGenerator::assignCode($lead);
 
             LeadActivity::create([
-                'lead_id' => $lead->id,
-                'user_id' => Auth::id(),
-                'type' => 'note',
-                'description' => 'Lead imported by admin',
+                'lead_id'       => $lead->id,
+                'user_id'       => Auth::id(),
+                'type'          => 'note',
+                'description'   => 'Lead imported by admin',
                 'activity_time' => now(),
             ]);
+
+            $importedCount++;
         }
 
-        return redirect()->route('admin.leads.all')
-            ->with('success', 'Leads imported successfully.');
+        $msg = "{$importedCount} lead(s) imported successfully.";
+        if ($skippedCount > 0) $msg .= " {$skippedCount} duplicate(s) skipped.";
+
+        return redirect()->route('admin.leads.all')->with('success', $msg);
     }
 
     public function export(Request $request)

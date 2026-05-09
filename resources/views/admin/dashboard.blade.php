@@ -104,9 +104,9 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         (function() {
+            function _init() {
             const sourceLabels = @json($sourceLabels);
             const sourceValues = @json($sourceValues);
             const callLabels = @json($callVolumeLabels);
@@ -188,6 +188,15 @@
                     }
                 }
             });
+            } // end _init
+            if (typeof Chart !== 'undefined') {
+                _init();
+            } else {
+                var s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+                s.onload = _init;
+                document.head.appendChild(s);
+            }
         })();
     </script>
 

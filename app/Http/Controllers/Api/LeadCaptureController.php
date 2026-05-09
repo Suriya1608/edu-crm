@@ -28,6 +28,31 @@ class LeadCaptureController extends Controller
             'course' => 'required|string|max:255',
         ]);
 
+        $phone = $request->phone;
+        if (!str_starts_with($phone, '+91')) {
+            $phone = '+91' . ltrim($phone, '0');
+        }
+
+        $duplicate = Lead::where('email', $request->email)
+            ->orWhere('phone', $phone)
+            ->first();
+
+        if ($duplicate) {
+            $fields = [];
+            if ($duplicate->email === $request->email) {
+                $fields[] = 'email';
+            }
+            if ($duplicate->phone === $phone) {
+                $fields[] = 'mobile number';
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'The ' . implode(' and ', $fields) . ' already exists.',
+            ], 409)->withHeaders([
+                'Access-Control-Allow-Origin' => '*',
+            ]);
+        }
+
         // Exact match — LIKE '%...%' prevents index use and is injection-prone
         $courseId = Course::where('name', trim($request->course))->value('id');
 
@@ -36,10 +61,9 @@ class LeadCaptureController extends Controller
             'lead_code'       => LeadCodeGenerator::placeholder(),
             'name'            => $request->name,
             'email'           => $request->email,
-            'phone'           => $request->phone,
+            'phone'           => $phone,
             'course_id'       => $courseId,
             'academic_year_id'=> AcademicYear::current()?->id,
-            'quota'           => 'counselling',
             'source'          => 'Landing Page',
             'source_type'     => 'landing_page',
             'source_category' => 'website',

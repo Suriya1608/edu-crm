@@ -164,7 +164,7 @@
 
                 <tbody>
                     @forelse($leads as $lead)
-                        <tr>
+                        <tr style="cursor:pointer;" onclick="window.location='{{ route('manager.leads.show', encrypt($lead->id)) }}'">
                             <td>{{ ($leads->currentPage() - 1) * $leads->perPage() + $loop->iteration }}</td>
                             <td>{{ $lead->lead_code }}</td>
                             <td>
@@ -197,7 +197,7 @@
                                 {{ $latestFollowup?->next_followup ? \Carbon\Carbon::parse($latestFollowup->next_followup)->format('d M Y') : '-' }}
                             </td>
 
-                            <td>
+                            <td onclick="event.stopPropagation()">
                                 <a href="{{ route('manager.leads.show', encrypt($lead->id)) }}" class="btn btn-sm btn-outline-primary">
                                     View
                                 </a>

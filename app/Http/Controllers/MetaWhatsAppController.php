@@ -759,7 +759,27 @@ class MetaWhatsAppController extends Controller
                         $row['message'] = $body;
                     }
 
-                    WhatsAppMessage::create($row);
+                    $saved = WhatsAppMessage::create($row);
+
+                    // Push real-time notification when Echo/Pusher is configured
+                    if (config('broadcasting.default') !== 'null' && $lead->assigned_to) {
+                        try {
+                            \App\Events\WhatsAppMessagePushed::dispatch(
+                                $lead->id,
+                                $lead->assigned_to,
+                                [
+                                    'id'        => $saved->id,
+                                    'body'      => $body,
+                                    'direction' => 'inbound',
+                                    'time'      => $saved->created_at->format('h:i A'),
+                                    'lead_id'   => $lead->id,
+                                    'lead_name' => $lead->name,
+                                ]
+                            );
+                        } catch (\Throwable $broadcastEx) {
+                            \Illuminate\Support\Facades\Log::warning('WA broadcast failed', ['error' => $broadcastEx->getMessage()]);
+                        }
+                    }
 
                     LeadActivity::create([
                         'lead_id'       => $lead->id,
@@ -826,9 +846,14 @@ class MetaWhatsAppController extends Controller
 
         // When no 24h inbound window, Meta sends a template — store what was actually sent
         $templateName = (string) Setting::get('meta_whatsapp_template_name', 'welcome_template');
-        $storedBody   = $inbound24h
-            ? $messageBody
-            : "📋 Template sent ({$templateName}) — no active chat session";
+        if ($inbound24h) {
+            $storedBody = $messageBody;
+        } else {
+            $templateBody = (string) Setting::get('meta_whatsapp_template_body', '');
+            $storedBody   = $templateBody !== ''
+                ? str_replace('{{1}}', $lead->name, $templateBody)
+                : "📋 Template sent ({$templateName}) — no active chat session";
+        }
 
         $row = [
             'lead_id'             => $lead->id,

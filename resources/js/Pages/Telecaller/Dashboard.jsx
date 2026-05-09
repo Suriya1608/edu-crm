@@ -522,34 +522,31 @@ function FollowupCalendar({ initialData }) {
                                  : isPast  ? '/telecaller/followups/overdue'
                                            : '/telecaller/followups/upcoming';
                         }
-                        return (
-                            <div
-                                key={key}
-                                title={count > 0 ? `${count} follow-up${count > 1 ? 's' : ''}` : undefined}
-                                onClick={() => href && (window.location.href = href)}
-                                style={{
-                                    borderRadius: 10, border: `1.5px solid ${border}`,
-                                    background: bg, padding: '5px 2px',
-                                    textAlign: 'center',
-                                    cursor: count > 0 ? 'pointer' : 'default',
-                                    outline: isToday ? '2px solid rgba(99,102,241,0.5)' : 'none',
-                                    outlineOffset: 2,
-                                    transition: 'all 0.15s',
-                                    boxShadow: isToday ? '0 0 0 3px rgba(99,102,241,0.1)' : 'none',
-                                }}
-                            >
+                        const cellStyle = {
+                            borderRadius: 10, border: `1.5px solid ${border}`,
+                            background: bg, padding: '5px 2px',
+                            textAlign: 'center',
+                            cursor: count > 0 ? 'pointer' : 'default',
+                            outline: isToday ? '2px solid rgba(99,102,241,0.5)' : 'none',
+                            outlineOffset: 2,
+                            transition: 'all 0.15s',
+                            boxShadow: isToday ? '0 0 0 3px rgba(99,102,241,0.1)' : 'none',
+                            display: 'block', textDecoration: 'none',
+                        };
+                        const cellInner = (
+                            <>
                                 <div style={{ fontSize: 11, fontWeight: isToday ? 800 : 500, color: numColor, lineHeight: 1.4 }}>
                                     {d}
                                 </div>
                                 {count > 0
-                                    ? <div style={{
-                                        width: 5, height: 5, borderRadius: '50%',
-                                        background: ds?.dot, margin: '2px auto 0',
-                                    }} />
+                                    ? <div style={{ width: 5, height: 5, borderRadius: '50%', background: ds?.dot, margin: '2px auto 0' }} />
                                     : <div style={{ height: 9 }} />
                                 }
-                            </div>
+                            </>
                         );
+                        return href
+                            ? <Link key={key} href={href} title={`${count} follow-up${count > 1 ? 's' : ''}`} style={cellStyle}>{cellInner}</Link>
+                            : <div key={key} style={cellStyle}>{cellInner}</div>;
                     })}
                 </div>
             </div>
@@ -588,6 +585,24 @@ function QuickActionPill({ href, icon, label, tone = 'violet', onClick }) {
     return <Link href={href} style={{ textDecoration: 'none' }}>{inner}</Link>;
 }
 
+// ─── Skeleton Card (shimmer placeholder) ──────────────────────────────────────
+function SkeletonKpiCard() {
+    return (
+        <div style={{
+            background: 'rgba(255,255,255,0.82)',
+            borderRadius: 22, padding: '22px 22px 20px',
+            boxShadow: '0 4px 24px rgba(99,102,241,0.07)',
+            height: '100%', overflow: 'hidden', position: 'relative',
+        }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div className="skeleton-box" style={{ width: 44, height: 44, borderRadius: 14 }} />
+            </div>
+            <div className="skeleton-box" style={{ width: '55%', height: 32, borderRadius: 8, marginBottom: 10 }} />
+            <div className="skeleton-box" style={{ width: '70%', height: 10, borderRadius: 6 }} />
+        </div>
+    );
+}
+
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 export default function Dashboard({ stats: initialStats, missed_callbacks: initialCallbacks, followup_calendar, call_outcomes: initialOutcomes }) {
     const [stats,       setStats]       = useState(initialStats     ?? {});
@@ -595,6 +610,7 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
     const [outcomes,    setOutcomes]    = useState(initialOutcomes  ?? {});
     const [lastRefresh, setLastRefresh] = useState(new Date());
     const [refreshAnim, setRefreshAnim] = useState(false);
+    const [skeletonFirst, setSkeletonFirst] = useState(!initialStats);
     const missedRef = useRef(null);
     const { greeting, greetIcon, dateStr, timeStr } = useLiveClock();
 
@@ -616,14 +632,22 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
             if (Array.isArray(data.missed_callbacks)) setCallbacks(data.missed_callbacks);
             if (data.call_outcomes && typeof data.call_outcomes === 'object') setOutcomes(data.call_outcomes);
             setLastRefresh(new Date());
+            setSkeletonFirst(false);
         } catch (_) {}
         setTimeout(() => setRefreshAnim(false), 600);
     }, []);
 
     useEffect(() => {
         fetchSnapshot();
-        const t = setInterval(fetchSnapshot, 45_000);
-        return () => clearInterval(t);
+        const t = setInterval(() => {
+            if (!document.hidden) fetchSnapshot();
+        }, 30_000);
+        const onVisible = () => { if (!document.hidden) fetchSnapshot(); };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+            clearInterval(t);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
     }, [fetchSnapshot]);
 
     const showAlert = (stats.followups ?? 0) > 0 || (stats.overdue ?? 0) > 0;
@@ -761,17 +785,22 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
 
             {/* ── KPI stat row ──────────────────────────────────────────────── */}
             <div className="row g-3 mb-4">
-                {[
-                    { label:'Assigned Leads',   value:stats.assigned,  icon:'assignment_ind', tone:'violet'  },
-                    { label:'New Leads',         value:stats.new_leads, icon:'fiber_new',      tone:'emerald', badge:'New' },
-                    { label:'Follow-ups Today',  value:stats.followups, icon:'event',          tone:'amber'   },
-                    { label:'Overdue',           value:stats.overdue,   icon:'warning_amber',  tone:'rose',   badge:'Urgent' },
-                    { label:'Calls Today',       value:stats.calls,     icon:'phone_in_talk',  tone:'sky'     },
-                ].map(c => (
-                    <div key={c.label} className="col-6 col-md-4 col-lg">
-                        <KpiCard {...c} />
-                    </div>
-                ))}
+                {skeletonFirst
+                    ? Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="col-6 col-md-4 col-lg"><SkeletonKpiCard /></div>
+                    ))
+                    : [
+                        { label:'Assigned Leads',   value:stats.assigned,  icon:'assignment_ind', tone:'violet'  },
+                        { label:'New Leads',         value:stats.new_leads, icon:'fiber_new',      tone:'emerald', badge:'New' },
+                        { label:'Follow-ups Today',  value:stats.followups, icon:'event',          tone:'amber'   },
+                        { label:'Overdue',           value:stats.overdue,   icon:'warning_amber',  tone:'rose',   badge:'Urgent' },
+                        { label:'Calls Today',       value:stats.calls,     icon:'phone_in_talk',  tone:'sky'     },
+                    ].map(c => (
+                        <div key={c.label} className="col-6 col-md-4 col-lg">
+                            <KpiCard {...c} />
+                        </div>
+                    ))
+                }
             </div>
 
             {/* ── Analytics row ─────────────────────────────────────────────── */}
@@ -830,7 +859,7 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
             <FollowupCalendar initialData={followup_calendar} />
 
             <style>{`
-                @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+                @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
             `}</style>
         </>
     );

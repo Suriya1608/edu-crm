@@ -49,12 +49,31 @@ class FollowupManagementController extends Controller
         ];
     }
 
+    private function teamLeadIds(): array
+    {
+        $managerId = Auth::id();
+        // Leads directly owned by manager
+        $direct = Lead::where('assigned_by', $managerId)->pluck('id');
+        // Telecallers who have at least one lead assigned by this manager
+        $telecallerIds = Lead::where('assigned_by', $managerId)
+            ->whereNotNull('assigned_to')
+            ->distinct()
+            ->pluck('assigned_to');
+        // Also include leads assigned to those telecallers by admin or others
+        $indirect = $telecallerIds->isNotEmpty()
+            ? Lead::whereIn('assigned_to', $telecallerIds)->pluck('id')
+            : collect();
+
+        return $direct->merge($indirect)->unique()->values()->all();
+    }
+
     public function today(Request $request)
     {
-        $myLeadsSubquery = Lead::where('assigned_by', Auth::id())->select('id');
+        $leadIds = $this->teamLeadIds();
 
         $followups = Followup::with(['lead.assignedUser', 'user'])
-            ->whereIn('lead_id', $myLeadsSubquery)
+            ->whereIn('lead_id', $leadIds)
+            ->whereNull('completed_at')
             ->whereDate('next_followup', now()->toDateString())
             ->orderBy('next_followup')
             ->paginate(15)
@@ -70,11 +89,20 @@ class FollowupManagementController extends Controller
 
     public function overdue(Request $request)
     {
-        $myLeadsSubquery = Lead::where('assigned_by', Auth::id())->select('id');
+        $leadIds = $this->teamLeadIds();
+        $nowTime = now()->format('H:i:s');
 
         $followups = Followup::with(['lead.assignedUser', 'user'])
-            ->whereIn('lead_id', $myLeadsSubquery)
-            ->whereDate('next_followup', '<', now()->toDateString())
+            ->whereIn('lead_id', $leadIds)
+            ->whereNull('completed_at')
+            ->where(function ($q) use ($nowTime) {
+                $q->whereDate('next_followup', '<', now()->toDateString())
+                  ->orWhere(function ($q2) use ($nowTime) {
+                      $q2->whereDate('next_followup', now()->toDateString())
+                         ->whereNotNull('followup_time')
+                         ->whereRaw('followup_time < ?', [$nowTime]);
+                  });
+            })
             ->orderBy('next_followup')
             ->paginate(15)
             ->withQueryString()
@@ -89,10 +117,11 @@ class FollowupManagementController extends Controller
 
     public function upcoming(Request $request)
     {
-        $myLeadsSubquery = Lead::where('assigned_by', Auth::id())->select('id');
+        $leadIds = $this->teamLeadIds();
 
         $followups = Followup::with(['lead.assignedUser', 'user'])
-            ->whereIn('lead_id', $myLeadsSubquery)
+            ->whereIn('lead_id', $leadIds)
+            ->whereNull('completed_at')
             ->whereDate('next_followup', '>', now()->toDateString())
             ->orderBy('next_followup')
             ->paginate(15)

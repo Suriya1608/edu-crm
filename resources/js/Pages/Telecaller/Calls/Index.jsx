@@ -331,8 +331,26 @@ export default function Index({ scope, title, callLogs, statusOptions, outcomeOp
                         <tbody>
                             {callLogs.data.length === 0 ? (
                                 <tr>
-                                    <td colSpan={scope === 'missed' ? 5 : 7} className="text-center py-4 text-muted">
-                                        No calls found.
+                                    <td colSpan={scope === 'missed' ? 5 : 7}>
+                                        <div style={{ textAlign: 'center', padding: '52px 0 44px' }}>
+                                            <div style={{ width: 72, height: 72, borderRadius: 20,
+                                                background: scope === 'missed' ? '#fef2f2' : '#eef2ff',
+                                                display: 'flex', alignItems: 'center',
+                                                justifyContent: 'center', margin: '0 auto 16px' }}>
+                                                <span className="material-icons" style={{ fontSize: 36,
+                                                    color: scope === 'missed' ? '#fca5a5' : '#a5b4fc' }}>
+                                                    {scope === 'missed' ? 'phone_missed' : 'phone_in_talk'}
+                                                </span>
+                                            </div>
+                                            <div style={{ fontSize: 15, fontWeight: 700, color: '#334155', marginBottom: 6 }}>
+                                                {scope === 'missed' ? 'No missed calls' : 'No calls yet'}
+                                            </div>
+                                            <div style={{ fontSize: 13, color: '#94a3b8', maxWidth: 260, margin: '0 auto' }}>
+                                                {scope === 'missed'
+                                                    ? 'Great work — no missed calls in this period.'
+                                                    : 'Calls will appear here once you start making or receiving them.'}
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
                             ) : callLogs.data.map((call, idx) => {

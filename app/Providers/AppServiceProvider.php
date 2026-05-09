@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Models\Lead;
+use App\Models\LeadActivity;
 use App\Models\Setting;
 use App\Models\User;
+use App\Observers\LeadActivityObserver;
 use App\Policies\LeadPolicy;
 use App\Policies\SettingPolicy;
 use App\Policies\UserPolicy;
@@ -36,6 +38,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        LeadActivity::observe(LeadActivityObserver::class);
+
         Paginator::useBootstrapFive();
 
         RedirectIfAuthenticated::redirectUsing(function () {
@@ -83,5 +87,27 @@ class AppServiceProvider extends ServiceProvider
             'mail.from.address' => (string) ($settings['smtp_from_address'] ?? env('MAIL_FROM_ADDRESS', 'hello@example.com')),
             'mail.from.name' => (string) ($settings['smtp_from_name'] ?? env('MAIL_FROM_NAME', 'CRM')),
         ]);
+
+        // Dynamic broadcast driver — read from DB settings, override compiled config
+        $broadcastDriver = (string) ($settings['broadcast_driver'] ?? 'null');
+        config(['broadcasting.default' => $broadcastDriver]);
+
+        if ($broadcastDriver === 'pusher') {
+            config([
+                'broadcasting.connections.pusher.key'             => Setting::getSecure('pusher_app_key',    env('PUSHER_APP_KEY', '')),
+                'broadcasting.connections.pusher.secret'          => Setting::getSecure('pusher_app_secret', env('PUSHER_APP_SECRET', '')),
+                'broadcasting.connections.pusher.app_id'          => Setting::getSecure('pusher_app_id',     env('PUSHER_APP_ID', '')),
+                'broadcasting.connections.pusher.options.cluster' => (string) ($settings['pusher_app_cluster'] ?? env('PUSHER_APP_CLUSTER', 'mt1')),
+            ]);
+        } elseif ($broadcastDriver === 'reverb') {
+            config([
+                'broadcasting.connections.reverb.key'            => Setting::getSecure('reverb_app_key',    env('REVERB_APP_KEY', '')),
+                'broadcasting.connections.reverb.secret'         => Setting::getSecure('reverb_app_secret', env('REVERB_APP_SECRET', '')),
+                'broadcasting.connections.reverb.app_id'         => Setting::getSecure('reverb_app_id',     env('REVERB_APP_ID', '')),
+                'broadcasting.connections.reverb.options.host'   => (string) ($settings['reverb_host']   ?? env('REVERB_HOST', '0.0.0.0')),
+                'broadcasting.connections.reverb.options.port'   => (int)    ($settings['reverb_port']   ?? env('REVERB_PORT', 8080)),
+                'broadcasting.connections.reverb.options.scheme' => (string) ($settings['reverb_scheme'] ?? env('REVERB_SCHEME', 'http')),
+            ]);
+        }
     }
 }
