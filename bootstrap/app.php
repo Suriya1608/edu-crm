@@ -2,12 +2,14 @@
 
 use App\Http\Middleware\SanitizeInput;
 use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\TenantMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\HandleCors;
 use Illuminate\Http\Request;
 use Illuminate\Session\TokenMismatchException;
+use Illuminate\Support\Facades\Route;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -17,6 +19,13 @@ return Application::configure(basePath: dirname(__DIR__))
         channels: __DIR__ . '/../routes/channels.php',
         health: '/up',
         api: __DIR__ . '/../routes/api.php',
+        then: function () {
+            $domain  = env('APP_DOMAIN', 'insighttechnology.in');
+            $central = env('CENTRAL_DOMAIN', 'educrm');
+            Route::middleware('web')
+                ->domain($central . '.' . $domain)
+                ->group(base_path('routes/superadmin.php'));
+        },
     )
     ->withProviders([
         App\Providers\HorizonServiceProvider::class,
@@ -25,6 +34,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
         $middleware->append(HandleCors::class);
         $middleware->append(SecurityHeaders::class);
+
+        $middleware->web(prepend: [
+            TenantMiddleware::class,
+        ]);
 
         $middleware->web(append: [
             \App\Http\Middleware\UpdateLastSeen::class,

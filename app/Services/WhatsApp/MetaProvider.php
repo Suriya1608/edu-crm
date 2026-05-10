@@ -2,7 +2,6 @@
 
 namespace App\Services\WhatsApp;
 
-use App\Models\Setting;
 use App\Services\WhatsApp\Contracts\WhatsAppProviderInterface;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -37,10 +36,8 @@ class MetaProvider implements WhatsAppProviderInterface
             ];
         }
 
-        $templateName     = (string) Setting::get('meta_whatsapp_template_name',
-            config('services.meta.whatsapp_default_template', 'welcome_template'));
-        $templateLanguage = (string) Setting::get('meta_whatsapp_template_language',
-            config('services.meta.whatsapp_default_template_language', 'en'));
+        $templateName     = (string) config('whatsapp.template_name',     'hello_world');
+        $templateLanguage = (string) config('whatsapp.template_language', 'en');
 
         $templatePayload = [
             'name'     => $templateName,
@@ -126,12 +123,12 @@ class MetaProvider implements WhatsAppProviderInterface
 
     public function accessToken(): string
     {
-        return (string) Setting::getSecure('meta_whatsapp_token', config('services.meta.whatsapp_token', ''));
+        return (string) config('whatsapp.token', env('META_WHATSAPP_TOKEN', ''));
     }
 
     public function phoneNumberId(): string
     {
-        return (string) Setting::get('meta_whatsapp_phone_number_id', config('services.meta.whatsapp_phone_id', ''));
+        return (string) config('whatsapp.phone_number_id', env('META_WHATSAPP_PHONE_NUMBER_ID', ''));
     }
 
     private function graphApiVersion(): string

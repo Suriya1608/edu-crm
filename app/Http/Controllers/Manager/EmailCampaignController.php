@@ -16,6 +16,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
 class EmailCampaignController extends Controller
@@ -25,20 +26,37 @@ class EmailCampaignController extends Controller
         $campaigns = EmailCampaign::where('created_by', Auth::id())
             ->latest()
             ->paginate(20)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn($ec) => [
+                'id'               => $ec->id,
+                'name'             => $ec->name,
+                'description'      => $ec->description,
+                'template_name'    => $ec->template_name,
+                'status'           => $ec->status,
+                'recipients_count' => $ec->recipients_count ?? 0,
+                'sent_count'       => $ec->sent_count ?? 0,
+                'opened_count'     => $ec->opened_count ?? 0,
+                'failed_count'     => $ec->failed_count ?? 0,
+                'delivery_rate'    => $ec->delivery_rate,
+                'open_rate'        => $ec->open_rate,
+                'scheduled_at'     => $ec->scheduled_at?->format('d M, h:i A'),
+                'created_at'       => $ec->created_at->format('d M Y'),
+                'show_url'         => route('manager.email-campaigns.show', $ec),
+                'delete_url'       => route('manager.email-campaigns.destroy', $ec),
+            ]);
 
-        return view('manager.email-campaigns.index', compact('campaigns'));
+        return Inertia::render('Manager/EmailCampaigns/Index', compact('campaigns'));
     }
 
     public function create()
     {
-        $templates = EmailTemplate::where('status', 'active')->get();
+        $templates = EmailTemplate::where('status', 'active')->get(['id', 'name', 'subject', 'body']);
         $courses   = Course::active()->orderBy('sort_order')->orderBy('name')->pluck('name');
         $campaigns = Campaign::where('created_by', Auth::id())
             ->orderByDesc('id')
             ->get(['id', 'name']);
 
-        return view('manager.email-campaigns.create', compact('templates', 'courses', 'campaigns'));
+        return Inertia::render('Manager/EmailCampaigns/Create', compact('templates', 'courses', 'campaigns'));
     }
 
     public function store(Request $request)
@@ -110,10 +128,34 @@ class EmailCampaignController extends Controller
         $recipients = $emailCampaign->recipients()
             ->orderByRaw("FIELD(status,'sent','opened','failed','bounced','pending')")
             ->paginate(50)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn($r) => [
+                'id'        => $r->id,
+                'email'     => $r->email,
+                'name'      => $r->name,
+                'status'    => $r->status,
+                'sent_at'   => $r->sent_at?->format('d M Y, h:i A'),
+                'opened_at' => $r->opened_at?->format('d M Y, h:i A'),
+            ]);
 
-        return view('manager.email-campaigns.show', [
-            'campaign'   => $emailCampaign,
+        return Inertia::render('Manager/EmailCampaigns/Show', [
+            'campaign'   => [
+                'name'             => $emailCampaign->name,
+                'status'           => $emailCampaign->status,
+                'template_name'    => $emailCampaign->template_name,
+                'course_filter'    => $emailCampaign->course_filter,
+                'recipients_count' => $emailCampaign->recipients_count ?? 0,
+                'sent_count'       => $emailCampaign->sent_count ?? 0,
+                'opened_count'     => $emailCampaign->opened_count ?? 0,
+                'click_count'      => $emailCampaign->click_count ?? 0,
+                'bounced_count'    => $emailCampaign->bounced_count ?? 0,
+                'failed_count'     => $emailCampaign->failed_count ?? 0,
+                'delivery_rate'    => $emailCampaign->delivery_rate,
+                'open_rate'        => $emailCampaign->open_rate,
+                'click_rate'       => $emailCampaign->click_rate,
+                'bounce_rate'      => $emailCampaign->bounce_rate,
+                'delete_url'       => route('manager.email-campaigns.destroy', $emailCampaign),
+            ],
             'recipients' => $recipients,
         ]);
     }
