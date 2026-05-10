@@ -50,9 +50,22 @@ class LeadController extends Controller
             );
         }
 
-        $leads = $query->latest()->paginate(20)->withQueryString();
+        $leads = $query->latest()->paginate(20)->withQueryString()
+            ->through(fn($lead) => [
+                'id'        => $lead->id,
+                'lead_code' => $lead->lead_code,
+                'name'      => $lead->name,
+                'phone'     => $lead->phone,
+                'course'    => $lead->enrolledCourse->name ?? '—',
+                'source'    => $lead->source ?? '—',
+                'age'       => $lead->created_at->diffForHumans(null, true),
+                'claim_url' => route('manager.leads.claim', encrypt($lead->id)),
+            ]);
 
-        return view('manager.leads.pool', compact('leads'));
+        return Inertia::render('Manager/Leads/Pool', [
+            'leads'   => $leads,
+            'filters' => ['search' => $request->search ?? ''],
+        ]);
     }
 
     public function claim(Request $request, $encryptedId)

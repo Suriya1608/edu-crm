@@ -13,7 +13,8 @@ class UpdateLastSeen
     public function handle(Request $request, Closure $next)
     {
         if (Auth::check()) {
-            $cacheKey = 'last_seen_update_' . Auth::id();
+            $tenantId = (app()->bound('tenant') && app('tenant')) ? app('tenant')->id : 0;
+            $cacheKey = 'last_seen_' . $tenantId . '_' . Auth::id();
 
             if (!Cache::has($cacheKey)) {
                 User::where('id', Auth::id())->update([

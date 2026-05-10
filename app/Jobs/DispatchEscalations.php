@@ -2,8 +2,8 @@
 
 namespace App\Jobs;
 
+use App\Jobs\Concerns\HasTenantContext;
 use App\Services\AutomationEngine;
-use App\Services\AutomationSettings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,26 +12,24 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-/**
- * Queued job that runs missed-followup and response-SLA escalations.
- *
- * Uses a file-cache lock (25-minute TTL) to prevent overlapping runs.
- * Safe to dispatch every minute from the scheduler — extra dispatches
- * are rejected immediately if the lock is still held.
- */
 class DispatchEscalations implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HasTenantContext;
 
-    /** Retry once on failure, then fail permanently */
-    public int $tries = 2;
-
-    /** 5-minute timeout per attempt */
+    public int $tries   = 2;
     public int $timeout = 300;
+
+    public function __construct()
+    {
+        $this->initTenantContext();
+    }
 
     public function handle(AutomationEngine $engine): void
     {
-        $lock = Cache::lock('crm_escalation_run', 300); // 5-minute lock
+        $this->switchTenantConnection();
+
+        $lockKey = 'crm_escalation_run_' . $this->tenantId;
+        $lock = Cache::lock($lockKey, 300);
 
         if (!$lock->get()) {
             Log::channel('single')->info('[AutomationEscalation] Skipped — previous run still active.');

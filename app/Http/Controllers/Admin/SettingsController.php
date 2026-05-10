@@ -41,7 +41,7 @@ class SettingsController extends Controller
             'site_name'    => 'required|string|max:255',
             'site_url'     => 'required|string|max:255',
             'site_logo'    => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
-            'site_favicon' => 'nullable|image|mimes:png,ico|max:512',
+            'site_favicon' => 'nullable|mimes:png,ico|max:512',
         ]);
 
         if ($request->hasFile('site_logo')) {

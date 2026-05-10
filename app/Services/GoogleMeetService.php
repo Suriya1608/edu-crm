@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Setting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -17,12 +16,12 @@ class GoogleMeetService
 
     private function clientId(): string
     {
-        return Setting::getSecure('google_client_id', config('services.google.client_id', ''));
+        return (string) config('google.client_id', env('GOOGLE_CLIENT_ID', ''));
     }
 
     private function clientSecret(): string
     {
-        return Setting::getSecure('google_client_secret', config('services.google.client_secret', ''));
+        return (string) config('google.client_secret', env('GOOGLE_CLIENT_SECRET', ''));
     }
 
     public function getAuthUrl(string $redirectUri): string
