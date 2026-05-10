@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Setting;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -15,17 +14,17 @@ class ZoomService
 
     private function accountId(): string
     {
-        return Setting::getSecure('zoom_account_id', '');
+        return (string) config('zoom.account_id', env('ZOOM_ACCOUNT_ID', ''));
     }
 
     private function clientId(): string
     {
-        return Setting::getSecure('zoom_client_id', '');
+        return (string) config('zoom.client_id', env('ZOOM_CLIENT_ID', ''));
     }
 
     private function clientSecret(): string
     {
-        return Setting::getSecure('zoom_client_secret', '');
+        return (string) config('zoom.client_secret', env('ZOOM_CLIENT_SECRET', ''));
     }
 
     public function isConfigured(): bool

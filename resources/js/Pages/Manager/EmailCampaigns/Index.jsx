@@ -9,9 +9,9 @@ const STATUS_CLS = {
 };
 
 export default function Index({ campaigns }) {
-    function deleteCampaign(id) {
+    function deleteCampaign(url) {
         if (!window.confirm('Delete this campaign?')) return;
-        router.delete(`/manager/email-campaigns/${id}`, { preserveScroll: false });
+        router.delete(url, { preserveScroll: false });
     }
 
     return (
@@ -59,7 +59,7 @@ export default function Index({ campaigns }) {
                                     {campaigns.data.map(ec => (
                                         <tr key={ec.id}>
                                             <td>
-                                                <Link href={`/manager/email-campaigns/${ec.id}`}
+                                                <Link href={ec.show_url}
                                                     className="fw-semibold text-decoration-none">
                                                     {ec.name}
                                                 </Link>
@@ -99,12 +99,12 @@ export default function Index({ campaigns }) {
                                             </td>
                                             <td>
                                                 <div className="d-flex gap-1">
-                                                    <Link href={`/manager/email-campaigns/${ec.id}`}
+                                                    <Link href={ec.show_url}
                                                         className="btn btn-sm btn-outline-primary">
                                                         <span className="material-icons" style={{ fontSize: 15 }}>bar_chart</span>
                                                     </Link>
                                                     <button className="btn btn-sm btn-outline-danger"
-                                                        onClick={() => deleteCampaign(ec.id)}>
+                                                        onClick={() => deleteCampaign(ec.delete_url)}>
                                                         <span className="material-icons" style={{ fontSize: 15 }}>delete</span>
                                                     </button>
                                                 </div>

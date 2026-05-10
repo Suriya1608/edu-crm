@@ -296,10 +296,10 @@ class ReportsController extends Controller
             return $this->csvDownload($report . '.csv', $data['headers'], $data['rows']);
         }
 
-        return view('manager.reports.print', [
-            'title' => $data['title'],
+        return Inertia::render('Manager/Reports/Print', [
+            'title'   => $data['title'],
             'headers' => $data['headers'],
-            'rows' => $data['rows'],
+            'rows'    => $data['rows'],
         ]);
     }
 

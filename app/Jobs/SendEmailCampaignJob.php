@@ -7,6 +7,7 @@ use App\Models\EmailBounce;
 use App\Models\EmailCampaign;
 use App\Models\EmailClick;
 use App\Models\EmailTemplate;
+use App\Jobs\Concerns\HasTenantContext;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -18,7 +19,7 @@ use Illuminate\Support\Str;
 
 class SendEmailCampaignJob implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HasTenantContext;
 
     public int $tries   = 3;
     public int $timeout = 600;
@@ -26,6 +27,7 @@ class SendEmailCampaignJob implements ShouldQueue
     public function __construct(public int $emailCampaignId)
     {
         $this->onQueue('emails');
+        $this->initTenantContext();
     }
 
     /**
@@ -38,6 +40,8 @@ class SendEmailCampaignJob implements ShouldQueue
 
     public function handle(): void
     {
+        $this->switchTenantConnection();
+
         $campaign = EmailCampaign::find($this->emailCampaignId);
         if (!$campaign || !in_array($campaign->status, ['scheduled', 'sending'])) {
             return;

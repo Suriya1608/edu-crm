@@ -174,7 +174,15 @@ class CampaignController extends Controller
     {
         $id       = decrypt($id);
         $campaign = Campaign::where('created_by', Auth::id())->findOrFail($id);
-        return view('manager.campaigns.import', compact('campaign'));
+        return Inertia::render('Manager/Campaigns/Import', [
+            'campaign' => [
+                'id'           => $campaign->id,
+                'encrypted_id' => encrypt($campaign->id),
+                'name'         => $campaign->name,
+                'show_url'     => route('manager.campaigns.show', encrypt($campaign->id)),
+            ],
+            'step' => 'upload',
+        ]);
     }
 
     // ─── Preview Upload ───────────────────────────────────────────────────────
@@ -280,10 +288,25 @@ class CampaignController extends Controller
         $invalid       = $invalidPhone + $invalidEmail;
         $insertable    = $total - $duplicates - $invalid;
 
-        return view('manager.campaigns.import', compact(
-            'campaign', 'preview', 'total', 'duplicates',
-            'invalid', 'invalidPhone', 'invalidEmail', 'insertable'
-        ));
+        $encId = encrypt($campaign->id);
+        return Inertia::render('Manager/Campaigns/Import', [
+            'campaign' => [
+                'id'           => $campaign->id,
+                'encrypted_id' => $encId,
+                'name'         => $campaign->name,
+                'show_url'     => route('manager.campaigns.show', $encId),
+            ],
+            'step'         => 'preview',
+            'preview'      => array_slice($preview, 0, 100),
+            'preview_total'=> count($preview),
+            'total'        => $total,
+            'duplicates'   => $duplicates,
+            'invalid'      => $invalid,
+            'invalid_phone'=> $invalidPhone,
+            'invalid_email'=> $invalidEmail,
+            'insertable'   => $insertable,
+            'valid_rows'   => array_values(array_filter($preview, fn($r) => !$r['is_duplicate'] && !$r['is_invalid'])),
+        ]);
     }
 
     // ─── Store Imported Contacts ──────────────────────────────────────────────
@@ -430,10 +453,63 @@ class CampaignController extends Controller
         $contactMessages = WhatsAppMessage::where('campaign_contact_id', $contact->id)
             ->latest()->limit(50)->get()->reverse()->values();
 
-        $provider    = 'tcn';
-        $telecallers = User::where('role', 'telecaller')->orderBy('name')->get();
+        $telecallers = User::where('role', 'telecaller')->orderBy('name')->get(['id', 'name']);
 
-        return view('manager.campaigns.contact', compact('campaign', 'contact', 'activities', 'contactMessages', 'provider', 'telecallers'));
+        $encCampaignId = encrypt($campaign->id);
+        $encContactId  = encrypt($contact->id);
+
+        return Inertia::render('Manager/Campaigns/Contact', [
+            'campaign' => [
+                'id'           => $campaign->id,
+                'encrypted_id' => $encCampaignId,
+                'name'         => $campaign->name,
+            ],
+            'contact' => [
+                'id'            => $contact->id,
+                'encrypted_id'  => $encContactId,
+                'name'          => $contact->name,
+                'phone'         => $contact->phone,
+                'email'         => $contact->email,
+                'course'        => $contact->course,
+                'city'          => $contact->city,
+                'status'        => $contact->status,
+                'assigned_to'   => $contact->assigned_to,
+                'assigned_user' => $contact->assignedUser?->name,
+                'next_followup' => $contact->next_followup?->format('Y-m-d'),
+                'followup_time' => $contact->followup_time,
+                'call_count'    => $contact->call_count ?? 0,
+            ],
+            'activities' => $activities->map(fn($a) => [
+                'id'          => $a->id,
+                'type'        => $a->type,
+                'description' => $a->description,
+                'meta'        => $a->meta,
+                'created_by'  => $a->createdBy?->name ?? '-',
+                'created_at'  => $a->created_at->diffForHumans(),
+            ]),
+            'whatsapp_messages' => $contactMessages->map(fn($m) => [
+                'id'             => $m->id,
+                'direction'      => $m->direction,
+                'body'           => $m->message_body,
+                'media_type'     => $m->media_type,
+                'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
+                'media_filename' => $m->media_filename,
+                'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
+                'time'           => $m->created_at?->format('h:i A'),
+            ]),
+            'telecallers' => $telecallers,
+            'urls' => [
+                'back'          => route('manager.campaigns.show', $encCampaignId),
+                'change_status' => route('manager.campaigns.contact.status', [$encCampaignId, $encContactId]),
+                'set_followup'  => route('manager.campaigns.contact.followup', [$encCampaignId, $encContactId]),
+                'add_note'      => route('manager.campaigns.contact.note', [$encCampaignId, $encContactId]),
+                'log_call'      => route('manager.campaigns.contact.call', [$encCampaignId, $encContactId]),
+                'reassign'      => route('manager.campaigns.contact.reassign', [$encCampaignId, $encContactId]),
+                'wa_store'      => route('manager.campaigns.contact.whatsapp.store', [$encCampaignId, $encContactId]),
+                'wa_media'      => route('manager.campaigns.contact.whatsapp.media', [$encCampaignId, $encContactId]),
+                'wa_fetch'      => route('manager.campaigns.contact.whatsapp.fetch', [$encCampaignId, $encContactId]),
+            ],
+        ]);
     }
 
     // ─── Update Contact Status (Manager) ─────────────────────────────────────
