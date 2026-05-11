@@ -25,16 +25,24 @@ class TenantController extends Controller
         $data = $request->validate([
             'name'           => ['required', 'string', 'max:255'],
             'subdomain'      => ['required', 'string', 'max:50', 'regex:/^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$/', 'unique:central_mysql.tenants,subdomain'],
+            'db_name'        => ['required', 'string', 'max:64', 'regex:/^[a-zA-Z0-9_]+$/', 'unique:central_mysql.tenants,db_name'],
             'admin_email'    => ['nullable', 'email'],
             'admin_password' => ['nullable', 'string', 'min:8'],
         ]);
 
-        Artisan::call('tenant:create', array_filter([
+        $args = array_filter([
             'name'             => $data['name'],
             'subdomain'        => $data['subdomain'],
+            '--db'             => $data['db_name'],
             '--admin-email'    => $data['admin_email'] ?? null,
             '--admin-password' => $data['admin_password'] ?? null,
-        ]));
+        ]);
+
+        if ($request->boolean('existing_db')) {
+            $args['--existing'] = true;
+        }
+
+        Artisan::call('tenant:create', $args);
 
         return redirect()->route('superadmin.tenants.index')
             ->with('success', "Tenant '{$data['name']}' created successfully.");

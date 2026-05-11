@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             $central = env('CENTRAL_DOMAIN', 'educrm');
             Route::middleware('web')
                 ->domain($central . '.' . $domain)
+                ->prefix('super-admin')
                 ->group(base_path('routes/superadmin.php'));
 
             // Regular tenant web routes (no domain constraint — matches everything else)
