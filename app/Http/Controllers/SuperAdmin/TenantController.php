@@ -25,27 +25,40 @@ class TenantController extends Controller
         $data = $request->validate([
             'name'           => ['required', 'string', 'max:255'],
             'subdomain'      => ['required', 'string', 'max:50', 'regex:/^[a-z0-9][a-z0-9\-]*[a-z0-9]$|^[a-z0-9]$/', 'unique:central_mysql.tenants,subdomain'],
-            'db_name'        => ['required', 'string', 'max:64', 'regex:/^[a-zA-Z0-9_]+$/', 'unique:central_mysql.tenants,db_name'],
+            'db_name'        => ['nullable', 'string', 'max:64', 'regex:/^[a-zA-Z0-9_]+$/', 'unique:central_mysql.tenants,db_name'],
             'admin_email'    => ['nullable', 'email'],
             'admin_password' => ['nullable', 'string', 'min:8'],
         ]);
 
-        $args = array_filter([
-            'name'             => $data['name'],
-            'subdomain'        => $data['subdomain'],
-            '--db'             => $data['db_name'],
-            '--admin-email'    => $data['admin_email'] ?? null,
-            '--admin-password' => $data['admin_password'] ?? null,
-        ]);
+        $args = [
+            'name'      => $data['name'],
+            'subdomain' => $data['subdomain'],
+        ];
 
+        if (!empty($data['db_name'])) {
+            $args['--db'] = $data['db_name'];
+        }
+        if (!empty($data['admin_email'])) {
+            $args['--admin-email'] = $data['admin_email'];
+        }
+        if (!empty($data['admin_password'])) {
+            $args['--admin-password'] = $data['admin_password'];
+        }
         if ($request->boolean('existing_db')) {
             $args['--existing'] = true;
         }
 
-        Artisan::call('tenant:create', $args);
+        $exitCode = Artisan::call('tenant:create', $args);
+        $output   = Artisan::output();
+
+        if ($exitCode !== 0) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['general' => 'Provisioning failed: ' . trim(strip_tags($output))]);
+        }
 
         return redirect()->route('superadmin.tenants.index')
-            ->with('success', "Tenant '{$data['name']}' created successfully.");
+            ->with('success', "Client '{$data['name']}' created — database and storage folder provisioned.");
     }
 
     public function edit(Tenant $tenant)

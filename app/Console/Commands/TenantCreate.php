@@ -86,6 +86,14 @@ class TenantCreate extends Command
             $this->info("Admin user created: {$email}");
         }
 
+        // Create per-tenant storage folders
+        $storagePath = storage_path("app/public/tenants/{$subdomain}");
+        if (!is_dir($storagePath)) {
+            mkdir($storagePath . '/uploads', 0755, true);
+            mkdir($storagePath . '/logos',   0755, true);
+            $this->info("Storage folder created: storage/app/public/tenants/{$subdomain}");
+        }
+
         $appDomain = env('APP_DOMAIN', 'insighttechnology.in');
         $this->newLine();
         $this->info("✓ Tenant '{$name}' is ready.");
