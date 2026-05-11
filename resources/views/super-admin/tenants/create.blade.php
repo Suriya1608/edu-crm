@@ -36,8 +36,31 @@
                         <div class="form-text">Lowercase letters, numbers and hyphens only.</div>
                     </div>
 
-                    <hr class="my-4">
-                    <p class="text-muted small mb-3">Optional: create an initial admin user in the new tenant DB.</p>
+                    {{-- Database section --}}
+                    <hr class="my-3">
+                    <p class="fw-600 mb-2" style="font-size:.85rem;color:#0f172a">Database</p>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-600">Database Name <span class="text-danger">*</span></label>
+                        <input type="text" name="db_name" id="dbName" class="form-control" value="{{ old('db_name') }}"
+                            placeholder="e.g. u492210898_client1_db" required>
+                        <div class="form-text">On shared hosting, create the database in your hosting panel first, then enter the exact name here.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="existing_db" id="existingDb" value="1" {{ old('existing_db') ? 'checked' : '' }}>
+                            <label class="form-check-label fw-600" for="existingDb">
+                                Database already exists
+                                <span class="text-muted fw-400" style="font-size:.8rem">(skip CREATE DATABASE step)</span>
+                            </label>
+                        </div>
+                        <div class="form-text ms-4">Check this on shared hosting where you cannot create databases programmatically.</div>
+                    </div>
+
+                    {{-- Admin user --}}
+                    <hr class="my-3">
+                    <p class="fw-600 mb-2" style="font-size:.85rem;color:#0f172a">Initial Admin User <span class="text-muted fw-400">(optional)</span></p>
 
                     <div class="mb-3">
                         <label class="form-label fw-600">Admin Email</label>
@@ -57,8 +80,10 @@
             </div>
         </div>
 
-        <div class="alert alert-info mt-3 small">
-            <strong>What happens next:</strong> A new MySQL database is created, all migrations are run, and the tenant is registered. This may take a few seconds.
+        <div class="alert alert-warning mt-3 small">
+            <strong>Shared hosting (Hostinger)?</strong><br>
+            Create the database in <strong>hPanel → Databases → MySQL Databases</strong> first,
+            then enter the exact database name above and check <em>"Database already exists"</em>.
         </div>
     </div>
 </div>
