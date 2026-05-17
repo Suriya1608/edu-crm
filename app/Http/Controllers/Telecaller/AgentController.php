@@ -3,18 +3,22 @@
 namespace App\Http\Controllers\Telecaller;
 
 use App\Http\Controllers\Controller;
+use App\Models\CallLog;
 use App\Models\Followup;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Models\LeadMeeting;
+use App\Models\WhatsAppMessage;
 use App\Services\AuditLogService;
 use App\Services\GoogleMeetService;
+use App\Services\WhatsAppService;
 use App\Services\ZoomService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class AgentController extends Controller
 {
@@ -52,22 +56,27 @@ You are an intelligent CRM assistant for {$user->name}, a telecaller in an educa
 Today: {$today}. Current time: {$nowTime} IST.
 
 ## What you can do
-- Find leads assigned to this telecaller
+- Find leads and get their full summary (status, last call, last note, next follow-up)
+- List new / uncontacted leads assigned to you
 - Schedule Google Meet or Zoom meetings for leads
 - Cancel scheduled meetings for leads
-- Schedule follow-up reminders
+- Schedule or reschedule follow-up reminders
+- Mark follow-ups as done
 - Update lead status
 - List follow-ups (today / tomorrow / upcoming / overdue)
+- Send a WhatsApp message to a lead
+- Get your performance stats for today / this week / this month
 
 ## Rules
 1. **Always call find_lead first** when the user mentions a person's name — never assume the lead_id.
 2. If find_lead returns multiple leads, ask the user which one they mean.
 3. To cancel a meeting: call find_lead → list_meetings → cancel_meeting.
-4. When scheduling, always confirm the exact date & time back to the user.
-5. If a meeting link is returned, always include it prominently in your reply.
-6. Be concise, friendly, and professional.
-7. Never invent lead data. Only use what tools return.
-8. If something fails, explain why and suggest next steps.
+4. To reschedule a follow-up: call find_lead → reschedule_followup with new datetime.
+5. When scheduling, always confirm the exact date & time back to the user.
+6. If a meeting link is returned, always include it prominently in your reply.
+7. Be concise, friendly, and professional.
+8. Never invent lead data. Only use what tools return.
+9. If something fails, explain why and suggest next steps.
 SYSTEM;
 
         // Build history (filter to valid roles only)
@@ -180,15 +189,21 @@ SYSTEM;
     private function executeTool(string $name, array $input): array
     {
         return match ($name) {
-            'find_lead'            => $this->toolFindLead($input),
-            'schedule_followup'    => $this->toolScheduleFollowup($input),
-            'schedule_google_meet' => $this->toolScheduleGoogleMeet($input),
-            'schedule_zoom_meet'   => $this->toolScheduleZoomMeet($input),
-            'update_lead_status'   => $this->toolUpdateStatus($input),
-            'list_followups'       => $this->toolListFollowups($input),
-            'list_meetings'        => $this->toolListMeetings($input),
-            'cancel_meeting'       => $this->toolCancelMeeting($input),
-            default                => ['ok' => false, 'error' => "Unknown tool: {$name}"],
+            'find_lead'             => $this->toolFindLead($input),
+            'get_lead_summary'      => $this->toolGetLeadSummary($input),
+            'list_new_leads'        => $this->toolListNewLeads($input),
+            'schedule_followup'     => $this->toolScheduleFollowup($input),
+            'reschedule_followup'   => $this->toolRescheduleFollowup($input),
+            'mark_followup_done'    => $this->toolMarkFollowupDone($input),
+            'schedule_google_meet'  => $this->toolScheduleGoogleMeet($input),
+            'schedule_zoom_meet'    => $this->toolScheduleZoomMeet($input),
+            'update_lead_status'    => $this->toolUpdateStatus($input),
+            'list_followups'        => $this->toolListFollowups($input),
+            'list_meetings'         => $this->toolListMeetings($input),
+            'cancel_meeting'        => $this->toolCancelMeeting($input),
+            'get_my_stats'          => $this->toolGetMyStats($input),
+            'send_whatsapp_message' => $this->toolSendWhatsApp($input),
+            default                 => ['ok' => false, 'error' => "Unknown tool: {$name}"],
         };
     }
 
@@ -512,6 +527,303 @@ SYSTEM;
                 'scheduled_at' => Carbon::parse($m->meeting_time)->format('D, d M Y \a\t g:i A'),
                 'duration_min' => $m->duration,
             ])->toArray(),
+        ];
+    }
+
+    // ─── Tool: get_lead_summary ───────────────────────────────────────────────
+    private function toolGetLeadSummary(array $input): array
+    {
+        $lead = Lead::where('id', $input['lead_id'] ?? 0)
+            ->where('assigned_to', Auth::id())
+            ->with(['enrolledCourse:id,name'])
+            ->first();
+
+        if (!$lead) {
+            return ['ok' => false, 'error' => 'Lead not found or not assigned to you.'];
+        }
+
+        $lastCall = CallLog::where('lead_id', $lead->id)
+            ->orderByDesc('created_at')
+            ->first(['created_at', 'duration', 'outcome', 'direction']);
+
+        $lastNote = LeadActivity::where('lead_id', $lead->id)
+            ->where('type', 'note')
+            ->orderByDesc('activity_time')
+            ->value('description');
+
+        $nextFollowup = Followup::where('lead_id', $lead->id)
+            ->whereNull('completed_at')
+            ->orderBy('next_followup')
+            ->orderBy('followup_time')
+            ->first(['next_followup', 'followup_time', 'remarks']);
+
+        return [
+            'ok'           => true,
+            'name'         => $lead->name,
+            'lead_code'    => $lead->lead_code,
+            'phone'        => $lead->phone,
+            'email'        => $lead->email,
+            'status'       => $lead->status,
+            'course'       => $lead->enrolledCourse?->name ?? 'Not specified',
+            'days_aged'    => (int) now()->diffInDays($lead->created_at),
+            'last_call'    => $lastCall ? [
+                'date'      => Carbon::parse($lastCall->created_at)->format('d M Y, g:i A'),
+                'duration'  => $lastCall->duration ? gmdate('i:s', (int) $lastCall->duration) : '—',
+                'outcome'   => $lastCall->outcome ?? 'No outcome logged',
+                'direction' => $lastCall->direction ?? 'outbound',
+            ] : null,
+            'last_note'    => $lastNote ?? null,
+            'next_followup' => $nextFollowup ? [
+                'date'    => Carbon::parse($nextFollowup->next_followup)->format('d M Y'),
+                'time'    => Carbon::parse($nextFollowup->followup_time)->format('g:i A'),
+                'remarks' => $nextFollowup->remarks,
+            ] : null,
+        ];
+    }
+
+    // ─── Tool: list_new_leads ─────────────────────────────────────────────────
+    private function toolListNewLeads(array $input): array
+    {
+        $limit = min((int) ($input['limit'] ?? 10), 15);
+
+        $leads = Lead::where('assigned_to', Auth::id())
+            ->where('status', 'new')
+            ->with(['enrolledCourse:id,name'])
+            ->orderBy('created_at')
+            ->limit($limit)
+            ->get(['id', 'name', 'phone', 'lead_code', 'course_id', 'created_at']);
+
+        return [
+            'ok'     => true,
+            'count'  => $leads->count(),
+            'leads'  => $leads->map(fn($l) => [
+                'id'        => $l->id,
+                'name'      => $l->name,
+                'phone'     => $l->phone,
+                'lead_code' => $l->lead_code,
+                'course'    => $l->enrolledCourse?->name ?? 'Not specified',
+                'assigned'  => Carbon::parse($l->created_at)->format('d M Y'),
+            ])->toArray(),
+        ];
+    }
+
+    // ─── Tool: get_my_stats ───────────────────────────────────────────────────
+    private function toolGetMyStats(array $input): array
+    {
+        $scope  = in_array($input['scope'] ?? '', ['today', 'week', 'month']) ? $input['scope'] : 'today';
+        $userId = Auth::id();
+
+        [$start, $end, $label] = match ($scope) {
+            'week'  => [now()->startOfWeek(Carbon::MONDAY), now()->endOfWeek(Carbon::SUNDAY), 'This Week'],
+            'month' => [now()->startOfMonth(), now()->endOfMonth(), 'This Month'],
+            default => [now()->startOfDay(), now()->endOfDay(), 'Today'],
+        };
+
+        $callsBase = CallLog::where('user_id', $userId)->whereBetween('created_at', [$start, $end]);
+
+        $totalCalls  = (clone $callsBase)->count();
+        $talkSeconds = (int) (clone $callsBase)->sum('duration');
+
+        $outcomes = (clone $callsBase)
+            ->whereNotNull('outcome')
+            ->selectRaw('outcome, COUNT(*) as cnt')
+            ->groupBy('outcome')
+            ->pluck('cnt', 'outcome')
+            ->toArray();
+
+        $followupsDone = Followup::where('user_id', $userId)
+            ->whereNotNull('completed_at')
+            ->whereBetween('completed_at', [$start, $end])
+            ->count();
+
+        $overdueFollowups = Followup::where('user_id', $userId)
+            ->whereNull('completed_at')
+            ->whereDate('next_followup', '<', today())
+            ->count();
+
+        $converted = Lead::where('assigned_to', $userId)
+            ->where('status', 'converted')
+            ->whereBetween('updated_at', [$start, $end])
+            ->count();
+
+        return [
+            'ok'                => true,
+            'scope'             => $label,
+            'total_calls'       => $totalCalls,
+            'talk_time'         => gmdate('H:i:s', $talkSeconds),
+            'outcomes'          => $outcomes,
+            'followups_done'    => $followupsDone,
+            'overdue_followups' => $overdueFollowups,
+            'converted_leads'   => $converted,
+        ];
+    }
+
+    // ─── Tool: mark_followup_done ─────────────────────────────────────────────
+    private function toolMarkFollowupDone(array $input): array
+    {
+        $lead = Lead::where('id', $input['lead_id'] ?? 0)
+            ->where('assigned_to', Auth::id())
+            ->first();
+
+        if (!$lead) {
+            return ['ok' => false, 'error' => 'Lead not found or not assigned to you.'];
+        }
+
+        $followup = Followup::where('lead_id', $lead->id)
+            ->where('user_id', Auth::id())
+            ->whereNull('completed_at')
+            ->orderBy('next_followup')
+            ->first();
+
+        if (!$followup) {
+            return ['ok' => false, 'error' => "No pending follow-up found for {$lead->name}."];
+        }
+
+        $followup->update(['completed_at' => now()]);
+
+        LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => Auth::id(),
+            'type'          => 'followup',
+            'description'   => 'Follow-up marked as completed via AI assistant.',
+            'activity_time' => now(),
+        ]);
+
+        AuditLogService::log('lead.followup_completed', 'Followup', $followup->id, ['completed_at' => null], ['completed_at' => now()->toDateTimeString(), 'source' => 'ai_agent']);
+
+        return [
+            'ok'          => true,
+            'lead_name'   => $lead->name,
+            'was_due'     => Carbon::parse($followup->next_followup)->format('d M Y') . ' at ' . Carbon::parse($followup->followup_time)->format('g:i A'),
+            'remarks'     => $followup->remarks,
+        ];
+    }
+
+    // ─── Tool: reschedule_followup ────────────────────────────────────────────
+    private function toolRescheduleFollowup(array $input): array
+    {
+        $lead = Lead::where('id', $input['lead_id'] ?? 0)
+            ->where('assigned_to', Auth::id())
+            ->first();
+
+        if (!$lead) {
+            return ['ok' => false, 'error' => 'Lead not found or not assigned to you.'];
+        }
+
+        try {
+            $at = Carbon::parse($input['datetime'])->setTimezone('Asia/Kolkata');
+        } catch (\Throwable) {
+            return ['ok' => false, 'error' => 'Invalid datetime. Use ISO format: 2026-05-05T15:30:00'];
+        }
+
+        if ($at->isPast()) {
+            return ['ok' => false, 'error' => 'The new datetime is in the past. Please provide a future time.'];
+        }
+
+        $followup = Followup::where('lead_id', $lead->id)
+            ->where('user_id', Auth::id())
+            ->whereNull('completed_at')
+            ->orderBy('next_followup')
+            ->first();
+
+        if (!$followup) {
+            // No existing follow-up — create a new one
+            Followup::create([
+                'lead_id'       => $lead->id,
+                'user_id'       => Auth::id(),
+                'remarks'       => $input['notes'] ?? 'Rescheduled via AI assistant',
+                'next_followup' => $at->toDateString(),
+                'followup_time' => $at->format('H:i'),
+            ]);
+            $lead->update(['status' => 'follow_up']);
+            return ['ok' => true, 'lead_name' => $lead->name, 'action' => 'created', 'scheduled_at' => $at->format('D, d M Y \a\t g:i A')];
+        }
+
+        $old = Carbon::parse($followup->next_followup)->format('d M Y');
+        $followup->update([
+            'next_followup'        => $at->toDateString(),
+            'followup_time'        => $at->format('H:i'),
+            'reminder_notified_at' => null,
+            'remarks'              => $input['notes'] ?? $followup->remarks,
+        ]);
+
+        AuditLogService::log('lead.followup_rescheduled', 'Followup', $followup->id, ['next_followup' => $old], ['next_followup' => $at->toDateString(), 'source' => 'ai_agent']);
+
+        return [
+            'ok'           => true,
+            'lead_name'    => $lead->name,
+            'action'       => 'rescheduled',
+            'old_date'     => $old,
+            'scheduled_at' => $at->format('D, d M Y \a\t g:i A'),
+        ];
+    }
+
+    // ─── Tool: send_whatsapp_message ──────────────────────────────────────────
+    private function toolSendWhatsApp(array $input): array
+    {
+        $lead = Lead::where('id', $input['lead_id'] ?? 0)
+            ->where('assigned_to', Auth::id())
+            ->first();
+
+        if (!$lead) {
+            return ['ok' => false, 'error' => 'Lead not found or not assigned to you.'];
+        }
+
+        if (!$lead->phone) {
+            return ['ok' => false, 'error' => "No phone number on record for {$lead->name}."];
+        }
+
+        $message = trim($input['message'] ?? '');
+        if ($message === '') {
+            return ['ok' => false, 'error' => 'Message cannot be empty.'];
+        }
+
+        /** @var WhatsAppService $wa */
+        $wa = app(WhatsAppService::class);
+
+        if (!$wa->isConfigured()) {
+            return ['ok' => false, 'error' => 'WhatsApp is not configured on this CRM. Contact your admin.'];
+        }
+
+        $to = preg_replace('/\D/', '', (string) $lead->phone);
+        if (!str_starts_with($to, '91')) {
+            $to = '91' . ltrim($to, '0');
+        }
+
+        $inbound24h = WhatsAppMessage::where('lead_id', $lead->id)
+            ->where('direction', 'inbound')
+            ->where('created_at', '>=', now()->subHours(24))
+            ->exists();
+
+        $result = $wa->send($to, $message, $inbound24h, (string) $lead->name);
+
+        if (!($result['ok'] ?? false)) {
+            return ['ok' => false, 'error' => $result['error'] ?? 'WhatsApp send failed.'];
+        }
+
+        WhatsAppMessage::create([
+            'lead_id'             => $lead->id,
+            'from_number'         => config('services.meta_whatsapp.phone_number_id', ''),
+            'message_body'        => $inbound24h ? $message : 'Template sent (no active 24h window)',
+            'direction'           => 'outbound',
+            'provider_message_id' => $result['provider_message_id'] ?? null,
+            'provider'            => $result['provider'] ?? 'meta',
+            'sent_at'             => now(),
+        ]);
+
+        LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => Auth::id(),
+            'type'          => 'whatsapp',
+            'description'   => 'WhatsApp sent via AI assistant: ' . Str::limit($message, 80),
+            'activity_time' => now(),
+        ]);
+
+        return [
+            'ok'        => true,
+            'lead_name' => $lead->name,
+            'phone'     => $lead->phone,
+            'sent'      => $inbound24h ? $message : 'WhatsApp template (no active session — lead must message first to receive free-form text)',
         ];
     }
 

@@ -2,6 +2,8 @@
    ADMISSION CRM - CUSTOM STYLES
    ======================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap');
+
 :root {
     --primary-color: #6366f1;
     --primary-dark: #4f46e5;
@@ -42,6 +44,14 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     font-feature-settings: 'kern' 1, 'liga' 1;
+}
+
+.nav-item.active {
+    background: #e8f3fd;
+    color: var(--primary-color) !important;
+    font-weight: 600;
+    border-left: none !important;
+    padding-left: 9px;
 }
 
 /* ========================================
@@ -226,7 +236,7 @@ body {
     font-weight: 700;
     color: #ffffff;
     line-height: 1;
-    font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif;
+    font-family: inherit;
 }
 
 .user-info {
@@ -260,54 +270,384 @@ body {
 }
 
 /* ========================================
-   TELECALLER SIDEBAR — Emerald Theme
+   TELECALLER SIDEBAR — Zoho-Inspired Navy Blue Theme
    ======================================== */
 
+/* Lato font for the entire telecaller panel (matches Zoho CRM style) */
+body.role-telecaller {
+    font-family: 'Lato', sans-serif !important;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+}
+
+body.role-telecaller *:not(.material-icons):not([class*="material"]):not(i) {
+    font-family: 'Lato', sans-serif !important;
+}
+
+body.role-telecaller .page-header-title {
+    font-weight: 700;
+    letter-spacing: -0.2px;
+}
+
+body.role-telecaller .page-header-subtitle {
+    font-weight: 400;
+}
+
+/* Telecaller header — white background, no coloured top border, tighter padding */
+body.role-telecaller .top-header {
+    border-top: none;
+    padding: 10px 24px;
+    border-bottom: 1px solid #EAEAED;
+}
+
+/* Hide the standard hamburger button in the header for telecaller (toggle is inside sidebar) */
+body.role-telecaller .mobile-menu-btn {
+    display: none !important;
+}
+
+body.role-telecaller #tcnReadyBtn {
+    font-family: 'Lato', sans-serif !important;
+    border-radius: 22px !important;
+    height: 36px;
+    padding: 0 16px 0 10px !important;
+    font-size: 11.5px !important;
+    letter-spacing: 0.3px;
+    transition: background .25s, box-shadow .25s !important;
+}
+
+/* Ready state glow pulse */
+body.role-telecaller #tcnStatusDot {
+    transition: background .25s;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   TELECALLER SIDEBAR — Figma: dark #111116, Work Sans, orange accent
+   Two states: expanded (220px) ↔ icon-only collapsed (72px)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   TELECALLER SIDEBAR
+   - overflow: visible  → toggle circle can hang at right edge
+   - z-index: 1042      → above sticky header (1040) so button is clickable
+   ═══════════════════════════════════════════════════════════════════ */
 .sidebar-telecaller {
-    background: #08141e;
+    background: #111116;
+    width: 220px;
+    box-shadow: 4px 0 28px rgba(0,0,0,0.35);
+    transition: width 0.28s cubic-bezier(.4,0,.2,1);
+    overflow: visible;          /* lets the toggle circle stick out at right edge */
+    z-index: 1042;              /* above sticky header (1040) */
 }
 
+.sidebar-telecaller.tc-collapsed {
+    width: 72px;
+}
+
+/* ── Main-content offset ── */
+body.role-telecaller .main-content {
+    margin-left: 220px !important;
+    transition: margin-left 0.28s cubic-bezier(.4,0,.2,1);
+}
+body.role-telecaller .main-content.tc-sidebar-collapsed {
+    margin-left: 72px !important;
+}
+
+/* ── Sidebar header ── */
+.sidebar-telecaller .sidebar-header {
+    padding: 14px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: transparent;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+    overflow: visible;          /* MUST be visible — overflow:hidden clips abs-positioned children */
+    position: relative;         /* positioned ancestor for .tc-header-toggle */
+}
+.sidebar-telecaller.tc-collapsed .sidebar-header {
+    justify-content: center;
+    padding: 14px 0;
+    gap: 0;
+}
+
+/* Logo square — orange */
 .sidebar-telecaller .sidebar-logo {
-    background: linear-gradient(135deg, #10b981, #047857);
-    box-shadow: 0 4px 14px rgba(16,185,129,0.40);
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    background: #FF5C1A;
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(255,92,26,0.40);
+    flex-shrink: 0;
 }
 
-.sidebar-telecaller .sidebar-title p {
-    color: rgba(16,185,129,0.6);
+.sidebar-telecaller .sidebar-logo .material-icons {
+    color: #fff;
+    font-size: 20px;
 }
 
+/* Site name — clips its own text and animates max-width */
+.sidebar-telecaller .tc-sidebar-title {
+    flex: 1;
+    overflow: hidden;           /* clips title text (header overflow:visible so this handles it) */
+    min-width: 0;
+    max-width: 160px;
+    white-space: nowrap;
+    transition: max-width 0.28s cubic-bezier(.4,0,.2,1), opacity 0.20s ease;
+}
+.sidebar-telecaller.tc-collapsed .tc-sidebar-title {
+    max-width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+.sidebar-telecaller .sidebar-title h1,
+.sidebar-telecaller .tc-sidebar-title h1 {
+    color: #f1f5f9;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0;
+    white-space: nowrap;
+    margin: 0;
+}
+.sidebar-telecaller .sidebar-title p,
+.sidebar-telecaller .tc-sidebar-title p {
+    color: rgba(180,198,228,0.45);
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    white-space: nowrap;
+    margin: 2px 0 0;
+}
+
+/* ── Toggle circle — hangs at the right edge of the sidebar header ──
+   position: absolute inside .sidebar-header (position: relative)
+   right: -13px → button center sits exactly on the sidebar's right edge
+   Moves automatically with the sidebar width transition.
+   Never clipped — sidebar has overflow: visible.
+   ─────────────────────────────────────────────────────────────────── */
+.tc-header-toggle {
+    position: absolute;
+    right: -13px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #FF5C1A;
+    border: 2.5px solid #111116;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(255,92,26,0.45);
+    transition: background 0.18s, box-shadow 0.18s;
+    flex-shrink: 0;
+}
+.tc-header-toggle:hover {
+    background: #FF7A3D;
+    box-shadow: 0 3px 12px rgba(255,92,26,0.60);
+}
+.tc-header-toggle .tc-toggle-icon {
+    font-size: 16px;
+    transition: transform 0.28s cubic-bezier(.4,0,.2,1);
+}
+/* Rotate arrow when collapsed */
+.sidebar-telecaller.tc-collapsed .tc-header-toggle .tc-toggle-icon {
+    transform: rotate(180deg);
+}
+
+/* Close button (mobile — non-telecaller only) */
+.sidebar-telecaller .sidebar-close-btn {
+    color: rgba(180,200,228,0.50);
+}
+
+/* Nav — clips overflowing text & scrolls vertically.
+   overflow-x: hidden here (not on the sidebar) so the toggle circle
+   can still stick out at the sidebar's right edge.                    */
+.sidebar-telecaller .sidebar-nav {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
+}
+.sidebar-telecaller .sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-telecaller .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-telecaller .sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.12);
+    border-radius: 3px;
+}
+
+/* Section labels — hidden when collapsed */
+.sidebar-telecaller .nav-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.22);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 12px 10px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity 0.18s, height 0.28s, padding 0.28s;
+}
+.sidebar-telecaller.tc-collapsed .nav-section-label {
+    opacity: 0;
+    height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    overflow: hidden;
+}
+
+/* Nav items */
+.sidebar-telecaller .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 11px;
+    border-radius: 10px;
+    margin: 1px 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.52);
+    text-decoration: none;
+    transition: background 0.18s, color 0.18s, padding 0.28s, justify-content 0.18s;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    border: none;
+}
+.sidebar-telecaller.tc-collapsed .nav-item {
+    padding: 10px !important;
+    justify-content: center !important;
+    gap: 0;
+}
+
+/* Icons */
+.sidebar-telecaller .nav-item .material-icons {
+    font-size: 19px;
+    flex-shrink: 0;
+    color: rgba(255,255,255,0.38);
+    transition: color 0.18s;
+}
+
+/* Text labels — hide when collapsed */
+.sidebar-telecaller.tc-collapsed .nav-item > span:not(.material-icons):not(.badge),
+.sidebar-telecaller.tc-collapsed button.nav-item > span.material-icons:last-child {
+    display: none !important;
+}
+
+/* Hover */
+.sidebar-telecaller .nav-item:hover {
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.88);
+}
+.sidebar-telecaller .nav-item:hover .material-icons {
+    color: rgba(255,255,255,0.75);
+}
+
+/* Active — orange fill */
 .sidebar-telecaller .nav-item.active,
 .sidebar-telecaller button.nav-item.active {
-    background: rgba(16,185,129,0.13);
-    color: #6ee7b7;
+    background: #FF5C1A !important;
+    color: #fff !important;
     font-weight: 600;
 }
-
-.sidebar-telecaller .nav-item.active .material-icons {
-    color: #6ee7b7;
+.sidebar-telecaller .nav-item.active .material-icons,
+.sidebar-telecaller button.nav-item.active .material-icons {
+    color: #fff !important;
+}
+.sidebar-telecaller .nav-item.active::before,
+.sidebar-telecaller button.nav-item.active::before {
+    display: none;
 }
 
-.sidebar-telecaller .nav-item.active::before {
-    background: linear-gradient(180deg, #10b981, #059669);
+/* Badges — hide when collapsed */
+.sidebar-telecaller.tc-collapsed .nav-item .badge {
+    display: none !important;
 }
 
-.sidebar-telecaller .nav-item:hover {
-    background: rgba(16,185,129,0.07);
-    color: #a7f3d0;
+/* Sub-menu collapse — fully hide when icon-only */
+.sidebar-telecaller.tc-collapsed .collapse,
+.sidebar-telecaller.tc-collapsed .collapse.show {
+    display: none !important;
+    height: 0 !important;
 }
 
-.sidebar-telecaller .nav-item:hover .material-icons {
-    color: #6ee7b7;
+/* Sub-menu items */
+.sidebar-telecaller .collapse .nav-item {
+    padding-left: 11px;
+    font-size: 12px;
+}
+.sidebar-telecaller .collapse .nav-item.active {
+    background: #FF5C1A !important;
+    color: #fff !important;
+}
+.sidebar-telecaller .collapse .nav-item.active .material-icons {
+    color: #fff !important;
+}
+.sidebar-telecaller .collapse .nav-item.active::before {
+    display: none;
 }
 
-.sidebar-telecaller .user-avatar {
-    background: linear-gradient(135deg, #10b981, #047857);
-    box-shadow: 0 2px 8px rgba(16,185,129,0.35);
+/* ── CSS tooltip — shown when sidebar is icon-only (collapsed) ──────────────
+   initNavTooltips() (sidebar.blade.php) extracts each nav item's label text
+   and stores it in the element's title attribute.  These rules pick that up
+   and paint a right-side popover so the user still knows what each icon does.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Establish stacking context on the nav item itself */
+.sidebar-telecaller.tc-collapsed .sidebar-nav a.nav-item[title],
+.sidebar-telecaller.tc-collapsed .sidebar-nav button.nav-item[title] {
+    position: relative;
+    overflow: visible !important; /* override the collapsed overflow:hidden */
 }
 
-.sidebar-telecaller .sidebar-header {
-    border-bottom-color: rgba(16,185,129,0.12);
+/* Arrow (pointing right → tooltip) */
+.sidebar-telecaller.tc-collapsed .sidebar-nav a.nav-item[title]:hover::before,
+.sidebar-telecaller.tc-collapsed .sidebar-nav button.nav-item[title]:hover::before {
+    content: '';
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 6px solid transparent;
+    border-right-color: #1A1A2E;
+    z-index: 1102;
+    pointer-events: none;
 }
+
+/* Tooltip bubble */
+.sidebar-telecaller.tc-collapsed .sidebar-nav a.nav-item[title]:hover::after,
+.sidebar-telecaller.tc-collapsed .sidebar-nav button.nav-item[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1A1A2E;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    white-space: nowrap;
+    z-index: 1101;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.32);
+    pointer-events: none;
+}
+
+/* Footer (not rendered for telecaller) */
+.sidebar-telecaller .sidebar-footer {
+    border-top-color: rgba(255,255,255,0.07);
+    background: rgba(0,0,0,0.14);
+}
+.sidebar-telecaller .user-profile { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); }
+.sidebar-telecaller .user-profile:hover { background: rgba(255,255,255,0.10); }
+.sidebar-telecaller .user-info p { color: rgba(255,255,255,0.92); font-weight: 600; }
+.sidebar-telecaller .user-info span { color: rgba(255,255,255,0.48); }
+.sidebar-telecaller .user-avatar { background: #FF5C1A; box-shadow: 0 2px 10px rgba(255,92,26,0.38); }
 
 /* ── Sidebar submenu: fix parent/child active overlap ─────────────── */
 
@@ -325,8 +665,27 @@ button.nav-item.active:hover {
     background: rgba(99, 102, 241, 0.14);
 }
 
-/* Fix the negative inline margin that caused submenu to sit on top of parent */
+/* Chevron rotation: last material-icon on toggle buttons spins 180° when open */
+button.nav-item .material-icons:last-child {
+    transition: transform 0.22s ease;
+}
+button.nav-item[aria-expanded="true"] .material-icons:last-child {
+    transform: rotate(180deg);
+}
+
+/* Sidebar submenu collapse — CSS-driven max-height animation.
+   Overrides Bootstrap's display:none so the height transition works.
+   JS handles the show/hide by toggling the .show class. */
 .sidebar-nav .collapse {
+    display: block !important;   /* keep in flow so max-height can animate */
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.25s ease;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+}
+.sidebar-nav .collapse.show {
+    max-height: 700px;           /* generous upper bound for any submenu */
     margin-top: 4px !important;
     margin-bottom: 8px !important;
 }
@@ -350,8 +709,8 @@ button.nav-item.active:hover {
 
 /* Telecaller theme: parent toggle active */
 .sidebar-telecaller button.nav-item.active {
-    background: rgba(16, 185, 129, 0.08);
-    color: #a7f3d0;
+    background: rgba(255,255,255,0.08);
+    color: #dce6f5;
 }
 
 .sidebar-telecaller button.nav-item.active::before {
@@ -359,8 +718,9 @@ button.nav-item.active:hover {
 }
 
 .sidebar-telecaller .collapse .nav-item.active {
-    background: rgba(16, 185, 129, 0.13);
-    color: #6ee7b7;
+    background: rgba(255,255,255,0.12);
+    color: #ffffff;
+    font-weight: 600;
 }
 
 /* ========================================
@@ -404,16 +764,35 @@ button.nav-item.active:hover {
     color: var(--text-muted);
 }
 
+/* Telecaller live-clock pill in header */
+.tc-live-clock {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1A1A2E;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 16px;
+    border-radius: 22px;
+    letter-spacing: 0.4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.tc-live-clock .material-icons { font-size: 14px; opacity: 0.7; }
+
 /* TCN Ready button in header */
 #tcnReadyBtn {
-    font-family: 'Plus Jakarta Sans', 'Manrope', sans-serif !important;
-    border-radius: 8px !important;
-    padding: 6px 14px !important;
-    font-size: 12.5px !important;
+    font-family: 'Lato', 'Plus Jakarta Sans', 'Manrope', sans-serif !important;
+    border-radius: 22px !important;
+    height: 36px;
+    padding: 0 16px 0 10px !important;
+    font-size: 11.5px !important;
     font-weight: 600 !important;
-    letter-spacing: 0.1px;
-    transition: background 0.2s, box-shadow 0.2s !important;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    letter-spacing: 0.3px;
+    transition: background .25s, box-shadow .25s !important;
+    box-shadow: 0 1px 6px rgba(0,0,0,.18);
 }
 
 /* Sub-navigation bar used on lead detail pages (non-sticky, so it never covers the main header's notification dropdown) */
@@ -730,6 +1109,11 @@ button.nav-item.active:hover {
     backdrop-filter: blur(4px);
 }
 
+/* Telecaller page — lavender tint body background */
+body.role-telecaller {
+    background-color: #f5f3ff;
+}
+
 /* Live pulse dot */
 .live-pulse {
     display: inline-flex;
@@ -742,7 +1126,7 @@ button.nav-item.active:hover {
 
 .live-pulse-dot {
     width: 7px; height: 7px;
-    background: var(--success-color);
+    background: #a78bfa;
     border-radius: 50%;
     animation: livePulse 1.6s ease-in-out infinite;
 }
@@ -3286,7 +3670,7 @@ button.nav-item.active:hover {
     border-right: 1px solid #e2e8f0;
     background: #fff;
 }
-.wa-sidebar-header { padding: 18px 16px 12px; border-bottom: 1px solid #e2e8f0; }
+.wa-sidebar-header { padding: 14px 16px 12px; border-bottom: 1px solid #e2e8f0; background: #f0f2f5; }
 .wa-sidebar-title {
     font-size: 17px; font-weight: 700; color: #0f172a;
     margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
@@ -3316,7 +3700,7 @@ button.nav-item.active:hover {
     text-decoration: none; color: inherit;
 }
 .wa-conv-item:hover { background: #f6f7f8; }
-.wa-conv-item.active { background: #eef2ff; border-left: 3px solid #6366f1; }
+.wa-conv-item.active { background: #f0f2f5; border-left: 3px solid #25d366; }
 .wa-conv-avatar {
     width: 44px; height: 44px; border-radius: 50%;
     background: linear-gradient(135deg, #6366f1, #4f46e5);
@@ -3343,18 +3727,19 @@ button.nav-item.active:hover {
 .wa-empty-conv .material-icons { font-size: 48px; display: block; margin-bottom: 12px; color: #e2e8f0; }
 
 /* Right panel */
-.wa-main { flex: 1; display: flex; flex-direction: column; background: #f0f2f5; min-width: 0; }
+.wa-main { flex: 1; display: flex; flex-direction: column; background: #efeae2; min-width: 0; }
 .wa-main-empty {
     flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center; color: #94a3b8; gap: 12px;
+    background: #efeae2;
 }
-.wa-main-empty .material-icons { font-size: 64px; color: #e2e8f0; }
+.wa-main-empty .material-icons { font-size: 64px; color: #cbc2b6; }
 .wa-main-empty p { font-size: 14px; }
 
-/* Chat header */
+/* Chat header — WhatsApp-style light header */
 .wa-chat-head {
-    background: #fff; border-bottom: 1px solid #e2e8f0;
-    padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    background: #f0f2f5; border-bottom: 1px solid #e2e8f0;
+    padding: 10px 16px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
 }
 .wa-chat-head-avatar {
     width: 40px; height: 40px; border-radius: 50%;
@@ -3363,39 +3748,65 @@ button.nav-item.active:hover {
     font-weight: 700; font-size: 15px; flex-shrink: 0;
 }
 .wa-chat-head-info { flex: 1; }
-.wa-chat-head-name { font-size: 15px; font-weight: 700; color: #0f172a; }
-.wa-chat-head-phone { font-size: 12px; color: #64748b; }
+.wa-chat-head-name { font-size: 15px; font-weight: 700; color: #111b21; }
+.wa-chat-head-phone { font-size: 12px; color: #54656f; }
 .wa-chat-head-actions { display: flex; gap: 8px; }
 
-/* Messages area */
+/* Messages area — WhatsApp classic warm beige */
 .wa-messages-area {
-    flex: 1; overflow-y: auto; padding: 20px;
-    display: flex; flex-direction: column; gap: 8px;
+    flex: 1; overflow-y: auto; padding: 16px 20px;
+    display: flex; flex-direction: column; gap: 2px;
+    background: #efeae2;
 }
+
+/* Day separator — WhatsApp pill style */
 .wa-day-divider {
-    text-align: center; font-size: 11px; color: #94a3b8;
-    background: #dde2e9; border-radius: 999px;
-    padding: 3px 12px; align-self: center; margin: 6px 0;
+    text-align: center; font-size: 11.5px; color: #54656f;
+    background: rgba(225, 245, 254, 0.93);
+    border-radius: 999px; padding: 4px 14px;
+    align-self: center; margin: 10px 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,.12);
+    font-weight: 500; letter-spacing: .01em;
 }
+
+/* Bubbles */
 .wa-bubble {
-    max-width: 65%; padding: 9px 12px 6px; border-radius: 12px;
-    font-size: 14px; line-height: 1.4; position: relative; word-break: break-word;
+    max-width: 66%; padding: 7px 12px 6px; border-radius: 8px;
+    font-size: 14px; line-height: 1.45; position: relative;
+    word-break: break-word; margin-bottom: 2px;
 }
 .wa-bubble.inbound {
-    background: #fff; align-self: flex-start; border-bottom-left-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,.08);
+    background: #ffffff; align-self: flex-start;
+    border-top-left-radius: 0;
+    box-shadow: 0 1px 1px rgba(0,0,0,.10);
+}
+.wa-bubble.inbound::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -8px;
+    border-top: 8px solid #ffffff;
+    border-left: 8px solid transparent;
 }
 .wa-bubble.outbound {
-    background: #dcf8c6; align-self: flex-end; border-bottom-right-radius: 4px;
-    box-shadow: 0 1px 2px rgba(0,0,0,.08);
+    background: #d9fdd3; align-self: flex-end;
+    border-top-right-radius: 0;
+    box-shadow: 0 1px 1px rgba(0,0,0,.10);
 }
-.wa-bubble-text { color: #0f172a; }
-.wa-bubble-meta { display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 4px; }
-.wa-bubble-time { font-size: 10px; color: #94a3b8; }
-.wa-tick { font-size: 14px; color: #94a3b8; }
-.wa-tick.sent { color: #94a3b8; }
-.wa-tick.delivered { color: #94a3b8; }
-.wa-tick.read { color: #53bdeb; }
+.wa-bubble.outbound::before {
+    content: '';
+    position: absolute;
+    top: 0; right: -8px;
+    border-top: 8px solid #d9fdd3;
+    border-right: 8px solid transparent;
+}
+.wa-bubble-text { color: #111b21; white-space: pre-wrap; }
+.wa-bubble-meta { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin-top: 3px; }
+.wa-bubble-time { font-size: 10.5px; color: #667781; }
+.wa-tick { color: #94a3b8; }
+.wa-tick.pending  { color: #94a3b8; }
+.wa-tick.sent     { color: #94a3b8; }
+.wa-tick.delivered{ color: #94a3b8; }
+.wa-tick.read     { color: #53bdeb; }
 
 /* Media */
 .wa-media-img { max-width: 240px; max-height: 200px; border-radius: 8px; display: block; margin-bottom: 4px; cursor: pointer; object-fit: cover; }
@@ -3411,8 +3822,9 @@ button.nav-item.active:hover {
 /* File preview */
 .wa-file-preview {
     display: flex; align-items: center; gap: 10px;
-    background: #f0f9ff; border: 1.5px solid #bae6fd;
+    background: #ffffff; border: 1px solid #d9d9d9;
     border-radius: 10px; padding: 8px 12px; margin-bottom: 8px; font-size: 13px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
 }
 .wa-file-preview .material-icons { color: #6366f1; }
 .wa-file-preview-name { flex: 1; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3422,33 +3834,35 @@ button.nav-item.active:hover {
 /* Attach & send buttons */
 .wa-attach-btn {
     width: 44px; height: 44px; border-radius: 50%;
-    background: #f1f5f9; border: 1.5px solid #e2e8f0; color: #64748b;
+    background: transparent; border: none; color: #54656f;
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; transition: background .15s; flex-shrink: 0;
 }
-.wa-attach-btn:hover { background: #e2e8f0; }
-.wa-attach-btn .material-icons { font-size: 20px; }
+.wa-attach-btn:hover { background: rgba(0,0,0,.07); }
+.wa-attach-btn .material-icons { font-size: 22px; }
 
 /* Composer */
-.wa-composer { background: #fff; border-top: 1px solid #e2e8f0; padding: 12px 16px; flex-shrink: 0; }
+.wa-composer { background: #f0f2f5; border-top: 1px solid #e2e8f0; padding: 10px 14px; flex-shrink: 0; }
 .wa-template-row { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 10px; padding-bottom: 2px; }
 .wa-template-row::-webkit-scrollbar { height: 3px; }
 .wa-tpl-btn {
-    border: 1.5px solid #d5ddeb; background: #f8fafc; border-radius: 999px;
+    border: 1px solid #d9d9d9; background: #ffffff; border-radius: 999px;
     font-size: 12px; font-family: "Plus Jakarta Sans", sans-serif;
-    white-space: nowrap; padding: 5px 12px; cursor: pointer;
-    transition: all .15s; color: #0f172a; flex-shrink: 0;
+    white-space: nowrap; padding: 5px 14px; cursor: pointer;
+    transition: all .15s; color: #111b21; flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0,0,0,.08);
 }
 .wa-tpl-btn:hover { background: #6366f1; color: #fff; border-color: #6366f1; }
 .wa-input-row { display: flex; gap: 10px; align-items: flex-end; }
 .wa-input-row textarea {
-    flex: 1; border: 1.5px solid #e2e8f0; border-radius: 12px;
-    padding: 10px 14px; font-size: 14px;
+    flex: 1; border: none; border-radius: 20px;
+    padding: 10px 16px; font-size: 14px;
     font-family: "Plus Jakarta Sans", sans-serif;
     resize: none; outline: none; max-height: 120px;
-    transition: border-color .2s; color: #0f172a;
+    background: #ffffff; color: #111b21;
+    box-shadow: none;
 }
-.wa-input-row textarea:focus { border-color: #6366f1; }
+.wa-input-row textarea:focus { outline: none; }
 .wa-send-btn {
     width: 44px; height: 44px; border-radius: 50%;
     background: #25d366; border: none; color: #fff;

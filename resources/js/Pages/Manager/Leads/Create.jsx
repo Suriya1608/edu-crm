@@ -16,6 +16,13 @@ export default function Create({ courses, academic_years, store_url }) {
         name:             '',
         phone:            '',
         email:            '',
+        gender:           '',
+        dob:              '',
+        address:          '',
+        city:             '',
+        district:         '',
+        state:            '',
+        pincode:          '',
         course_id:        '',
         academic_year_id: activeYear ? String(activeYear.id) : '',
         source_category:  '',
@@ -72,6 +79,80 @@ export default function Create({ courses, academic_years, store_url }) {
                             <input type="email" className={`form-control${form.errors.email ? ' is-invalid' : ''}`}
                                 value={form.data.email} onChange={e => form.setData('email', e.target.value)} />
                             {form.errors.email && <div className="invalid-feedback">{form.errors.email}</div>}
+                        </div>
+
+                        {/* ── Demographics ── */}
+                        <div className="col-12">
+                            <hr className="my-1" />
+                            <p className="fw-semibold mb-2" style={{ fontSize: 13, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                                Demographics
+                            </p>
+                        </div>
+
+                        <div className="col-md-4">
+                            <label className="form-label">Gender</label>
+                            <select className="form-select" value={form.data.gender}
+                                onChange={e => form.setData('gender', e.target.value)}>
+                                <option value="">— Select —</option>
+                                <option value="male">Male</option>
+                                <option value="female">Female</option>
+                                <option value="other">Other</option>
+                            </select>
+                            {form.errors.gender && <div className="invalid-feedback d-block">{form.errors.gender}</div>}
+                        </div>
+
+                        <div className="col-md-4">
+                            <label className="form-label">Date of Birth</label>
+                            <input type="date" className={`form-control${form.errors.dob ? ' is-invalid' : ''}`}
+                                value={form.data.dob}
+                                max={new Date().toISOString().split('T')[0]}
+                                onChange={e => form.setData('dob', e.target.value)} />
+                            {form.errors.dob && <div className="invalid-feedback">{form.errors.dob}</div>}
+                        </div>
+
+                        <div className="col-md-4">
+                            <label className="form-label">Pincode</label>
+                            <input type="text" className={`form-control${form.errors.pincode ? ' is-invalid' : ''}`}
+                                placeholder="e.g. 600001" maxLength={10}
+                                value={form.data.pincode}
+                                onChange={e => form.setData('pincode', e.target.value)} />
+                            {form.errors.pincode && <div className="invalid-feedback">{form.errors.pincode}</div>}
+                        </div>
+
+                        <div className="col-md-4">
+                            <label className="form-label">City</label>
+                            <input type="text" className={`form-control${form.errors.city ? ' is-invalid' : ''}`}
+                                placeholder="e.g. Chennai"
+                                value={form.data.city}
+                                onChange={e => form.setData('city', e.target.value)} />
+                            {form.errors.city && <div className="invalid-feedback">{form.errors.city}</div>}
+                        </div>
+
+                        <div className="col-md-4">
+                            <label className="form-label">District</label>
+                            <input type="text" className={`form-control${form.errors.district ? ' is-invalid' : ''}`}
+                                placeholder="e.g. Chennai"
+                                value={form.data.district}
+                                onChange={e => form.setData('district', e.target.value)} />
+                            {form.errors.district && <div className="invalid-feedback">{form.errors.district}</div>}
+                        </div>
+
+                        <div className="col-md-4">
+                            <label className="form-label">State</label>
+                            <input type="text" className={`form-control${form.errors.state ? ' is-invalid' : ''}`}
+                                placeholder="e.g. Tamil Nadu"
+                                value={form.data.state}
+                                onChange={e => form.setData('state', e.target.value)} />
+                            {form.errors.state && <div className="invalid-feedback">{form.errors.state}</div>}
+                        </div>
+
+                        <div className="col-12">
+                            <label className="form-label">Address</label>
+                            <textarea className={`form-control${form.errors.address ? ' is-invalid' : ''}`}
+                                rows={2} placeholder="Street address, landmark…"
+                                value={form.data.address}
+                                onChange={e => form.setData('address', e.target.value)} />
+                            {form.errors.address && <div className="invalid-feedback">{form.errors.address}</div>}
                         </div>
 
                         {/* ── Enrolment ── */}

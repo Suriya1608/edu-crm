@@ -22,10 +22,17 @@ class LeadCaptureController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name'   => 'required|string|max:255',
-            'email'  => 'required|email',
-            'phone'  => 'required|string|max:20',
-            'course' => 'required|string|max:255',
+            'name'     => 'required|string|max:255',
+            'email'    => 'required|email',
+            'phone'    => 'required|string|max:20',
+            'course'   => 'required|string|max:255',
+            'gender'   => 'nullable|in:male,female,other',
+            'dob'      => 'nullable|date|before:today',
+            'address'  => 'nullable|string|max:500',
+            'city'     => 'nullable|string|max:100',
+            'district' => 'nullable|string|max:100',
+            'state'    => 'nullable|string|max:100',
+            'pincode'  => 'nullable|string|max:10',
         ]);
 
         $phone = $request->phone;
@@ -62,6 +69,13 @@ class LeadCaptureController extends Controller
             'name'            => $request->name,
             'email'           => $request->email,
             'phone'           => $phone,
+            'gender'          => $request->gender ?: null,
+            'dob'             => $request->dob ?: null,
+            'address'         => $request->address ?: null,
+            'city'            => $request->city ?: null,
+            'district'        => $request->district ?: null,
+            'state'           => $request->state ?: null,
+            'pincode'         => $request->pincode ?: null,
             'course_id'       => $courseId,
             'academic_year_id'=> AcademicYear::current()?->id,
             'source'          => 'Landing Page',

@@ -8,13 +8,26 @@
                 <span class="material-icons">school</span>
             @endif
         </div>
-        <div class="sidebar-title">
-            <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
-            <p>{{ ucwords(str_replace('_', ' ', auth()->user()->role)) }} Panel</p>
-        </div>
-        <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu">
-            <span class="material-icons">close</span>
-        </button>
+
+        @if(auth()->user()->role === 'telecaller')
+            {{-- Title slides away; button always visible at the right edge --}}
+            <div class="tc-sidebar-title">
+                <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
+                <p>Telecaller Panel</p>
+            </div>
+            <button class="tc-header-toggle" id="tcSidebarToggleBtn"
+                    onclick="toggleTcSidebar()" title="Collapse sidebar">
+                <span class="material-icons tc-toggle-icon">chevron_left</span>
+            </button>
+        @else
+            <div class="sidebar-title">
+                <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
+                <p>{{ ucwords(str_replace('_', ' ', auth()->user()->role)) }} Panel</p>
+            </div>
+            <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu">
+                <span class="material-icons">close</span>
+            </button>
+        @endif
     </div>
 
     <nav class="sidebar-nav">
@@ -650,7 +663,7 @@
             {{-- ── Analytics ── --}}
             <div class="nav-section-label">Analytics</div>
 
-            {{-- My Performance (plain — not yet on Inertia) --}}
+            {{-- My Performance --}}
             <button class="nav-item w-100 border-0 {{ $telePerformanceMenuActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerPerformanceMenu"
                 aria-expanded="{{ $telePerformanceMenuActive ? 'true' : 'false' }}"
@@ -674,10 +687,19 @@
                     class="nav-item {{ request()->routeIs('telecaller.performance.monthly') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Monthly</a>
             </div>
+
+            {{-- My Reports --}}
+            <a href="{{ route('telecaller.reports.index') }}"
+                onclick="inertiaVisit(event, this.href)"
+                class="nav-item {{ request()->routeIs('telecaller.reports.*') ? 'active' : '' }}">
+                <span class="material-icons">download</span>
+                <span>My Reports</span>
+            </a>
         @endif
 
     </nav>
 
+    @if(auth()->user()->role !== 'telecaller')
     <div class="sidebar-footer">
         <div class="user-profile" style="position:relative;">
             <div class="user-avatar" role="button" onclick="toggleUserMenu()" title="Account options" style="cursor:pointer;">
@@ -713,6 +735,7 @@
             </div>
         </div>
     </div>
+    @endif
 </aside>
 
 <script>
@@ -727,6 +750,60 @@ document.addEventListener('click', function(e) {
         menu.style.display = 'none';
     }
 });
+
+/* ── Telecaller sidebar collapse ─────────────────────────────────────────────
+   Called by the orange circle toggle button (.tc-header-toggle) in the
+   telecaller sidebar header. Toggles between 220 px expanded and 72 px icon-
+   only collapsed states, and persists the preference in localStorage so it
+   survives page navigation and hard reloads.
+   ─────────────────────────────────────────────────────────────────────────── */
+function toggleTcSidebar() {
+    var sidebar     = document.getElementById('sidebar');
+    var mainContent = document.querySelector('.main-content');
+    if (!sidebar) return;
+
+    var collapsed = sidebar.classList.toggle('tc-collapsed');
+    if (mainContent) {
+        mainContent.classList.toggle('tc-sidebar-collapsed', collapsed);
+    }
+
+    // Persist across navigations / hard reloads
+    try { localStorage.setItem('tcSidebarCollapsed', collapsed ? '1' : '0'); } catch (_) {}
+}
+
+/* Restore the saved sidebar state immediately so there is no layout flash. */
+function restoreTcSidebarState() {
+    var sidebar = document.getElementById('sidebar');
+    if (!sidebar || !sidebar.classList.contains('sidebar-telecaller')) return;
+    try {
+        if (localStorage.getItem('tcSidebarCollapsed') === '1') {
+            sidebar.classList.add('tc-collapsed');
+            var mc = document.querySelector('.main-content');
+            if (mc) mc.classList.add('tc-sidebar-collapsed');
+        }
+    } catch (_) {}
+}
+
+/* Auto-set title attributes on telecaller nav items so CSS tooltips work
+   in icon-only (collapsed) mode without touching the Blade markup. */
+function initNavTooltips() {
+    document.querySelectorAll(
+        '.sidebar-telecaller .sidebar-nav a.nav-item, ' +
+        '.sidebar-telecaller .sidebar-nav button.nav-item'
+    ).forEach(function (el) {
+        if (el.title) return;
+        var labelSpan = el.querySelector(
+            'span:not(.material-icons):not(.badge):not(.tc-toggle-icon):not(.flex-grow-1)'
+        );
+        var txt = labelSpan
+            ? labelSpan.textContent.trim()
+            : Array.from(el.childNodes)
+                .filter(function (n) { return n.nodeType === 3; })
+                .map(function (n)  { return n.textContent.trim(); })
+                .join('');
+        if (txt) el.title = txt;
+    });
+}
 
 /**
  * inertiaVisit(event, url)
@@ -760,8 +837,12 @@ function syncSidebarActive(url) {
             }
         });
 
-        // Close all collapse sub-menus
-        nav.querySelectorAll('.collapse').forEach(el => el.classList.remove('show'));
+        // Close all collapse sub-menus and reset their toggle buttons
+        nav.querySelectorAll('.collapse').forEach(el => {
+            el.classList.remove('show');
+            const btn = nav.querySelector(`[data-bs-target="#${el.id}"]`);
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        });
 
         // Find the best matching link
         let bestLink = null;
@@ -787,20 +868,57 @@ function syncSidebarActive(url) {
                 if (btn) {
                     btn.classList.add('active');
                     btn.classList.remove('bg-transparent');
+                    btn.setAttribute('aria-expanded', 'true');
                 }
             }
         }
     } catch (e) {}
 }
 
-// Sync on hard load and on every Inertia navigation
-document.addEventListener('DOMContentLoaded', function () {
+// Take full ownership of sidebar collapse toggles:
+// 1. Remove data-bs-toggle so Bootstrap's event delegation never sees these buttons.
+// 2. Attach our own click handler that directly toggles the .show class.
+// Must run on both DOMContentLoaded (first hard load) AND turbo:load (every
+// subsequent Turbo Drive navigation that replaces the body with fresh HTML).
+function initNavCollapseHandlers() {
+    document.querySelectorAll('.sidebar-nav button.nav-item[data-bs-toggle="collapse"]').forEach(function(btn) {
+        const targetSelector = btn.getAttribute('data-bs-target');
+
+        // Strip Bootstrap's hook — its document-level delegation selector
+        // [data-bs-toggle="collapse"] will no longer match these buttons.
+        btn.removeAttribute('data-bs-toggle');
+        btn.removeAttribute('data-bs-target');
+
+        btn.addEventListener('click', function() {
+            const target = document.querySelector(targetSelector);
+            if (!target) return;
+            const isOpen = target.classList.contains('show');
+            target.classList.toggle('show', !isOpen);
+            btn.setAttribute('aria-expanded', String(!isOpen));
+        });
+    });
+}
+
+function initSidebar() {
+    restoreTcSidebarState();
+    initNavCollapseHandlers();
+    initNavTooltips();
     syncSidebarActive(window.location.href);
+}
+
+// Hard page load
+document.addEventListener('DOMContentLoaded', function () {
+    initSidebar();
     // Keep active state in sync across Inertia SPA navigations
     if (window._inertiaRouter && typeof window._inertiaRouter.on === 'function') {
         window._inertiaRouter.on('navigate', function () {
             syncSidebarActive(window.location.href);
         });
     }
+});
+
+// Turbo Drive navigation (replaces body — new buttons need fresh handlers)
+document.addEventListener('turbo:load', function () {
+    initSidebar();
 });
 </script>

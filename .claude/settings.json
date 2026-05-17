@@ -5,7 +5,10 @@
       "Bash(php artisan route:clear)",
       "Bash(php artisan route:list)",
       "Bash(php -r \":*)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "PowerShell(mysql -u root -e \"CREATE DATABASE IF NOT EXISTS crm_central CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\" 2>&1)",
+      "Read(//c/Program Files/**)",
+      "PowerShell(& \"C:\\\\wamp64\\\\bin\\\\mysql\\\\mysql8.0.31\\\\bin\\\\mysql.exe\" -u root -e \"CREATE DATABASE IF NOT EXISTS crm_central CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\" 2>&1)"
     ]
   }
 }

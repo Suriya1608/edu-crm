@@ -131,7 +131,6 @@ class LeadController extends Controller
 
         if ($request->search) {
             $search = $request->search;
-
             $query->where(function ($q) use ($search) {
                 $q->where('lead_code', 'like', "%$search%")
                     ->orWhere('name', 'like', "%$search%")
@@ -140,14 +139,13 @@ class LeadController extends Controller
         }
 
         if ($request->date_range) {
-            if ($request->date_range == 'today') {
+            if ($request->date_range === 'today') {
                 $query->whereDate('created_at', today());
-            } else {
-                $query->whereDate(
-                    'created_at',
-                    '>=',
-                    now()->subDays($request->date_range)
-                );
+            } elseif ($request->date_range === 'custom') {
+                if ($request->date_from) $query->whereDate('created_at', '>=', $request->date_from);
+                if ($request->date_to)   $query->whereDate('created_at', '<=', $request->date_to);
+            } elseif (is_numeric($request->date_range)) {
+                $query->whereDate('created_at', '>=', now()->subDays((int) $request->date_range));
             }
         }
 
@@ -157,6 +155,54 @@ class LeadController extends Controller
 
         if ($request->filled('source')) {
             $query->where('source', $request->source);
+        }
+
+        if ($request->filled('academic_year_id')) {
+            $query->where('academic_year_id', $request->academic_year_id);
+        }
+
+        if ($request->filled('quota')) {
+            $query->where('quota', $request->quota);
+        }
+
+        if ($request->filled('gender')) {
+            $query->where('gender', $request->gender);
+        }
+
+        if ($request->filled('state')) {
+            $query->where('state', 'like', '%' . $request->state . '%');
+        }
+
+        if ($request->filled('city')) {
+            $query->where('city', 'like', '%' . $request->city . '%');
+        }
+
+        if ($request->filled('followup')) {
+            if ($request->followup === 'today') {
+                $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', today()));
+            } elseif ($request->followup === 'overdue') {
+                $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', '<', today()));
+            } elseif ($request->followup === 'this_week') {
+                $query->whereHas('followups', fn($q) => $q
+                    ->whereDate('next_followup', '>=', today())
+                    ->whereDate('next_followup', '<=', today()->endOfWeek()));
+            } elseif ($request->followup === 'none') {
+                $query->whereDoesntHave('followups');
+            }
+        }
+
+        // Not called in last N days (by this telecaller)
+        if ($request->filled('last_call_days') && is_numeric($request->last_call_days)) {
+            $cutoff = now()->subDays((int) $request->last_call_days);
+            $recentCallLeadIds = CallLog::where('user_id', Auth::id())
+                ->where('created_at', '>=', $cutoff)
+                ->distinct()->pluck('lead_id');
+            $query->whereNotIn('id', $recentCallLeadIds);
+        }
+
+        // Has any WhatsApp conversation
+        if ($request->filled('has_whatsapp') && $request->has_whatsapp === '1') {
+            $query->whereHas('whatsappMessages');
         }
 
         $sortable = ['name', 'created_at', 'next_followup'];
@@ -234,6 +280,9 @@ class LeadController extends Controller
             ->whereNotNull('source')->where('source', '!=', '')
             ->distinct()->pluck('source')->sort()->values()->all();
 
+        $academicYears = \App\Models\AcademicYear::orderByDesc('id')->get(['id', 'name'])
+            ->map(fn($y) => ['id' => $y->id, 'name' => $y->name])->all();
+
         return Inertia::render('Telecaller/Leads/Index', [
             'stats' => [
                 'total'           => $totalLeads,
@@ -244,18 +293,29 @@ class LeadController extends Controller
                 'converted_month' => $convertedThisMonth,
                 'active_calls'    => $activeCallCount,
             ],
-            'leads'   => $leads,
-            'courses' => $courses,
-            'sources' => $sources,
+            'leads'         => $leads,
+            'courses'       => $courses,
+            'sources'       => $sources,
+            'academicYears' => $academicYears,
             'filters' => [
-                'search'     => $request->search     ?? '',
-                'status'     => $request->status     ?? '',
-                'date_range' => $request->date_range ?? '',
-                'course_id'  => $request->course_id  ?? '',
-                'source'     => $request->source     ?? '',
-                'sort'       => $request->sort        ?? '',
-                'sort_dir'   => $request->sort_dir    ?? '',
-                'per_page'   => $request->per_page    ?? '',
+                'search'           => $request->search           ?? '',
+                'status'           => $request->status           ?? '',
+                'date_range'       => $request->date_range       ?? '',
+                'date_from'        => $request->date_from        ?? '',
+                'date_to'          => $request->date_to          ?? '',
+                'course_id'        => $request->course_id        ?? '',
+                'source'           => $request->source           ?? '',
+                'academic_year_id' => $request->academic_year_id ?? '',
+                'quota'            => $request->quota            ?? '',
+                'gender'           => $request->gender           ?? '',
+                'state'            => $request->state            ?? '',
+                'city'             => $request->city             ?? '',
+                'followup'         => $request->followup         ?? '',
+                'last_call_days'   => $request->last_call_days   ?? '',
+                'has_whatsapp'     => $request->has_whatsapp     ?? '',
+                'sort'             => $request->sort             ?? '',
+                'sort_dir'         => $request->sort_dir         ?? '',
+                'per_page'         => $request->per_page         ?? '',
             ],
         ]);
     }
@@ -381,10 +441,21 @@ class LeadController extends Controller
             'name'        => $lead->name,
             'phone'       => $lead->phone,
             'email'       => $lead->email,
-            'status'      => $lead->status,
-            'course'      => $lead->enrolledCourse?->name,
-            'assigned_by' => $lead->assignedBy?->name,
-            'activities'  => $timeline,
+            'gender'      => $lead->gender,
+            'dob'         => $lead->dob?->format('d M Y'),
+            'address'     => $lead->address,
+            'city'        => $lead->city,
+            'district'    => $lead->district,
+            'state'       => $lead->state,
+            'pincode'     => $lead->pincode,
+            'status'          => $lead->status,
+            'course'          => $lead->enrolledCourse?->name,
+            'course_id'       => $lead->course_id,
+            'quota'           => $lead->quota,
+            'final_course_id' => $lead->final_course_id,
+            'final_course'    => $lead->finalCourse?->name,
+            'assigned_by'     => $lead->assignedBy?->name,
+            'activities'      => $timeline,
         ];
 
         $meetings = Schema::hasTable('lead_meetings')
@@ -410,6 +481,7 @@ class LeadController extends Controller
 
         return Inertia::render('Telecaller/Leads/Show', [
             'lead'              => $leadData,
+            'courses'           => Course::active()->orderBy('name')->get()->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
             'whatsapp_messages' => $whatsappMessages,
             'wa_template_name'  => $waTemplateName,
             'wa_session_active' => $waSessionActive,
@@ -593,11 +665,12 @@ class LeadController extends Controller
     {
         $id = decrypt($encryptedId);
         $request->validate([
-            'status'        => 'required',
-            'quota'         => 'required_if:status,converted|nullable|in:management,counselling',
-            'next_followup' => 'nullable|date',
-            'followup_time' => 'nullable|date_format:H:i',
-            'remarks'       => 'nullable|string',
+            'status'          => 'required',
+            'quota'           => 'required_if:status,converted|nullable|in:management,counselling',
+            'final_course_id' => 'required_if:status,converted|nullable|exists:courses,id',
+            'next_followup'   => 'nullable|date',
+            'followup_time'   => 'nullable|date_format:H:i',
+            'remarks'         => 'nullable|string',
         ]);
 
         $lead = Lead::whereAssignedTo(Auth::id())
@@ -605,9 +678,14 @@ class LeadController extends Controller
 
         $oldStatus = $lead->status;
 
-        // Save quota when converting
-        if ($request->status === 'converted' && $request->filled('quota')) {
-            $lead->quota = $request->quota;
+        // Save quota + final course when converting
+        if ($request->status === 'converted') {
+            if ($request->filled('quota')) {
+                $lead->quota = $request->quota;
+            }
+            if ($request->filled('final_course_id')) {
+                $lead->final_course_id = $request->final_course_id;
+            }
         }
         $lead->status = $request->status;
         $lead->save();
@@ -832,7 +910,6 @@ class LeadController extends Controller
             ->map(function ($log) {
                 return [
                     'id' => $log->id,
-                    'lead_id' => $log->lead_id,
                     'encrypted_lead_id' => $log->lead_id ? encrypt($log->lead_id) : null,
                     'lead_name' => $log->lead->name ?? 'Unknown',
                     'lead_code' => $log->lead->lead_code ?? '-',
@@ -894,41 +971,85 @@ class LeadController extends Controller
     public function export(Request $request)
     {
         $format = $request->input('format', 'excel');
+        $userId = Auth::id();
 
-        $query = Lead::with(['enrolledCourse'])->where('assigned_to', Auth::id());
+        $query = Lead::with(['enrolledCourse', 'academicYear'])->where('assigned_to', $userId);
 
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
 
         if ($request->filled('search')) {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('lead_code', 'like', "%$search%")
-                  ->orWhere('name', 'like', "%$search%")
-                  ->orWhere('phone', 'like', "%$search%");
-            });
+            $s = $request->input('search');
+            $query->where(fn($q) => $q
+                ->where('lead_code', 'like', "%$s%")
+                ->orWhere('name', 'like', "%$s%")
+                ->orWhere('phone', 'like', "%$s%")
+            );
         }
 
         if ($request->filled('date_range')) {
             $dr = $request->input('date_range');
             if ($dr === 'today') {
                 $query->whereDate('created_at', today());
-            } else {
-                $query->whereDate('created_at', '>=', now()->subDays($dr));
+            } elseif ($dr === 'custom') {
+                if ($request->filled('date_from')) $query->whereDate('created_at', '>=', $request->date_from);
+                if ($request->filled('date_to'))   $query->whereDate('created_at', '<=', $request->date_to);
+            } elseif (is_numeric($dr)) {
+                $query->whereDate('created_at', '>=', now()->subDays((int) $dr));
             }
+        }
+
+        if ($request->filled('course_id'))        $query->where('course_id', $request->course_id);
+        if ($request->filled('source'))            $query->where('source', $request->source);
+        if ($request->filled('academic_year_id'))  $query->where('academic_year_id', $request->academic_year_id);
+        if ($request->filled('quota'))             $query->where('quota', $request->quota);
+        if ($request->filled('gender'))            $query->where('gender', $request->gender);
+        if ($request->filled('state'))             $query->where('state', 'like', '%' . $request->state . '%');
+        if ($request->filled('city'))              $query->where('city',  'like', '%' . $request->city  . '%');
+
+        if ($request->filled('followup')) {
+            if ($request->followup === 'today') {
+                $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', today()));
+            } elseif ($request->followup === 'overdue') {
+                $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', '<', today()));
+            } elseif ($request->followup === 'this_week') {
+                $query->whereHas('followups', fn($q) => $q
+                    ->whereDate('next_followup', '>=', today())
+                    ->whereDate('next_followup', '<=', today()->endOfWeek()));
+            } elseif ($request->followup === 'none') {
+                $query->whereDoesntHave('followups');
+            }
+        }
+
+        if ($request->filled('last_call_days') && is_numeric($request->last_call_days)) {
+            $cutoff = now()->subDays((int) $request->last_call_days);
+            $recentCallLeadIds = CallLog::where('user_id', $userId)
+                ->where('created_at', '>=', $cutoff)->distinct()->pluck('lead_id');
+            $query->whereNotIn('id', $recentCallLeadIds);
+        }
+
+        if ($request->filled('has_whatsapp') && $request->has_whatsapp === '1') {
+            $query->whereHas('whatsappMessages');
         }
 
         $leads = $query->latest()->get()->values()->map(function ($lead, $idx) {
             return [
-                'sno'       => $idx + 1,
-                'lead_code' => $lead->lead_code ?? '—',
-                'name'      => $lead->name ?? '—',
-                'phone'     => $lead->phone ?? '—',
-                'email'     => $lead->email ?? '',
-                'course'    => $lead->enrolledCourse?->name ?? '—',
-                'status'    => ucfirst(str_replace('_', ' ', $lead->status ?? '')),
-                'created_at'=> $lead->created_at?->format('d M Y') ?? '—',
+                'sno'           => $idx + 1,
+                'lead_code'     => $lead->lead_code ?? '—',
+                'name'          => $lead->name ?? '—',
+                'phone'         => $lead->phone ?? '—',
+                'email'         => $lead->email ?? '',
+                'course'        => $lead->enrolledCourse?->name ?? '—',
+                'academic_year' => $lead->academicYear?->name ?? '',
+                'quota'         => $lead->quota ? ucfirst($lead->quota) : '',
+                'source'        => $lead->source ?? '',
+                'gender'        => $lead->gender ? ucfirst($lead->gender) : '',
+                'state'         => $lead->state ?? '',
+                'city'          => $lead->city  ?? '',
+                'status'        => ucfirst(str_replace('_', ' ', $lead->status ?? '')),
+                'days_aged'     => (int) ($lead->created_at?->diffInDays(now()) ?? 0),
+                'created_at'    => $lead->created_at?->format('d M Y') ?? '—',
             ];
         })->toArray();
 
@@ -941,7 +1062,7 @@ class LeadController extends Controller
             return $pdf->download($filename . '.pdf');
         }
 
-        $headings = ['S.No', 'Lead Code', 'Name', 'Phone', 'Email', 'Course', 'Status', 'Created At'];
+        $headings = ['S.No', 'Lead Code', 'Name', 'Phone', 'Email', 'Course', 'Academic Year', 'Quota', 'Source', 'Gender', 'State', 'City', 'Status', 'Days Aged', 'Created At'];
         return Excel::download(new ArrayExport($leads, $headings, 'Leads'), $filename . '.xlsx');
     }
 }

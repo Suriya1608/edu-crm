@@ -186,6 +186,12 @@
                             <td>
                                 @php $stCls = str_replace('_', '-', $lead->status); @endphp
                                 <span class="lead-status status-{{ $stCls }}">{{ ucfirst(str_replace('_', ' ', $lead->status)) }}</span>
+                                <br>
+                                @if($lead->is_active)
+                                    <span class="badge mt-1" style="background:#dcfce7;color:#16a34a;font-size:10px;font-weight:600;">Active</span>
+                                @else
+                                    <span class="badge mt-1" style="background:#fee2e2;color:#dc2626;font-size:10px;font-weight:600;">Inactive</span>
+                                @endif
                             </td>
 
                             <td>{{ $lead->assignedUser->name ?? '-' }}</td>
@@ -198,9 +204,23 @@
                             </td>
 
                             <td onclick="event.stopPropagation()">
-                                <a href="{{ route('manager.leads.show', encrypt($lead->id)) }}" class="btn btn-sm btn-outline-primary">
-                                    View
-                                </a>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    <a href="{{ route('manager.leads.show', encrypt($lead->id)) }}" class="btn btn-sm btn-outline-primary">View</a>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary btn-edit-contact"
+                                            data-phone="{{ $lead->phone }}"
+                                            data-email="{{ $lead->email }}"
+                                            data-action="{{ route('manager.leads.updateContact', encrypt($lead->id)) }}"
+                                            title="Edit mobile/email">
+                                        <span class="material-icons" style="font-size:14px;vertical-align:-2px;">edit</span>
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm {{ $lead->is_active ? 'btn-outline-danger' : 'btn-outline-success' }} btn-toggle-active"
+                                            data-action="{{ route('manager.leads.toggleActive', encrypt($lead->id)) }}"
+                                            data-label="{{ $lead->is_active ? 'Deactivate' : 'Activate' }}"
+                                            title="{{ $lead->is_active ? 'Deactivate lead' : 'Activate lead' }}">
+                                        <span class="material-icons" style="font-size:14px;vertical-align:-2px;">{{ $lead->is_active ? 'toggle_off' : 'toggle_on' }}</span>
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     @empty
@@ -219,4 +239,64 @@
             {{ $leads->onEachSide(1)->links('pagination::bootstrap-5') }}
         </div>
     </div>
+
+    {{-- Shared Edit Contact Modal --}}
+    <div class="modal fade" id="listEditContactModal" tabindex="-1">
+        <div class="modal-dialog">
+            <form method="POST" id="listEditContactForm">
+                @csrf
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <span class="material-icons me-2" style="vertical-align:-5px;color:#6366f1;">edit</span>
+                            Edit Contact Details
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Mobile Number <span class="text-danger">*</span></label>
+                            <input type="text" name="phone" id="listEditPhone" class="form-control"
+                                   placeholder="e.g. 9876543210" required maxlength="20">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Email Address</label>
+                            <input type="email" name="email" id="listEditEmail" class="form-control"
+                                   placeholder="e.g. student@example.com" maxlength="255">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-icons me-1" style="font-size:16px;vertical-align:-3px;">save</span>
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- Shared Toggle Active Form --}}
+    <form method="POST" id="listToggleActiveForm" style="display:none;">@csrf</form>
+
+    <script>
+        document.querySelectorAll('.btn-edit-contact').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.getElementById('listEditContactForm').action = this.dataset.action;
+                document.getElementById('listEditPhone').value = this.dataset.phone;
+                document.getElementById('listEditEmail').value = this.dataset.email || '';
+                new bootstrap.Modal(document.getElementById('listEditContactModal')).show();
+            });
+        });
+
+        document.querySelectorAll('.btn-toggle-active').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                if (!confirm(this.dataset.label + ' this lead?')) return;
+                var form = document.getElementById('listToggleActiveForm');
+                form.action = this.dataset.action;
+                form.submit();
+            });
+        });
+    </script>
 @endsection

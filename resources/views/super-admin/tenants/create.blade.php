@@ -45,23 +45,37 @@
                     <hr class="my-3">
                     <p class="fw-600 mb-2" style="font-size:.85rem;color:#0f172a">Database</p>
 
+                    @php $dbPrefix = env('TENANT_DB_PREFIX', ''); @endphp
+
+                    @if($dbPrefix)
+                    <div class="alert alert-warning border-0 py-2 small mb-3" style="background:#fffbeb">
+                        <strong>Shared hosting detected.</strong> You must create this database manually in cPanel/hPanel first, then enter the exact name below. Also assign your DB user to it with all privileges.
+                    </div>
+                    @endif
+
                     <div class="mb-3">
                         <label class="form-label fw-600">Database Name <span class="text-muted fw-400">(auto-generated if blank)</span></label>
                         <input type="text" name="db_name" id="dbName" class="form-control"
-                            value="{{ old('db_name') }}" placeholder="crm_client1">
-                        <div class="form-text">Leave blank to auto-generate as <code>crm_{subdomain}</code>. On shared hosting, create the database in hPanel first and enter the exact name here.</div>
+                            value="{{ old('db_name') }}" placeholder="{{ $dbPrefix }}crm_client1">
+                        <div class="form-text">
+                            @if($dbPrefix)
+                                On Hostinger, DB names must start with <code>{{ $dbPrefix }}</code> — e.g. <code id="dbNameHint">{{ $dbPrefix }}crm_client1</code>. Create it in hPanel first.
+                            @else
+                                Leave blank to auto-generate as <code>crm_{subdomain}</code>.
+                            @endif
+                        </div>
                     </div>
 
                     <div class="mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="existing_db" id="existingDb"
-                                value="1" {{ old('existing_db') ? 'checked' : '' }}>
+                                value="1" {{ (old('existing_db') || $dbPrefix) ? 'checked' : '' }}>
                             <label class="form-check-label fw-600" for="existingDb">
-                                Database already exists
-                                <span class="text-muted fw-400" style="font-size:.8rem">(skip CREATE DATABASE step)</span>
+                                Database already created in cPanel (skip CREATE DATABASE)
+                                <span class="text-muted fw-400" style="font-size:.8rem">— migrations will still run</span>
                             </label>
                         </div>
-                        <div class="form-text ms-4">Check this on shared hosting where you cannot create databases programmatically.</div>
+                        <div class="form-text ms-4">Always check this on shared hosting (Hostinger, cPanel) — databases must be pre-created there.</div>
                     </div>
 
                     {{-- Admin User --}}
@@ -104,12 +118,16 @@
 </div>
 
 <script>
-// Auto-fill DB name from subdomain
+const DB_PREFIX = '{{ env('TENANT_DB_PREFIX', '') }}';
+// Auto-fill DB name hint from subdomain
 document.getElementById('subdomain').addEventListener('input', function () {
     const dbField = document.getElementById('dbName');
+    const hintEl  = document.getElementById('dbNameHint');
     if (dbField.dataset.userEdited) return;
     const slug = this.value.replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-    dbField.placeholder = slug ? 'crm_' + slug : 'crm_client1';
+    const generated = slug ? DB_PREFIX + 'crm_' + slug : DB_PREFIX + 'crm_client1';
+    dbField.placeholder = generated;
+    if (hintEl) hintEl.textContent = generated;
 });
 document.getElementById('dbName').addEventListener('input', function () {
     this.dataset.userEdited = this.value ? '1' : '';

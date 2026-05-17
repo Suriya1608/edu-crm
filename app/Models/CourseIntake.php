@@ -68,11 +68,12 @@ class CourseIntake extends Model
 
     public static function forLead(Lead $lead): ?self
     {
-        if (!$lead->course_id || !$lead->academic_year_id) {
+        $courseId = $lead->final_course_id ?? $lead->course_id;
+        if (!$courseId || !$lead->academic_year_id) {
             return null;
         }
 
-        return static::where('course_id', $lead->course_id)
+        return static::where('course_id', $courseId)
             ->where('academic_year_id', $lead->academic_year_id)
             ->first();
     }

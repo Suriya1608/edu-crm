@@ -1,12 +1,32 @@
 import { Head, router } from '@inertiajs/react';
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
+// ── Design tokens ────────────────────────────────────────────────
+const ORG    = '#FF5C1A';
+const ORGL   = '#FF8042';
+const DARKC  = '#1A1A2E';
+const BORDER = '#EAEAED';
+const TEXT   = '#1A1A2E';
+const MUTED  = '#9EA3B0';
+const WHITE  = '#FFFFFF';
+const BGGRAY = '#F5F5F7';
+
+const card = (extra = {}) => ({
+    background:   WHITE,
+    borderRadius: 14,
+    boxShadow:    '0 2px 16px rgba(0,0,0,0.07)',
+    border:       `1px solid ${BORDER}`,
+    ...extra,
+});
+
+// ── Static data ──────────────────────────────────────────────────
 const MONTH_NAMES = [
     'January','February','March','April','May','June',
     'July','August','September','October','November','December',
 ];
 const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
+// ── Helpers ──────────────────────────────────────────────────────
 function buildCalendar(year, month) {
     const first = new Date(year, month - 1, 1);
     const last  = new Date(year, month, 0);
@@ -23,6 +43,7 @@ function formatDate(date) {
         { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
+// ── Component ────────────────────────────────────────────────────
 export default function AvailabilityIndex({ blocked_dates, year, month, today, urls }) {
     const [blockedMap, setBlockedMap] = useState(() => {
         const m = {};
@@ -35,9 +56,12 @@ export default function AvailabilityIndex({ blocked_dates, year, month, today, u
     const [reason, setReason]           = useState('');
     const [submitting, setSubmitting]   = useState(false);
 
+    // Hover state for day cells
+    const [hoveredDay, setHoveredDay]   = useState(null);
+
     // Drag state (refs so mouseenter handlers don't go stale)
-    const isDragging  = useRef(false);
-    const dragMode    = useRef('select'); // 'select' | 'deselect'
+    const isDragging = useRef(false);
+    const dragMode   = useRef('select'); // 'select' | 'deselect'
 
     const days = buildCalendar(year, month);
 
@@ -117,35 +141,59 @@ export default function AvailabilityIndex({ blocked_dates, year, month, today, u
         setReason('');
     }
 
+    // Returns style object for each calendar day cell
     function dayStyle(date) {
         if (!date) return {};
         const isPast    = date < today;
         const isToday   = date === today;
         const isBlocked = blockedMap[date] !== undefined;
         const isSel     = selectedSet.has(date);
+        const isHovered = hoveredDay === date;
+
+        const base = {
+            borderRadius: 10,
+            cursor:       'pointer',
+            userSelect:   'none',
+            transition:   'background 0.12s, border-color 0.12s',
+        };
 
         if (isSel) return {
-            background: '#6366f1', color: '#fff',
-            border: '2px solid #4f46e5', borderRadius: 10,
-            cursor: 'pointer', userSelect: 'none',
+            ...base,
+            background: `${ORG}15`,
+            border:     `1.5px solid ${ORG}`,
+            color:      ORG,
+            fontWeight: 700,
+            boxShadow:  `0 0 0 2px ${ORG}30`,
         };
         if (isBlocked) return {
-            background: '#fef2f2', color: '#ef4444',
-            border: '2px solid #fca5a5', borderRadius: 10,
-            cursor: 'pointer', fontWeight: 700, userSelect: 'none',
+            ...base,
+            background: `${ORG}10`,
+            border:     `1.5px solid ${ORG}`,
+            color:      ORG,
+            fontWeight: 700,
         };
         if (isToday) return {
-            background: '#eff6ff', color: '#6366f1',
-            border: '2px solid #c7d2fe', borderRadius: 10,
-            cursor: 'pointer', fontWeight: 700, userSelect: 'none',
+            ...base,
+            background: BGGRAY,
+            border:     `1px solid ${BORDER}`,
+            color:      TEXT,
+            fontWeight: 700,
         };
         if (isPast) return {
-            color: '#cbd5e1', borderRadius: 10,
-            cursor: 'default', userSelect: 'none',
+            ...base,
+            color:        MUTED,
+            cursor:       'default',
+            border:       '1px solid transparent',
+            background:   'transparent',
+            fontWeight:   400,
         };
+        // Normal future date
         return {
-            borderRadius: 10, cursor: 'pointer',
-            border: '1px solid transparent', userSelect: 'none',
+            ...base,
+            background: isHovered ? BGGRAY : WHITE,
+            border:     `1px solid ${BORDER}`,
+            color:      TEXT,
+            fontWeight: 400,
         };
     }
 
@@ -155,57 +203,121 @@ export default function AvailabilityIndex({ blocked_dates, year, month, today, u
         <>
             <Head title="My Availability" />
 
-            <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
+            {/* Global font injection */}
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800;900&display=swap');
+                *, *::before, *::after { font-family: 'Work Sans', sans-serif !important; }
+                .avl-nav-btn:hover { background: ${BGGRAY} !important; }
+                .avl-unblock-btn:hover { color: ${ORG} !important; }
+            `}</style>
 
-                {/* Header */}
+            <div style={{ padding: '28px 16px' }}>
+
+                {/* ── Page header ── */}
                 <div style={{ marginBottom: 24 }}>
-                    <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 800, color: TEXT, margin: 0 }}>
                         My Availability Calendar
                     </h1>
-                    <p style={{ color: '#64748b', marginTop: 4, fontSize: 14 }}>
+                    <p style={{ color: MUTED, marginTop: 4, marginBottom: 0, fontSize: 13 }}>
                         Click or drag across future dates to select them, then block all at once.
                     </p>
                 </div>
 
-                <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
 
-                    {/* Calendar */}
-                    <div style={{ flex: '1 1 420px', background: '#fff', borderRadius: 14,
-                        border: '1px solid #e2e8f0', padding: 20,
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)', userSelect: 'none' }}>
+                    {/* ── Calendar card ── */}
+                    <div style={{
+                        ...card(),
+                        flex:       '1 1 420px',
+                        padding:    20,
+                        userSelect: 'none',
+                    }}>
 
-                        {/* Month nav */}
-                        <div style={{ display: 'flex', alignItems: 'center',
-                            justifyContent: 'space-between', marginBottom: 16 }}>
-                            <button onClick={prevMonth}
-                                style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 8,
-                                    padding: '4px 12px', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>
+                        {/* Month navigation */}
+                        <div style={{
+                            display:        'flex',
+                            alignItems:     'center',
+                            justifyContent: 'space-between',
+                            marginBottom:   18,
+                        }}>
+                            <button
+                                className="avl-nav-btn"
+                                onClick={prevMonth}
+                                style={{
+                                    background:   WHITE,
+                                    border:       `1px solid ${BORDER}`,
+                                    borderRadius: 8,
+                                    padding:      '5px 13px',
+                                    cursor:       'pointer',
+                                    color:        TEXT,
+                                    fontSize:     18,
+                                    lineHeight:   1,
+                                    transition:   'background 0.12s',
+                                }}
+                            >
                                 ‹
                             </button>
-                            <span style={{ fontWeight: 700, color: '#0f172a', fontSize: 16 }}>
+
+                            <span style={{ fontSize: 18, fontWeight: 800, color: TEXT, letterSpacing: '-0.3px' }}>
                                 {MONTH_NAMES[month - 1]} {year}
                             </span>
-                            <button onClick={nextMonth}
-                                style={{ background: 'none', border: '1px solid #e2e8f0', borderRadius: 8,
-                                    padding: '4px 12px', cursor: 'pointer', color: '#64748b', fontSize: 18 }}>
+
+                            <button
+                                className="avl-nav-btn"
+                                onClick={nextMonth}
+                                style={{
+                                    background:   WHITE,
+                                    border:       `1px solid ${BORDER}`,
+                                    borderRadius: 8,
+                                    padding:      '5px 13px',
+                                    cursor:       'pointer',
+                                    color:        TEXT,
+                                    fontSize:     18,
+                                    lineHeight:   1,
+                                    transition:   'background 0.12s',
+                                }}
+                            >
                                 ›
                             </button>
                         </div>
 
                         {/* DOW headers */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, marginBottom: 6 }}>
+                        <div style={{
+                            display:             'grid',
+                            gridTemplateColumns: 'repeat(7,1fr)',
+                            gap:                 4,
+                            marginBottom:        6,
+                        }}>
                             {DOW.map(d => (
-                                <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 600,
-                                    color: '#94a3b8', padding: '4px 0' }}>{d}</div>
+                                <div key={d} style={{
+                                    textAlign:     'center',
+                                    fontSize:      10,
+                                    fontWeight:    700,
+                                    color:         MUTED,
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.5px',
+                                    padding:       '4px 0',
+                                }}>
+                                    {d}
+                                </div>
                             ))}
                         </div>
 
                         {/* Day grid */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4 }}>
+                        <div style={{
+                            display:             'grid',
+                            gridTemplateColumns: 'repeat(7,1fr)',
+                            gap:                 4,
+                        }}>
                             {days.map((date, i) => (
-                                <div key={i}
+                                <div
+                                    key={i}
                                     onMouseDown={() => handleMouseDown(date)}
-                                    onMouseEnter={() => handleMouseEnter(date)}
+                                    onMouseEnter={() => {
+                                        handleMouseEnter(date);
+                                        setHoveredDay(date);
+                                    }}
+                                    onMouseLeave={() => setHoveredDay(null)}
                                     onClick={() => {
                                         // Click on an already-blocked date → unblock
                                         if (date && date >= today && blockedMap[date] !== undefined) {
@@ -213,160 +325,303 @@ export default function AvailabilityIndex({ blocked_dates, year, month, today, u
                                         }
                                     }}
                                     style={{
-                                        height: 44, display: 'flex', alignItems: 'center',
-                                        justifyContent: 'center', fontSize: 13, fontWeight: 500,
-                                        position: 'relative', transition: 'background 0.1s, transform 0.1s',
+                                        height:         44,
+                                        display:        'flex',
+                                        alignItems:     'center',
+                                        justifyContent: 'center',
+                                        fontSize:       13,
+                                        fontWeight:     500,
+                                        position:       'relative',
                                         ...(date ? dayStyle(date) : {}),
-                                    }}>
+                                    }}
+                                >
                                     {date ? parseInt(date.slice(-2)) : ''}
                                     {date && blockedMap[date] !== undefined && (
-                                        <span style={{ position: 'absolute', bottom: 4, left: '50%',
-                                            transform: 'translateX(-50%)',
-                                            width: 5, height: 5, borderRadius: '50%', background: '#ef4444' }} />
+                                        <span style={{
+                                            position:        'absolute',
+                                            bottom:          4,
+                                            left:            '50%',
+                                            transform:       'translateX(-50%)',
+                                            width:           5,
+                                            height:          5,
+                                            borderRadius:    '50%',
+                                            background:      ORG,
+                                        }} />
                                     )}
                                 </div>
                             ))}
                         </div>
 
                         {/* Legend */}
-                        <div style={{ display: 'flex', gap: 16, marginTop: 16, flexWrap: 'wrap' }}>
+                        <div style={{
+                            display:    'flex',
+                            gap:        16,
+                            marginTop:  16,
+                            flexWrap:   'wrap',
+                            alignItems: 'center',
+                        }}>
                             {[
-                                { color: '#ef4444', bg: '#fef2f2', label: 'Blocked' },
-                                { color: '#6366f1', bg: '#eff6ff', label: 'Today' },
-                                { color: '#4f46e5', bg: '#6366f1', label: 'Selected' },
+                                { bg: `${ORG}10`, border: ORG,    label: 'Blocked'  },
+                                { bg: BGGRAY,     border: BORDER, label: 'Today'    },
+                                { bg: `${ORG}15`, border: ORG,    label: 'Selected' },
                             ].map(l => (
-                                <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-                                    <div style={{ width: 16, height: 16, borderRadius: 4,
-                                        background: l.bg, border: `2px solid ${l.color}` }} />
-                                    <span style={{ color: '#64748b' }}>{l.label}</span>
+                                <div key={l.label} style={{
+                                    display:    'flex',
+                                    alignItems: 'center',
+                                    gap:        6,
+                                    fontSize:   12,
+                                }}>
+                                    <div style={{
+                                        width:        14,
+                                        height:       14,
+                                        borderRadius: 4,
+                                        background:   l.bg,
+                                        border:       `1.5px solid ${l.border}`,
+                                        flexShrink:   0,
+                                    }} />
+                                    <span style={{ color: MUTED }}>{l.label}</span>
                                 </div>
                             ))}
-                            <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>
+                            <span style={{ fontSize: 12, color: MUTED, marginLeft: 'auto' }}>
                                 Click blocked date to unblock
                             </span>
                         </div>
                     </div>
 
-                    {/* Side panel */}
+                    {/* ── Side panel ── */}
                     <div style={{ flex: '0 1 250px', display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                         {/* Block form (shown when dates are selected) */}
                         {selCount > 0 ? (
-                            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
-                                padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center',
-                                    justifyContent: 'space-between', marginBottom: 10 }}>
-                                    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                            <div style={{ ...card(), padding: 20 }}>
+                                <div style={{
+                                    display:        'flex',
+                                    alignItems:     'center',
+                                    justifyContent: 'space-between',
+                                    marginBottom:   12,
+                                }}>
+                                    <h3 style={{ fontSize: 14, fontWeight: 700, color: TEXT, margin: 0 }}>
                                         Block {selCount} Date{selCount > 1 ? 's' : ''}
                                     </h3>
-                                    <span style={{ fontSize: 12, fontWeight: 700, background: '#6366f1',
-                                        color: '#fff', borderRadius: 20, padding: '2px 10px' }}>
+                                    <span style={{
+                                        fontSize:     11,
+                                        fontWeight:   700,
+                                        background:   `${ORG}15`,
+                                        color:        ORG,
+                                        borderRadius: 20,
+                                        padding:      '2px 10px',
+                                    }}>
                                         {selCount}
                                     </span>
                                 </div>
 
                                 {/* Selected date chips */}
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 12,
-                                    maxHeight: 100, overflowY: 'auto' }}>
+                                <div style={{
+                                    display:      'flex',
+                                    flexWrap:     'wrap',
+                                    gap:          5,
+                                    marginBottom: 14,
+                                    maxHeight:    100,
+                                    overflowY:    'auto',
+                                }}>
                                     {[...selectedSet].sort().map(d => (
-                                        <span key={d} style={{ fontSize: 11, fontWeight: 600,
-                                            background: '#ede9fe', color: '#6366f1',
-                                            borderRadius: 20, padding: '3px 8px',
-                                            display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                        <span key={d} style={{
+                                            fontSize:    11,
+                                            fontWeight:  600,
+                                            background:  `${ORG}12`,
+                                            color:       ORG,
+                                            borderRadius: 20,
+                                            padding:     '3px 8px',
+                                            display:     'inline-flex',
+                                            alignItems:  'center',
+                                            gap:         4,
+                                        }}>
                                             {formatDate(d)}
                                             <span
-                                                style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13,
-                                                    lineHeight: 1, color: '#8b5cf6' }}
+                                                style={{ cursor: 'pointer', fontWeight: 700, fontSize: 13, lineHeight: 1 }}
                                                 onClick={() => setSelectedSet(prev => {
                                                     const n = new Set(prev); n.delete(d); return n;
-                                                })}>×</span>
+                                                })}
+                                            >
+                                                ×
+                                            </span>
                                         </span>
                                     ))}
                                 </div>
 
                                 <form onSubmit={submitBlock}>
-                                    <label style={{ fontSize: 12, color: '#64748b', fontWeight: 600,
-                                        display: 'block', marginBottom: 4 }}>
-                                        Reason (optional, applies to all)
+                                    <label style={{
+                                        fontSize:     11,
+                                        fontWeight:   700,
+                                        color:        MUTED,
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        display:      'block',
+                                        marginBottom: 6,
+                                    }}>
+                                        Reason (optional)
                                     </label>
-                                    <input
-                                        type="text"
+                                    <textarea
                                         value={reason}
                                         onChange={e => setReason(e.target.value)}
                                         placeholder="e.g. Medical leave"
                                         maxLength={191}
-                                        style={{ width: '100%', padding: '8px 10px', borderRadius: 8,
-                                            border: '1px solid #e2e8f0', fontSize: 13, marginBottom: 12,
-                                            outline: 'none', boxSizing: 'border-box' }}
+                                        rows={2}
+                                        style={{
+                                            width:        '100%',
+                                            padding:      '9px 12px',
+                                            borderRadius: 10,
+                                            border:       `1px solid ${BORDER}`,
+                                            fontSize:     13,
+                                            color:        TEXT,
+                                            marginBottom: 14,
+                                            outline:      'none',
+                                            boxSizing:    'border-box',
+                                            resize:       'vertical',
+                                            background:   WHITE,
+                                        }}
                                     />
                                     <div style={{ display: 'flex', gap: 8 }}>
-                                        <button type="submit" disabled={submitting}
-                                            style={{ flex: 1, padding: '9px 0', borderRadius: 8,
-                                                background: submitting ? '#fca5a5' : '#ef4444',
-                                                color: '#fff', border: 'none', fontWeight: 600,
-                                                fontSize: 13, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+                                        {/* Primary – orange */}
+                                        <button
+                                            type="submit"
+                                            disabled={submitting}
+                                            style={{
+                                                flex:         1,
+                                                padding:      '10px 0',
+                                                borderRadius: 10,
+                                                background:   submitting ? ORGL : ORG,
+                                                color:        WHITE,
+                                                border:       'none',
+                                                fontWeight:   600,
+                                                fontSize:     13,
+                                                cursor:       submitting ? 'not-allowed' : 'pointer',
+                                                transition:   'background 0.15s',
+                                            }}
+                                        >
                                             {submitting ? 'Saving…' : `Block ${selCount > 1 ? selCount + ' Dates' : 'Date'}`}
                                         </button>
-                                        <button type="button" onClick={clearSelection}
-                                            style={{ padding: '9px 12px', borderRadius: 8,
-                                                background: '#f1f5f9', color: '#64748b', border: 'none',
-                                                fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+                                        {/* Ghost secondary */}
+                                        <button
+                                            type="button"
+                                            onClick={clearSelection}
+                                            style={{
+                                                padding:      '10px 14px',
+                                                borderRadius: 10,
+                                                background:   WHITE,
+                                                color:        MUTED,
+                                                border:       `1px solid ${BORDER}`,
+                                                fontWeight:   600,
+                                                fontSize:     13,
+                                                cursor:       'pointer',
+                                                transition:   'background 0.12s',
+                                            }}
+                                            onMouseOver={e => e.currentTarget.style.background = BGGRAY}
+                                            onMouseOut={e => e.currentTarget.style.background = WHITE}
+                                        >
                                             Clear
                                         </button>
                                     </div>
                                 </form>
                             </div>
                         ) : (
-                            <div style={{ background: '#f8fafc', borderRadius: 14,
-                                border: '2px dashed #e2e8f0', padding: 24, textAlign: 'center' }}>
-                                <span className="material-icons"
-                                    style={{ fontSize: 40, color: '#cbd5e1', display: 'block', marginBottom: 8 }}>
+                            <div style={{
+                                background:   BGGRAY,
+                                borderRadius: 14,
+                                border:       `2px dashed ${BORDER}`,
+                                padding:      24,
+                                textAlign:    'center',
+                            }}>
+                                <span
+                                    className="material-icons"
+                                    style={{ fontSize: 38, color: MUTED, display: 'block', marginBottom: 8 }}
+                                >
                                     touch_app
                                 </span>
-                                <p style={{ color: '#94a3b8', fontSize: 13, margin: 0, lineHeight: 1.5 }}>
-                                    Click dates or<br/>drag to select multiple
+                                <p style={{ color: MUTED, fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+                                    Click dates or<br />drag to select multiple
                                 </p>
                             </div>
                         )}
 
                         {/* Blocked this month list */}
-                        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
-                            padding: 20, boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
-                            <h3 style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', margin: '0 0 12px' }}>
+                        <div style={{ ...card(), padding: 20 }}>
+                            <div style={{
+                                fontSize:      13,
+                                fontWeight:    700,
+                                color:         TEXT,
+                                paddingBottom: 10,
+                                marginBottom:  12,
+                                borderBottom:  `1px solid ${BORDER}`,
+                                display:       'flex',
+                                alignItems:    'center',
+                                gap:           8,
+                            }}>
                                 Blocked This Month
                                 {Object.keys(blockedMap).length > 0 && (
-                                    <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700,
-                                        background: '#fef2f2', color: '#ef4444',
-                                        borderRadius: 20, padding: '2px 8px' }}>
+                                    <span style={{
+                                        fontSize:     11,
+                                        fontWeight:   700,
+                                        background:   `${ORG}12`,
+                                        color:        ORG,
+                                        borderRadius: 20,
+                                        padding:      '2px 8px',
+                                    }}>
                                         {Object.keys(blockedMap).length}
                                     </span>
                                 )}
-                            </h3>
+                            </div>
+
                             {Object.keys(blockedMap).length === 0 ? (
-                                <p style={{ color: '#94a3b8', fontSize: 12, margin: 0 }}>No blocked dates.</p>
+                                <p style={{ color: MUTED, fontSize: 12, margin: 0 }}>No blocked dates.</p>
                             ) : (
-                                <ul style={{ margin: 0, padding: 0, listStyle: 'none',
-                                    display: 'flex', flexDirection: 'column', gap: 8,
-                                    maxHeight: 200, overflowY: 'auto' }}>
+                                <ul style={{
+                                    margin:         0,
+                                    padding:        0,
+                                    listStyle:      'none',
+                                    display:        'flex',
+                                    flexDirection:  'column',
+                                    gap:            8,
+                                    maxHeight:      200,
+                                    overflowY:      'auto',
+                                }}>
                                     {Object.entries(blockedMap).sort().map(([date, rsn]) => (
-                                        <li key={date} style={{ display: 'flex', alignItems: 'flex-start',
-                                            justifyContent: 'space-between', gap: 6 }}>
+                                        <li key={date} style={{
+                                            display:     'flex',
+                                            alignItems:  'flex-start',
+                                            justifyContent: 'space-between',
+                                            gap:         6,
+                                        }}>
                                             <div>
-                                                <span style={{ fontSize: 12, fontWeight: 600, color: '#ef4444' }}>
+                                                <span style={{ fontSize: 12, fontWeight: 600, color: ORG }}>
                                                     {new Date(date + 'T00:00:00').toLocaleDateString('en-IN',
                                                         { day: 'numeric', month: 'short', weekday: 'short' })}
                                                 </span>
                                                 {rsn && (
-                                                    <span style={{ fontSize: 11, color: '#94a3b8', display: 'block' }}>
+                                                    <span style={{ fontSize: 11, color: MUTED, display: 'block' }}>
                                                         {rsn}
                                                     </span>
                                                 )}
                                             </div>
-                                            <button disabled={submitting} onClick={() => unblockDate(date)}
-                                                style={{ background: 'none', border: 'none', color: '#cbd5e1',
-                                                    cursor: 'pointer', padding: 0, fontSize: 18,
-                                                    lineHeight: 1, flexShrink: 0 }}
-                                                title="Unblock">×</button>
+                                            <button
+                                                className="avl-unblock-btn"
+                                                disabled={submitting}
+                                                onClick={() => unblockDate(date)}
+                                                style={{
+                                                    background:  'none',
+                                                    border:      'none',
+                                                    color:       MUTED,
+                                                    cursor:      'pointer',
+                                                    padding:     0,
+                                                    fontSize:    18,
+                                                    lineHeight:  1,
+                                                    flexShrink:  0,
+                                                    transition:  'color 0.12s',
+                                                }}
+                                                title="Unblock"
+                                            >
+                                                ×
+                                            </button>
                                         </li>
                                     ))}
                                 </ul>

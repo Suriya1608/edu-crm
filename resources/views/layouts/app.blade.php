@@ -25,12 +25,26 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
-    <link href="{{ asset('css/style.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/style.css') }}?v={{ filemtime(public_path('css/style.css')) }}" rel="stylesheet">
+
+    @if(auth()->check() && auth()->user()->role === 'telecaller')
+    {{-- Telecaller: force Lato font across entire panel (loaded inline so no external dependency) --}}
+    <style>
+        *, *::before, *::after {
+            font-family: 'Lato', sans-serif !important;
+        }
+        .material-icons {
+            font-family: 'Material Icons' !important;
+        }
+    </style>
+    @endif
 
     {{-- Global 419 handler: intercept all fetch() calls and redirect to login on session expiry --}}
     <script>
@@ -74,7 +88,7 @@
     @vite(['resources/js/app.js'])
 </head>
 
-<body>
+<body class="{{ auth()->user()?->role === 'telecaller' ? 'role-telecaller' : '' }}">
 
     {{-- Sidebar backdrop (mobile/tablet) --}}
     <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
@@ -474,15 +488,20 @@
             var btn = document.getElementById('tcnReadyBtn');
             var ico = document.getElementById('tcnReadyIco');
             var lbl = document.getElementById('tcnReadyLabel');
+            var dot = document.getElementById('tcnStatusDot');
             if (!btn) return;
             if (active) {
                 btn.style.background = '#10b981';
+                btn.style.boxShadow = '0 2px 10px rgba(16,185,129,.4)';
                 if (ico) ico.textContent = 'phone';
                 if (lbl) lbl.textContent = 'Ready';
+                if (dot) dot.style.background = 'rgba(255,255,255,.95)';
             } else {
-                btn.style.background = '#64748b';
+                btn.style.background = '#475569';
+                btn.style.boxShadow = '0 1px 6px rgba(0,0,0,.18)';
                 if (ico) ico.textContent = 'phone_disabled';
                 if (lbl) lbl.textContent = 'Not Ready';
+                if (dot) dot.style.background = 'rgba(255,255,255,.35)';
             }
         }
 
@@ -490,10 +509,13 @@
             var btn = document.getElementById('tcnReadyBtn');
             var ico = document.getElementById('tcnReadyIco');
             var lbl = document.getElementById('tcnReadyLabel');
+            var dot = document.getElementById('tcnStatusDot');
             if (!btn) return;
             btn.style.background = '#f59e0b';
+            btn.style.boxShadow = '0 2px 10px rgba(245,158,11,.4)';
             if (ico) ico.textContent = 'hourglass_empty';
             if (lbl) lbl.textContent = 'Connecting\u2026';
+            if (dot) dot.style.background = 'rgba(255,255,255,.7)';
         }
 
         // ── Set initial header button state on hard page load ─────────────
@@ -680,21 +702,45 @@
             if (backdrop) backdrop.classList.remove('show');
         }
 
-        function toggleSidebar() {
-            const sidebar     = document.getElementById('sidebar');
-            const mainContent = document.getElementById('mainContent');
+        /* ── Telecaller: icon-only collapse ──────────────────────────────────
+           Toggle button sits at the TOP as a full-width strip — it equals
+           sidebar width at all times so it is NEVER clipped.
+           CSS handles the icon rotation via .tc-collapsed .tc-toggle-icon.
+        ──────────────────────────────────────────────────────────────────── */
+        function toggleTcSidebar() {
+            var sidebar     = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
             if (!sidebar) return;
 
+            var collapsed = sidebar.classList.toggle('tc-collapsed');
+            if (mainContent) {
+                mainContent.classList.toggle('tc-sidebar-collapsed', collapsed);
+            }
+
+            var btn = document.getElementById('tcSidebarToggleBtn');
+            if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+
+            try { localStorage.setItem('tcSidebarCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+        }
+
+        /* ── Standard sidebar toggle (routes to telecaller-specific on that role) ── */
+        function toggleSidebar() {
+            var sidebar     = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
+            if (!sidebar) return;
+
+            var isTelecaller = document.body.classList.contains('role-telecaller');
+
             if (window.innerWidth > 991) {
-                const collapsed = sidebar.classList.toggle('desktop-collapsed');
-                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
-                try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
-            } else {
-                if (sidebar.classList.contains('show')) {
-                    closeSidebar();
+                if (isTelecaller) {
+                    toggleTcSidebar();
                 } else {
-                    openSidebar();
+                    var collapsed = sidebar.classList.toggle('desktop-collapsed');
+                    if (mainContent) mainContent.classList.toggle('desktop-expanded', collapsed);
+                    try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
                 }
+            } else {
+                if (sidebar.classList.contains('show')) { closeSidebar(); } else { openSidebar(); }
             }
         }
 
@@ -703,10 +749,20 @@
             const sidebar     = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
             if (!sidebar) return;
+
+            const isTelecaller = document.body.classList.contains('role-telecaller');
+
             try {
-                const collapsed = localStorage.getItem('sidebarCollapsed') === '1';
-                sidebar.classList.toggle('desktop-collapsed', collapsed);
-                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
+                if (isTelecaller) {
+                    const collapsed = localStorage.getItem('tcSidebarCollapsed') === '1';
+                    sidebar.classList.toggle('tc-collapsed', collapsed);
+                    if (mainContent) mainContent.classList.toggle('tc-sidebar-collapsed', collapsed);
+                    /* Icon rotation is handled purely by CSS .tc-collapsed rule */
+                } else {
+                    const collapsed = localStorage.getItem('sidebarCollapsed') === '1';
+                    sidebar.classList.toggle('desktop-collapsed', collapsed);
+                    if (mainContent) mainContent.classList.toggle('desktop-expanded', collapsed);
+                }
             } catch(e) {}
         }
 
@@ -715,19 +771,44 @@
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
+                const sidebar     = document.getElementById('sidebar');
+                const mainContent = document.getElementById('mainContent');
+                const isTelecaller = document.body.classList.contains('role-telecaller');
                 if (window.innerWidth > 991) {
-                    const sidebar     = document.getElementById('sidebar');
-                    const mainContent = document.getElementById('mainContent');
-                    if (sidebar && sidebar.classList.contains('desktop-collapsed')) {
-                        sidebar.classList.remove('desktop-collapsed');
-                        mainContent && mainContent.classList.remove('desktop-expanded');
-                        try { localStorage.setItem('sidebarCollapsed', '0'); } catch(e) {}
+                    if (isTelecaller) {
+                        if (sidebar && sidebar.classList.contains('tc-collapsed')) {
+                            sidebar.classList.remove('tc-collapsed');
+                            if (mainContent) mainContent.classList.remove('tc-sidebar-collapsed');
+                            try { localStorage.setItem('tcSidebarCollapsed','0'); } catch(e) {}
+                        }
+                    } else {
+                        if (sidebar && sidebar.classList.contains('desktop-collapsed')) {
+                            sidebar.classList.remove('desktop-collapsed');
+                            if (mainContent) mainContent.classList.remove('desktop-expanded');
+                            try { localStorage.setItem('sidebarCollapsed','0'); } catch(e) {}
+                        }
                     }
                 } else {
                     closeSidebar();
                 }
             }
         });
+
+        /* ── Telecaller live clock ── */
+        (function () {
+            function pad(n) { return String(n).padStart(2,'0'); }
+            function tickClock() {
+                const el = document.getElementById('tcClockTime');
+                if (!el) return;
+                const now = new Date();
+                const h   = now.getHours();
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const h12  = h % 12 || 12;
+                el.textContent = pad(h12)+':'+pad(now.getMinutes())+':'+pad(now.getSeconds())+' '+ampm;
+            }
+            tickClock();
+            setInterval(tickClock, 1000);
+        })();
     </script>
 
     @stack('scripts')
@@ -736,7 +817,8 @@
     <script>
         function _applyChartDefaults() {
             if (typeof Chart !== 'undefined') {
-                Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
+                const isTelecaller = document.body.classList.contains('role-telecaller');
+                Chart.defaults.font.family    = isTelecaller ? "'Lato', sans-serif" : "'Plus Jakarta Sans', sans-serif";
                 Chart.defaults.font.size      = 12;
                 Chart.defaults.color          = '#64748b';
                 Chart.defaults.plugins.legend.labels.usePointStyle = true;
@@ -1007,6 +1089,96 @@
         resetTimers();
     })();
     </script>
+    @endauth
+
+    {{-- Manager Notification Bell Polling --}}
+    @auth
+    @if(auth()->user()->role === 'manager')
+    <script data-turbo-eval="false">
+    (function () {
+        const SNAPSHOT_URL = @json(route('manager.notifications.snapshot'));
+        const MARK_READ_URL = @json(route('manager.notifications.read-all'));
+        const CSRF = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+        function esc(s) {
+            return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function renderItems(containerId, items, emptyMsg) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items || items.length === 0) {
+                el.innerHTML = '<span class="text-muted" style="font-size:12px;">' + esc(emptyMsg) + '</span>';
+                return;
+            }
+            el.innerHTML = items.map(function (n) {
+                const link = n.link && n.link !== '#'
+                    ? '<a href="' + esc(n.link) + '" style="font-size:12px;color:#6366f1;text-decoration:none;font-weight:600;display:block;margin-top:2px;">View &rarr;</a>'
+                    : '';
+                return '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9;">' +
+                    '<div style="font-size:12px;font-weight:600;color:#0f172a;line-height:1.3;">' + esc(n.title) + '</div>' +
+                    '<div style="font-size:11px;color:#64748b;margin-top:1px;">' + esc(n.message) + '</div>' +
+                    '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + esc(n.time) + '</div>' +
+                    link +
+                    '</div>';
+            }).join('');
+        }
+
+        window.mgrFetchNotifs = async function () {
+            try {
+                const res = await fetch(SNAPSHOT_URL, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.ok) return;
+
+                // Badge
+                const badge = document.getElementById('mgrNotifBadge');
+                if (badge) {
+                    const count = data.badge_count || 0;
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.style.display = count > 0 ? '' : 'none';
+                }
+
+                renderItems('mgrNotifLeads',     data.lead_notifications,     'No lead assignments.');
+                renderItems('mgrNotifFollowups',  data.followup_notifications, 'No follow-up alerts.');
+                renderItems('mgrNotifSla',        data.sla_notifications,      'No SLA escalations.');
+                renderItems('mgrNotifWhatsapp',   data.whatsapp_notifications, 'No WhatsApp messages.');
+            } catch (e) {}
+        };
+
+        // Mark all read
+        function bindMarkRead() {
+            var btn = document.getElementById('mgrNotifMarkRead');
+            if (btn && !btn.dataset.mgrBound) {
+                btn.dataset.mgrBound = '1';
+                btn.addEventListener('click', async function () {
+                    try {
+                        await fetch(MARK_READ_URL, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        window.mgrFetchNotifs();
+                    } catch (e) {}
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            window.mgrFetchNotifs();
+            bindMarkRead();
+        });
+        document.addEventListener('turbo:load', function () {
+            window.mgrFetchNotifs();
+            bindMarkRead();
+        });
+
+        // Poll every 45 seconds
+        setInterval(window.mgrFetchNotifs, 45000);
+    })();
+    </script>
+    @endif
     @endauth
 </body>
 

@@ -45,7 +45,7 @@ class TenantController extends Controller
             $args['--admin-password'] = $data['admin_password'];
         }
         if ($request->boolean('existing_db')) {
-            $args['--existing'] = true;
+            $args['--skip-create'] = true;
         }
 
         $exitCode = Artisan::call('tenant:create', $args);

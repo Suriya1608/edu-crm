@@ -18,6 +18,7 @@ use App\Models\CallLog;
 use App\Models\WhatsAppMessage;
 use App\Models\LeadMeeting;
 use App\Models\AcademicYear;
+use App\Models\Course;
 use App\Models\CourseIntake;
 use Illuminate\Support\Facades\Schema;
 use App\Notifications\LeadAssignmentNotification;
@@ -108,7 +109,6 @@ class LeadController extends Controller
             });
         }
 
-
         // Telecaller filter
         if ($request->telecaller) {
             $query->where('assigned_to', $request->telecaller);
@@ -119,25 +119,103 @@ class LeadController extends Controller
             $query->where('status', $request->status);
         }
 
-        // Date filter
-
-
+        // Date filter — preset or custom range
         if ($request->date_range) {
-
-            if ($request->date_range == '7') {
-                $query->whereDate('created_at', '>=', now()->subDays(7));
-            }
-
-            if ($request->date_range == '30') {
-                $query->whereDate('created_at', '>=', now()->subDays(30));
-            }
-
-            if ($request->date_range == 'today') {
+            if ($request->date_range === 'custom') {
+                if ($request->date_from) $query->whereDate('created_at', '>=', $request->date_from);
+                if ($request->date_to)   $query->whereDate('created_at', '<=', $request->date_to);
+            } elseif ($request->date_range === 'today') {
                 $query->whereDate('created_at', now());
+            } elseif (is_numeric($request->date_range)) {
+                $query->whereDate('created_at', '>=', now()->subDays((int) $request->date_range));
             }
         }
 
+        // Course filter
+        if ($request->course_id) {
+            $query->where('course_id', $request->course_id);
+        }
 
+        // Academic year filter
+        if ($request->academic_year_id) {
+            $query->where('academic_year_id', $request->academic_year_id);
+        }
+
+        // Quota filter
+        if ($request->quota) {
+            $query->where('quota', $request->quota);
+        }
+
+        // Source filter
+        if ($request->source) {
+            $query->where('source', $request->source);
+        }
+
+        // Gender filter
+        if ($request->gender) {
+            $query->where('gender', $request->gender);
+        }
+
+        // Geography filters
+        if ($request->state) {
+            $query->where('state', 'like', '%' . $request->state . '%');
+        }
+        if ($request->city) {
+            $query->where('city', 'like', '%' . $request->city . '%');
+        }
+        if ($request->district) {
+            $query->where('district', 'like', '%' . $request->district . '%');
+        }
+
+        // Follow-up filter
+        if ($request->followup) {
+            if ($request->followup === 'today') {
+                $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', today()));
+            } elseif ($request->followup === 'overdue') {
+                $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', '<', today()));
+            } elseif ($request->followup === 'this_week') {
+                $query->whereHas('followups', fn($q) => $q
+                    ->whereDate('next_followup', '>=', today())
+                    ->whereDate('next_followup', '<=', today()->endOfWeek()));
+            } elseif ($request->followup === 'none') {
+                $query->whereDoesntHave('followups');
+            }
+        }
+
+        // No activity in last N days
+        if ($request->no_activity_days && is_numeric($request->no_activity_days)) {
+            $cutoff = now()->subDays((int) $request->no_activity_days);
+            $recentLeadIds = \App\Models\LeadActivity::where('activity_time', '>=', $cutoff)
+                ->distinct()->pluck('lead_id');
+            $query->whereNotIn('id', $recentLeadIds);
+        }
+
+        // SLA filter
+        if ($request->sla) {
+            if ($request->sla === 'escalated') {
+                $query->whereNotNull('sla_escalated_at');
+            } elseif (is_numeric($request->sla)) {
+                $query->where('sla_level', '>=', (int) $request->sla);
+            }
+        }
+
+        // Is duplicate filter
+        if ($request->is_duplicate !== null && $request->is_duplicate !== '') {
+            $query->where('is_duplicate', (bool) $request->is_duplicate);
+        }
+
+        // Is active filter
+        if ($request->is_active !== null && $request->is_active !== '') {
+            $query->where('is_active', (bool) $request->is_active);
+        }
+
+        // Days aged filters (aged_min = at least N days old, aged_max = at most N days old)
+        if ($request->aged_min && is_numeric($request->aged_min)) {
+            $query->whereDate('created_at', '<=', now()->subDays((int) $request->aged_min));
+        }
+        if ($request->aged_max && is_numeric($request->aged_max)) {
+            $query->whereDate('created_at', '>=', now()->subDays((int) $request->aged_max));
+        }
 
         $leads = $query->orderBy('id', 'desc')
             ->paginate(10)
@@ -161,6 +239,12 @@ class LeadController extends Controller
         $assignedLeads = (int) $leadCounts->assigned_count;
         $followupToday = Followup::whereDate('next_followup', now())->whereIn('lead_id', $myLeadsSubquery)->count();
 
+        $courses = \App\Models\Course::active()->orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
+        $academicYears = AcademicYear::orderByDesc('id')->get(['id', 'name']);
+        $sources = Lead::where('assigned_by', $managerId)
+            ->whereNotNull('source')->where('source', '!=', '')
+            ->distinct()->orderBy('source')->pluck('source');
+
         $leadsData = $leads->through(fn($lead) => [
             'id'            => $lead->id,
             'encrypted_id'  => encrypt($lead->id),
@@ -173,18 +257,35 @@ class LeadController extends Controller
             'status'        => $lead->status,
             'assigned_user' => $lead->assignedUser?->name,
             'days_aged'     => $lead->days_aged,
-            'is_duplicate'  => $lead->is_duplicate,
-            'next_followup' => $lead->followups->sortByDesc('next_followup')->first()?->next_followup,
+            'is_duplicate'   => $lead->is_duplicate,
+            'is_active'      => (bool) $lead->is_active,
+            'sla_level'      => $lead->sla_level,
+            'sla_escalated'  => (bool) $lead->sla_escalated_at,
+            'next_followup'  => $lead->followups->sortByDesc('next_followup')->first()?->next_followup,
+            'urls'           => [
+                'update_contact' => route('manager.leads.updateContact', encrypt($lead->id)),
+                'toggle_active'  => route('manager.leads.toggleActive',  encrypt($lead->id)),
+            ],
         ]);
 
+        $filterKeys = [
+            'search', 'telecaller', 'status', 'date_range', 'date_from', 'date_to',
+            'course_id', 'academic_year_id', 'quota', 'source', 'gender',
+            'state', 'city', 'district', 'followup', 'no_activity_days',
+            'sla', 'is_duplicate', 'is_active', 'aged_min', 'aged_max',
+        ];
+
         return Inertia::render('Manager/Leads/Index', [
-            'leads'         => $leadsData,
-            'telecallers'   => $telecallers->map(fn($t) => ['id' => $t->id, 'name' => $t->name])->values(),
-            'totalLeads'    => $totalLeads,
-            'newLeads'      => $newLeads,
-            'assignedLeads' => $assignedLeads,
-            'followupToday' => $followupToday,
-            'filters'       => request()->only(['search', 'telecaller', 'status', 'date_range']),
+            'leads'          => $leadsData,
+            'telecallers'    => $telecallers->map(fn($t) => ['id' => $t->id, 'name' => $t->name])->values(),
+            'courses'        => $courses->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
+            'academicYears'  => $academicYears->map(fn($y) => ['id' => $y->id, 'name' => $y->name])->values(),
+            'sources'        => $sources->values(),
+            'totalLeads'     => $totalLeads,
+            'newLeads'       => $newLeads,
+            'assignedLeads'  => $assignedLeads,
+            'followupToday'  => $followupToday,
+            'filters'        => request()->only($filterKeys),
         ]);
     }
 
@@ -268,6 +369,13 @@ class LeadController extends Controller
             'name'             => 'required|string',
             'phone'            => 'required|string',
             'email'            => 'nullable|email',
+            'gender'           => 'nullable|in:male,female,other',
+            'dob'              => 'nullable|date|before:today',
+            'address'          => 'nullable|string|max:500',
+            'city'             => 'nullable|string|max:100',
+            'district'         => 'nullable|string|max:100',
+            'state'            => 'nullable|string|max:100',
+            'pincode'          => 'nullable|string|max:10',
             'course_id'        => 'nullable|integer|exists:courses,id',
             'academic_year_id' => 'nullable|integer|exists:academic_years,id',
             'quota'            => 'nullable|in:management,counselling',
@@ -296,6 +404,13 @@ class LeadController extends Controller
             'name'             => $request->name,
             'phone'            => $phone,
             'email'            => $request->email,
+            'gender'           => $request->gender ?: null,
+            'dob'              => $request->dob ?: null,
+            'address'          => $request->address ?: null,
+            'city'             => $request->city ?: null,
+            'district'         => $request->district ?: null,
+            'state'            => $request->state ?: null,
+            'pincode'          => $request->pincode ?: null,
             'course_id'        => $request->course_id ?: null,
             'academic_year_id' => $request->academic_year_id ?: AcademicYear::current()?->id,
             'quota'            => $request->quota ?: null,
@@ -499,18 +614,30 @@ class LeadController extends Controller
                 'name'          => $lead->name,
                 'phone'         => $lead->phone,
                 'email'         => $lead->email,
+                'gender'        => $lead->gender,
+                'dob'           => $lead->dob?->format('d M Y'),
+                'address'       => $lead->address,
+                'city'          => $lead->city,
+                'district'      => $lead->district,
+                'state'         => $lead->state,
+                'pincode'       => $lead->pincode,
                 'course'        => $lead->course,
                 'academic_year' => $lead->academicYear?->name,
                 'status'        => $lead->status,
                 'assigned_to'     => $lead->assigned_to,
                 'assigned_user'   => $lead->assignedUser?->name,
                 'is_duplicate'    => $lead->is_duplicate,
+                'is_active'       => (bool) $lead->is_active,
                 'source_type'     => $lead->source_type,
                 'source_category' => $lead->source_category,
                 'source_detail'   => $lead->source_detail,
                 'quota'           => $lead->quota,
+                'course_id'       => $lead->course_id,
+                'final_course_id' => $lead->final_course_id,
+                'final_course'    => $lead->finalCourse?->name,
                 'activities'      => $timeline,
             ],
+            'courses' => Course::active()->orderBy('name')->get()->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
             'telecallers'       => $telecallers->map(fn($t) => [
                 'id'            => $t->id,
                 'name'          => $t->name,
@@ -547,9 +674,11 @@ class LeadController extends Controller
                     ])->values()
                 : [],
             'urls' => [
-                'assign'         => route('manager.assign', $encId),
-                'change_status'  => route('manager.leads.changeStatus', $encId),
-                'add_note'       => route('manager.leads.addNote', $encId),
+                'assign'          => route('manager.assign', $encId),
+                'change_status'   => route('manager.leads.changeStatus', $encId),
+                'add_note'        => route('manager.leads.addNote', $encId),
+                'update_contact'  => route('manager.leads.updateContact', $encId),
+                'toggle_active'   => route('manager.leads.toggleActive', $encId),
                 'wa_store'       => route('manager.leads.whatsapp.store', $encId),
                 'wa_template'    => route('manager.leads.whatsapp.template', $encId),
                 'wa_media'       => route('manager.leads.whatsapp.media', $encId),
@@ -632,16 +761,22 @@ class LeadController extends Controller
         $lead = Lead::findOrFail($id);
 
         $request->validate([
-            'status' => 'required|in:new,assigned,contacted,interested,not_interested,converted,follow_up',
-            'quota'  => 'required_if:status,converted|nullable|in:management,counselling',
+            'status'          => 'required|in:new,assigned,contacted,interested,not_interested,converted,follow_up',
+            'quota'           => 'required_if:status,converted|nullable|in:management,counselling',
+            'final_course_id' => 'required_if:status,converted|nullable|exists:courses,id',
         ]);
 
         $oldStatus = $lead->status;
 
-        // Update lead status (and quota when converting)
+        // Update lead status (and quota + final course when converting)
         $lead->status = $request->status;
-        if ($request->status === 'converted' && $request->filled('quota')) {
-            $lead->quota = $request->quota;
+        if ($request->status === 'converted') {
+            if ($request->filled('quota')) {
+                $lead->quota = $request->quota;
+            }
+            if ($request->filled('final_course_id')) {
+                $lead->final_course_id = $request->final_course_id;
+            }
         }
 
         // If followup selected
@@ -1011,6 +1146,66 @@ class LeadController extends Controller
             'time' => optional($whatsappMessage->created_at)->format('H:i'),
             'wa_url' => $phone ? ('https://wa.me/' . $phone . '?text=' . urlencode($whatsappMessage->message_body)) : null,
         ]);
+    }
+
+    public function updateContact(Request $request, $id)
+    {
+        try {
+            $id = decrypt($id);
+        } catch (\Exception $e) {
+            abort(404);
+        }
+
+        $lead = Lead::findOrFail($id);
+
+        $request->validate([
+            'phone' => 'required|string|max:20',
+            'email' => 'nullable|email|max:255',
+        ]);
+
+        if (Lead::where('phone', $request->phone)->where('id', '!=', $lead->id)->exists()) {
+            return back()->with('error', 'This phone number is already assigned to another lead.');
+        }
+
+        $old = ['phone' => $lead->phone, 'email' => $lead->email];
+        $lead->update(['phone' => $request->phone, 'email' => $request->email]);
+
+        LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => Auth::id(),
+            'type'          => 'note',
+            'title'         => 'Contact Updated',
+            'description'   => "Phone changed from {$old['phone']} to {$request->phone}"
+                . ($old['email'] !== $request->email ? "; email updated" : ""),
+            'activity_time' => now(),
+        ]);
+
+        return back()->with('success', 'Contact details updated successfully.');
+    }
+
+    public function toggleActive(Request $request, $id)
+    {
+        try {
+            $id = decrypt($id);
+        } catch (\Exception $e) {
+            abort(404);
+        }
+
+        $lead = Lead::findOrFail($id);
+        $lead->update(['is_active' => !$lead->is_active]);
+
+        $label = $lead->is_active ? 'activated' : 'deactivated';
+
+        LeadActivity::create([
+            'lead_id'       => $lead->id,
+            'user_id'       => Auth::id(),
+            'type'          => 'note',
+            'title'         => 'Lead ' . ucfirst($label),
+            'description'   => "Lead marked as " . ($lead->is_active ? 'Active' : 'Inactive') . " by manager.",
+            'activity_time' => now(),
+        ]);
+
+        return back()->with('success', "Lead {$label} successfully.");
     }
 
     // ── Send WhatsApp welcome template to a newly assigned lead ───────────────

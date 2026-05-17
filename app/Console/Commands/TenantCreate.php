@@ -14,7 +14,8 @@ class TenantCreate extends Command
                             {name       : Display name of the client}
                             {subdomain  : Subdomain slug (e.g. client1)}
                             {--db=      : Custom DB name (default: crm_{subdomain})}
-                            {--existing : Skip DB creation and migrations — register an existing DB}
+                            {--existing : Skip DB creation and migrations — register an already-migrated DB}
+                            {--skip-create : Skip CREATE DATABASE but still run migrations (shared hosting)}
                             {--admin-email= : Create an admin user with this email}
                             {--admin-password= : Password for the admin user}';
 
@@ -37,7 +38,9 @@ class TenantCreate extends Command
             return self::FAILURE;
         }
 
-        if (!$this->option('existing')) {
+        $skipCreate = $this->option('existing') || $this->option('skip-create');
+
+        if (!$skipCreate) {
             $this->info("Creating database: {$dbName}");
             DB::connection('central_mysql')
                 ->statement("CREATE DATABASE IF NOT EXISTS `{$dbName}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");

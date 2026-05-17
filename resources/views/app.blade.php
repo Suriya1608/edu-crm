@@ -30,11 +30,25 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
     {{-- Fonts --}}
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
     {{-- App styles --}}
-    <link href="{{ asset('css/style.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/style.css') }}?v={{ filemtime(public_path('css/style.css')) }}" rel="stylesheet">
+
+    {{-- Telecaller: force Lato font across entire panel --}}
+    @if(auth()->check() && auth()->user()->role === 'telecaller')
+    <style>
+        *, *::before, *::after {
+            font-family: 'Lato', sans-serif !important;
+        }
+        .material-icons {
+            font-family: 'Material Icons' !important;
+        }
+    </style>
+    @endif
 
     {{-- WhatsApp chat widget styles (used by Telecaller/Leads/Show React page) --}}
     @include('layouts.whatsappchat')
@@ -62,7 +76,7 @@
     @vite(['resources/js/inertia-app.jsx'])
 </head>
 
-<body>
+<body class="{{ auth()->user()?->role === 'telecaller' ? 'role-telecaller' : '' }}">
 
     @include('layouts.sidebar')
 

@@ -91,14 +91,15 @@ class WhatsAppChatController extends Controller
         ] : null;
 
         $activeMessagesData = $activeMessages->map(fn($m) => [
-            'id'           => $m->id,
-            'message_body' => $m->message_body,
-            'direction'    => $m->direction,
-            'time'         => $m->created_at?->format('h:i A'),
-            'date'         => $m->created_at?->format('d M Y'),
-            'status'       => data_get($m->meta_data, 'meta_status', 'sent'),
-            'media_url'    => $m->media_url ?? null,
-            'media_type'   => $m->media_type ?? null,
+            'id'             => $m->id,
+            'message_body'   => $m->message_body,
+            'direction'      => $m->direction,
+            'time'           => $m->created_at?->format('h:i A'),
+            'date'           => $m->created_at?->format('d M Y'),
+            'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
+            'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
+            'media_type'     => $m->media_type ?? null,
+            'media_filename' => $m->media_filename ?? null,
         ]);
 
         return Inertia::render('Manager/WhatsApp/Index', [
@@ -127,12 +128,15 @@ class WhatsAppChatController extends Controller
         }
 
         $messages = $query->get()->map(fn($m) => [
-            'id'           => $m->id,
-            'message_body' => $m->message_body,
-            'direction'    => $m->direction,
-            'time'         => $m->created_at?->format('h:i A'),
-            'date'         => $m->created_at?->format('d M Y'),
-            'status'       => data_get($m->meta_data, 'meta_status', 'sent'),
+            'id'             => $m->id,
+            'message_body'   => $m->message_body,
+            'direction'      => $m->direction,
+            'time'           => $m->created_at?->format('h:i A'),
+            'date'           => $m->created_at?->format('d M Y'),
+            'status'         => data_get($m->meta_data, 'meta_status', 'sent'),
+            'media_url'      => $m->media_url ? asset('storage/' . $m->media_url) : null,
+            'media_type'     => $m->media_type ?? null,
+            'media_filename' => $m->media_filename ?? null,
         ]);
 
         // Mark inbound as read

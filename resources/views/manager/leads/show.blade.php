@@ -46,6 +46,16 @@
                                 {{ strtoupper($lead->status) }}
                             </span>
 
+                            @if($lead->is_active)
+                                <span class="badge rounded-pill" style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:600;letter-spacing:.4px;">
+                                    <span class="material-icons" style="font-size:12px;vertical-align:-2px;">circle</span> ACTIVE
+                                </span>
+                            @else
+                                <span class="badge rounded-pill" style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:600;letter-spacing:.4px;">
+                                    <span class="material-icons" style="font-size:12px;vertical-align:-2px;">circle</span> INACTIVE
+                                </span>
+                            @endif
+
                             <p class="profile-id">
                                 ID: {{ $lead->lead_code }}
                             </p>
@@ -59,10 +69,13 @@
                             <span class="material-icons">phone</span>
                             <div class="flex-grow-1">
                                 <p class="detail-label">Phone</p>
-                                <div class="d-flex justify-content-between">
-                                    <p class="detail-value">
-                                        {{ $lead->phone }}
-                                    </p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <p class="detail-value mb-0">{{ $lead->phone }}</p>
+                                    <button type="button" class="btn btn-link p-0 ms-2" style="color:#6366f1;"
+                                            data-bs-toggle="modal" data-bs-target="#editContactModal"
+                                            title="Edit contact">
+                                        <span class="material-icons" style="font-size:17px;">edit</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -72,9 +85,14 @@
                             <span class="material-icons">mail</span>
                             <div class="flex-grow-1">
                                 <p class="detail-label">Email</p>
-                                <p class="detail-value">
-                                    {{ $lead->email ?? '-' }}
-                                </p>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <p class="detail-value mb-0">{{ $lead->email ?? '-' }}</p>
+                                    <button type="button" class="btn btn-link p-0 ms-2" style="color:#6366f1;"
+                                            data-bs-toggle="modal" data-bs-target="#editContactModal"
+                                            title="Edit contact">
+                                        <span class="material-icons" style="font-size:17px;">edit</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -147,6 +165,16 @@
                         <span class="material-icons">sync_alt</span>
                         Change Status
                     </button>
+
+                    <form method="POST" action="{{ route('manager.leads.toggleActive', encrypt($lead->id)) }}"
+                          onsubmit="return confirm('{{ $lead->is_active ? 'Mark this lead as Inactive?' : 'Mark this lead as Active?' }}')">
+                        @csrf
+                        <button type="submit"
+                                class="btn {{ $lead->is_active ? 'btn-outline-danger' : 'btn-outline-success' }}">
+                            <span class="material-icons">{{ $lead->is_active ? 'toggle_off' : 'toggle_on' }}</span>
+                            {{ $lead->is_active ? 'Deactivate' : 'Activate' }}
+                        </button>
+                    </form>
 
                 </div>
 
@@ -346,6 +374,45 @@
     </div>
     </div>
 
+
+    <!-- Edit Contact Modal -->
+    <div class="modal fade" id="editContactModal" tabindex="-1">
+        <div class="modal-dialog">
+            <form method="POST" action="{{ route('manager.leads.updateContact', encrypt($lead->id)) }}">
+                @csrf
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <span class="material-icons me-2" style="vertical-align:-5px;color:#6366f1;">edit</span>
+                            Edit Contact Details
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Mobile Number <span class="text-danger">*</span></label>
+                            <input type="text" name="phone" class="form-control"
+                                   value="{{ old('phone', $lead->phone) }}"
+                                   placeholder="e.g. 9876543210" required maxlength="20">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Email Address</label>
+                            <input type="email" name="email" class="form-control"
+                                   value="{{ old('email', $lead->email) }}"
+                                   placeholder="e.g. student@example.com" maxlength="255">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-icons me-1" style="font-size:16px;vertical-align:-3px;">save</span>
+                            Save Changes
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <!-- Change Status Modal -->
     <div class="modal fade" id="statusModal" tabindex="-1">
