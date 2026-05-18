@@ -8,13 +8,26 @@
                 <span class="material-icons">school</span>
             @endif
         </div>
-        <div class="sidebar-title">
-            <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
-            <p>{{ ucwords(str_replace('_', ' ', auth()->user()->role)) }} Panel</p>
-        </div>
-        <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu">
-            <span class="material-icons">close</span>
-        </button>
+
+        @if(auth()->user()->role === 'telecaller')
+            {{-- Title slides away; button always visible at the right edge --}}
+            <div class="tc-sidebar-title">
+                <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
+                <p>Telecaller Panel</p>
+            </div>
+            <button class="tc-header-toggle" id="tcSidebarToggleBtn"
+                    onclick="toggleTcSidebar()" title="Collapse sidebar">
+                <span class="material-icons tc-toggle-icon">chevron_left</span>
+            </button>
+        @else
+            <div class="sidebar-title">
+                <h1>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</h1>
+                <p>{{ ucwords(str_replace('_', ' ', auth()->user()->role)) }} Panel</p>
+            </div>
+            <button class="sidebar-close-btn" onclick="closeSidebar()" title="Close menu">
+                <span class="material-icons">close</span>
+            </button>
+        @endif
     </div>
 
     <nav class="sidebar-nav">
@@ -686,7 +699,7 @@
 
     </nav>
 
-    @if(auth()->user()->role === 'admin')
+    @if(auth()->user()->role !== 'telecaller')
     <div class="sidebar-footer">
         <div class="user-profile" style="position:relative;">
             <div class="user-avatar" role="button" onclick="toggleUserMenu()" title="Account options" style="cursor:pointer;">
@@ -737,6 +750,60 @@ document.addEventListener('click', function(e) {
         menu.style.display = 'none';
     }
 });
+
+/* ── Telecaller sidebar collapse ─────────────────────────────────────────────
+   Called by the orange circle toggle button (.tc-header-toggle) in the
+   telecaller sidebar header. Toggles between 220 px expanded and 72 px icon-
+   only collapsed states, and persists the preference in localStorage so it
+   survives page navigation and hard reloads.
+   ─────────────────────────────────────────────────────────────────────────── */
+function toggleTcSidebar() {
+    var sidebar     = document.getElementById('sidebar');
+    var mainContent = document.querySelector('.main-content');
+    if (!sidebar) return;
+
+    var collapsed = sidebar.classList.toggle('tc-collapsed');
+    if (mainContent) {
+        mainContent.classList.toggle('tc-sidebar-collapsed', collapsed);
+    }
+
+    // Persist across navigations / hard reloads
+    try { localStorage.setItem('tcSidebarCollapsed', collapsed ? '1' : '0'); } catch (_) {}
+}
+
+/* Restore the saved sidebar state immediately so there is no layout flash. */
+function restoreTcSidebarState() {
+    var sidebar = document.getElementById('sidebar');
+    if (!sidebar || !sidebar.classList.contains('sidebar-telecaller')) return;
+    try {
+        if (localStorage.getItem('tcSidebarCollapsed') === '1') {
+            sidebar.classList.add('tc-collapsed');
+            var mc = document.querySelector('.main-content');
+            if (mc) mc.classList.add('tc-sidebar-collapsed');
+        }
+    } catch (_) {}
+}
+
+/* Auto-set title attributes on telecaller nav items so CSS tooltips work
+   in icon-only (collapsed) mode without touching the Blade markup. */
+function initNavTooltips() {
+    document.querySelectorAll(
+        '.sidebar-telecaller .sidebar-nav a.nav-item, ' +
+        '.sidebar-telecaller .sidebar-nav button.nav-item'
+    ).forEach(function (el) {
+        if (el.title) return;
+        var labelSpan = el.querySelector(
+            'span:not(.material-icons):not(.badge):not(.tc-toggle-icon):not(.flex-grow-1)'
+        );
+        var txt = labelSpan
+            ? labelSpan.textContent.trim()
+            : Array.from(el.childNodes)
+                .filter(function (n) { return n.nodeType === 3; })
+                .map(function (n)  { return n.textContent.trim(); })
+                .join('');
+        if (txt) el.title = txt;
+    });
+}
 
 /**
  * inertiaVisit(event, url)
@@ -833,7 +900,9 @@ function initNavCollapseHandlers() {
 }
 
 function initSidebar() {
+    restoreTcSidebarState();
     initNavCollapseHandlers();
+    initNavTooltips();
     syncSidebarActive(window.location.href);
 }
 

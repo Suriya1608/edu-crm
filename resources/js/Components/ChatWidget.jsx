@@ -228,7 +228,7 @@ export default function ChatWidget({ userRole }) {
 
                     {/* Header */}
                     <div style={{
-                        background: 'linear-gradient(135deg,#4f46e5 0%,#6366f1 55%,#8b5cf6 100%)',
+                        background: 'linear-gradient(135deg,#FF5C1A 0%,#FF7A2F 55%,#FF8042 100%)',
                         padding: '15px 16px',
                         display: 'flex', alignItems: 'center', gap: 10,
                         position: 'relative', overflow: 'hidden', flexShrink: 0,
@@ -277,13 +277,13 @@ export default function ChatWidget({ userRole }) {
                             return (
                                 <div key={i} style={{ display:'flex', justifyContent:isUser ? 'flex-end' : 'flex-start', gap:7, alignItems:'flex-end' }}>
                                     {!isUser && (
-                                        <div style={{ width:28, height:28, borderRadius:9, flexShrink:0, background:'linear-gradient(135deg,#6366f1,#4f46e5)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                        <div style={{ width:28, height:28, borderRadius:9, flexShrink:0, background:'linear-gradient(135deg,#FF5C1A,#FF8042)', display:'flex', alignItems:'center', justifyContent:'center' }}>
                                             <span className="material-icons" style={{ fontSize:14, color:'#fff' }}>{msg.icon ?? 'smart_toy'}</span>
                                         </div>
                                     )}
                                     <div style={{
                                         maxWidth: '80%',
-                                        background:   isUser ? 'linear-gradient(135deg,#6366f1,#4f46e5)' : c.bg,
+                                        background:   isUser ? 'linear-gradient(135deg,#FF5C1A,#FF8042)' : c.bg,
                                         border:       isUser ? 'none' : `1px solid ${c.border}`,
                                         borderRadius: isUser ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
                                         padding:      '10px 13px',
@@ -372,11 +372,11 @@ export default function ChatWidget({ userRole }) {
                     position: 'fixed', bottom: 90, right: 24, zIndex: 10000,
                     width: 56, height: 56, borderRadius: '50%',
                     background: open
-                        ? 'linear-gradient(135deg,#4f46e5,#6366f1)'
-                        : 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                        ? 'linear-gradient(135deg,#e04d14,#FF5C1A)'
+                        : 'linear-gradient(135deg,#FF5C1A,#FF8042)',
                     border: 'none', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 8px 28px rgba(99,102,241,0.45)',
+                    boxShadow: '0 8px 28px rgba(255,92,26,0.45)',
                     transition: 'all 0.25s cubic-bezier(.4,0,.2,1)',
                     transform: open ? 'rotate(90deg) scale(1.05)' : 'rotate(0deg) scale(1)',
                 }}

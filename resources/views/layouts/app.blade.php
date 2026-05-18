@@ -724,21 +724,45 @@
             if (backdrop) backdrop.classList.remove('show');
         }
 
-        function toggleSidebar() {
-            const sidebar     = document.getElementById('sidebar');
-            const mainContent = document.getElementById('mainContent');
+        /* ── Telecaller: icon-only collapse ──────────────────────────────────
+           Toggle button sits at the TOP as a full-width strip — it equals
+           sidebar width at all times so it is NEVER clipped.
+           CSS handles the icon rotation via .tc-collapsed .tc-toggle-icon.
+        ──────────────────────────────────────────────────────────────────── */
+        function toggleTcSidebar() {
+            var sidebar     = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
             if (!sidebar) return;
 
+            var collapsed = sidebar.classList.toggle('tc-collapsed');
+            if (mainContent) {
+                mainContent.classList.toggle('tc-sidebar-collapsed', collapsed);
+            }
+
+            var btn = document.getElementById('tcSidebarToggleBtn');
+            if (btn) btn.title = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+
+            try { localStorage.setItem('tcSidebarCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+        }
+
+        /* ── Standard sidebar toggle (routes to telecaller-specific on that role) ── */
+        function toggleSidebar() {
+            var sidebar     = document.getElementById('sidebar');
+            var mainContent = document.getElementById('mainContent');
+            if (!sidebar) return;
+
+            var isTelecaller = document.body.classList.contains('role-telecaller');
+
             if (window.innerWidth > 991) {
-                const collapsed = sidebar.classList.toggle('desktop-collapsed');
-                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
-                try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
-            } else {
-                if (sidebar.classList.contains('show')) {
-                    closeSidebar();
+                if (isTelecaller) {
+                    toggleTcSidebar();
                 } else {
-                    openSidebar();
+                    var collapsed = sidebar.classList.toggle('desktop-collapsed');
+                    if (mainContent) mainContent.classList.toggle('desktop-expanded', collapsed);
+                    try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0'); } catch(e) {}
                 }
+            } else {
+                if (sidebar.classList.contains('show')) { closeSidebar(); } else { openSidebar(); }
             }
         }
 
@@ -747,10 +771,20 @@
             const sidebar     = document.getElementById('sidebar');
             const mainContent = document.getElementById('mainContent');
             if (!sidebar) return;
+
+            const isTelecaller = document.body.classList.contains('role-telecaller');
+
             try {
-                const collapsed = localStorage.getItem('sidebarCollapsed') === '1';
-                sidebar.classList.toggle('desktop-collapsed', collapsed);
-                mainContent && mainContent.classList.toggle('desktop-expanded', collapsed);
+                if (isTelecaller) {
+                    const collapsed = localStorage.getItem('tcSidebarCollapsed') === '1';
+                    sidebar.classList.toggle('tc-collapsed', collapsed);
+                    if (mainContent) mainContent.classList.toggle('tc-sidebar-collapsed', collapsed);
+                    /* Icon rotation is handled purely by CSS .tc-collapsed rule */
+                } else {
+                    const collapsed = localStorage.getItem('sidebarCollapsed') === '1';
+                    sidebar.classList.toggle('desktop-collapsed', collapsed);
+                    if (mainContent) mainContent.classList.toggle('desktop-expanded', collapsed);
+                }
             } catch(e) {}
         }
 
@@ -759,19 +793,44 @@
 
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
+                const sidebar     = document.getElementById('sidebar');
+                const mainContent = document.getElementById('mainContent');
+                const isTelecaller = document.body.classList.contains('role-telecaller');
                 if (window.innerWidth > 991) {
-                    const sidebar     = document.getElementById('sidebar');
-                    const mainContent = document.getElementById('mainContent');
-                    if (sidebar && sidebar.classList.contains('desktop-collapsed')) {
-                        sidebar.classList.remove('desktop-collapsed');
-                        mainContent && mainContent.classList.remove('desktop-expanded');
-                        try { localStorage.setItem('sidebarCollapsed', '0'); } catch(e) {}
+                    if (isTelecaller) {
+                        if (sidebar && sidebar.classList.contains('tc-collapsed')) {
+                            sidebar.classList.remove('tc-collapsed');
+                            if (mainContent) mainContent.classList.remove('tc-sidebar-collapsed');
+                            try { localStorage.setItem('tcSidebarCollapsed','0'); } catch(e) {}
+                        }
+                    } else {
+                        if (sidebar && sidebar.classList.contains('desktop-collapsed')) {
+                            sidebar.classList.remove('desktop-collapsed');
+                            if (mainContent) mainContent.classList.remove('desktop-expanded');
+                            try { localStorage.setItem('sidebarCollapsed','0'); } catch(e) {}
+                        }
                     }
                 } else {
                     closeSidebar();
                 }
             }
         });
+
+        /* ── Telecaller live clock ── */
+        (function () {
+            function pad(n) { return String(n).padStart(2,'0'); }
+            function tickClock() {
+                const el = document.getElementById('tcClockTime');
+                if (!el) return;
+                const now = new Date();
+                const h   = now.getHours();
+                const ampm = h >= 12 ? 'PM' : 'AM';
+                const h12  = h % 12 || 12;
+                el.textContent = pad(h12)+':'+pad(now.getMinutes())+':'+pad(now.getSeconds())+' '+ampm;
+            }
+            tickClock();
+            setInterval(tickClock, 1000);
+        })();
     </script>
 
     @stack('scripts')

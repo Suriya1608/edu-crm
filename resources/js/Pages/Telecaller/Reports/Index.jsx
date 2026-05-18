@@ -1,47 +1,72 @@
 import { useState } from 'react';
 import { Head } from '@inertiajs/react';
 
+// ── Design tokens ────────────────────────────────────────────────
+const ORG   = '#FF5C1A';
+const ORGL  = '#FF8042';
+const DARKC = '#1A1A2E';
+const BORDER = '#EAEAED';
+const TEXT   = '#1A1A2E';
+const MUTED  = '#9EA3B0';
+const WHITE  = '#FFFFFF';
+const BGGRAY = '#F5F5F7';
+
+const card = (extra = {}) => ({
+    background:   WHITE,
+    borderRadius: 14,
+    boxShadow:    '0 2px 16px rgba(0,0,0,0.07)',
+    border:       `1px solid ${BORDER}`,
+    ...extra,
+});
+
+// ── Static data ──────────────────────────────────────────────────
 const STATUSES = ['new', 'assigned', 'contacted', 'interested', 'converted', 'not_interested'];
 
+// ── Shared field styles ──────────────────────────────────────────
 const labelStyle = {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#64748b',
+    fontSize:      11,
+    fontWeight:    700,
+    color:         MUTED,
     textTransform: 'uppercase',
-    letterSpacing: .5,
-    display: 'block',
-    marginBottom: 6,
+    letterSpacing: 0.5,
+    display:       'block',
+    marginBottom:  5,
 };
 
-const selectStyle = {
-    width: '100%',
-    border: '1px solid #e2e8f0',
+const fieldStyle = {
+    width:        '100%',
+    border:       `1px solid ${BORDER}`,
     borderRadius: 10,
-    padding: '9px 12px',
-    fontSize: 13,
-    color: '#334155',
-    background: '#fff',
-    outline: 'none',
-    cursor: 'pointer',
+    padding:      '9px 14px',
+    fontSize:     13,
+    color:        TEXT,
+    background:   WHITE,
+    outline:      'none',
+    cursor:       'pointer',
+    boxSizing:    'border-box',
 };
 
-const inputStyle = { ...selectStyle };
-
-function SectionTitle({ icon, title, sub }) {
+// ── Section header ───────────────────────────────────────────────
+function SectionHeader({ title }) {
     return (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <span className="material-icons" style={{ color: '#6366f1', fontSize: 22 }}>{icon}</span>
-            <div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{title}</div>
-                {sub && <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 1 }}>{sub}</div>}
-            </div>
+        <div style={{
+            fontSize:     13,
+            fontWeight:   700,
+            color:        TEXT,
+            paddingBottom: 10,
+            marginBottom:  16,
+            borderBottom:  `1px solid ${BORDER}`,
+        }}>
+            {title}
         </div>
     );
 }
 
+// ── Component ────────────────────────────────────────────────────
 export default function Index({ courseWiseRows = [], finalCourseRows = [] }) {
-    const today = new Date().toISOString().slice(0, 10);
-    const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+    const today        = new Date().toISOString().slice(0, 10);
+    const firstOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+        .toISOString().slice(0, 10);
 
     const [f, setF] = useState({
         date_from:       firstOfMonth,
@@ -71,53 +96,75 @@ export default function Index({ courseWiseRows = [], finalCourseRows = [] }) {
         quota:           'all',
     });
 
-    const activeFilters = Object.entries(f).filter(([k, v]) => v && v !== 'all' && k !== 'date_from' && k !== 'date_to').length;
+    const activeFilters = Object.entries(f).filter(
+        ([k, v]) => v && v !== 'all' && k !== 'date_from' && k !== 'date_to'
+    ).length;
 
     return (
         <>
             <Head title="My Reports" />
 
+            {/* Global font injection */}
+            <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700;800;900&display=swap');
+                *, *::before, *::after { font-family: 'Work Sans', sans-serif !important; }
+                .rpt-select:focus, .rpt-input:focus { border-color: ${ORG} !important; box-shadow: 0 0 0 3px ${ORG}18 !important; }
+                .rpt-dl-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+                .rpt-dl-btn { transition: opacity 0.15s, transform 0.15s; }
+                .rpt-clear-btn:hover { color: ${ORG} !important; }
+            `}</style>
+
             <div style={{ padding: '28px 24px', maxWidth: 900, margin: '0 auto' }}>
 
-                {/* Page header */}
+                {/* ── Page header ── */}
                 <div style={{ marginBottom: 28 }}>
-                    <h1 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', margin: 0 }}>My Reports</h1>
-                    <p style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>
+                    <h1 style={{ fontSize: 22, fontWeight: 800, color: TEXT, margin: 0 }}>
+                        My Reports
+                    </h1>
+                    <p style={{ fontSize: 13, color: MUTED, marginTop: 4, marginBottom: 0 }}>
                         Filter your leads and download as Excel or PDF
                     </p>
                 </div>
 
-                {/* Filter card */}
-                <div style={{ background: '#fff', borderRadius: 18, padding: '24px 26px', boxShadow: '0 1px 8px rgba(15,23,42,.08)', marginBottom: 24 }}>
-                    <SectionTitle icon="filter_list" title="Filter Leads" sub="Select your criteria below" />
+                {/* ── Filter card ── */}
+                <div style={{ ...card(), padding: '20px 22px', marginBottom: 20 }}>
+                    <SectionHeader title="Filter Leads" />
 
                     {/* Date range */}
-                    <div style={{ marginBottom: 20 }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: .6, marginBottom: 10 }}>
-                            Date Range
+                    <div style={{
+                        display:             'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+                        gap:                 14,
+                        marginBottom:        18,
+                    }}>
+                        <div>
+                            <label style={labelStyle}>Date From</label>
+                            <input
+                                type="date"
+                                className="rpt-input"
+                                value={f.date_from}
+                                onChange={e => set('date_from', e.target.value)}
+                                style={fieldStyle}
+                            />
                         </div>
-                        <div className="row g-3">
-                            <div className="col-6">
-                                <label style={labelStyle}>From</label>
-                                <input type="date" value={f.date_from} onChange={e => set('date_from', e.target.value)} style={inputStyle} />
-                            </div>
-                            <div className="col-6">
-                                <label style={labelStyle}>To</label>
-                                <input type="date" value={f.date_to} onChange={e => set('date_to', e.target.value)} style={inputStyle} />
-                            </div>
+                        <div>
+                            <label style={labelStyle}>Date To</label>
+                            <input
+                                type="date"
+                                className="rpt-input"
+                                value={f.date_to}
+                                onChange={e => set('date_to', e.target.value)}
+                                style={fieldStyle}
+                            />
                         </div>
-                    </div>
-
-                    <div style={{ height: 1, background: '#f1f5f9', marginBottom: 20 }} />
-
-                    {/* Lead filters */}
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: .6, marginBottom: 10 }}>
-                        Lead Filters
-                    </div>
-                    <div className="row g-3">
-                        <div className="col-md-4 col-6">
+                        <div>
                             <label style={labelStyle}>Status</label>
-                            <select value={f.status} onChange={e => set('status', e.target.value)} style={selectStyle}>
+                            <select
+                                className="rpt-select"
+                                value={f.status}
+                                onChange={e => set('status', e.target.value)}
+                                style={fieldStyle}
+                            >
                                 <option value="all">All Statuses</option>
                                 {STATUSES.map(s => (
                                     <option key={s} value={s}>
@@ -126,35 +173,55 @@ export default function Index({ courseWiseRows = [], finalCourseRows = [] }) {
                                 ))}
                             </select>
                         </div>
-                        <div className="col-md-4 col-6">
+                        <div>
                             <label style={labelStyle}>Gender</label>
-                            <select value={f.gender} onChange={e => set('gender', e.target.value)} style={selectStyle}>
+                            <select
+                                className="rpt-select"
+                                value={f.gender}
+                                onChange={e => set('gender', e.target.value)}
+                                style={fieldStyle}
+                            >
                                 <option value="all">All Genders</option>
                                 <option value="male">Male</option>
                                 <option value="female">Female</option>
                                 <option value="not_specified">Not Specified</option>
                             </select>
                         </div>
-                        <div className="col-md-4 col-6">
+                        <div>
                             <label style={labelStyle}>Quota</label>
-                            <select value={f.quota} onChange={e => set('quota', e.target.value)} style={selectStyle}>
+                            <select
+                                className="rpt-select"
+                                value={f.quota}
+                                onChange={e => set('quota', e.target.value)}
+                                style={fieldStyle}
+                            >
                                 <option value="all">All Quotas</option>
                                 <option value="management">Management</option>
                                 <option value="counselling">Counselling</option>
                             </select>
                         </div>
-                        <div className="col-md-6 col-12">
+                        <div>
                             <label style={labelStyle}>Enquired Course</label>
-                            <select value={f.course_id} onChange={e => set('course_id', e.target.value)} style={selectStyle}>
+                            <select
+                                className="rpt-select"
+                                value={f.course_id}
+                                onChange={e => set('course_id', e.target.value)}
+                                style={fieldStyle}
+                            >
                                 <option value="all">All Courses</option>
                                 {courseWiseRows.map(r => (
                                     <option key={r.course_id} value={r.course_id}>{r.course}</option>
                                 ))}
                             </select>
                         </div>
-                        <div className="col-md-6 col-12">
-                            <label style={labelStyle}>Final Selected Course</label>
-                            <select value={f.final_course_id} onChange={e => set('final_course_id', e.target.value)} style={selectStyle}>
+                        <div>
+                            <label style={labelStyle}>Final Course</label>
+                            <select
+                                className="rpt-select"
+                                value={f.final_course_id}
+                                onChange={e => set('final_course_id', e.target.value)}
+                                style={fieldStyle}
+                            >
                                 <option value="all">All Final Courses</option>
                                 {finalCourseRows.map(r => (
                                     <option key={r.course_id} value={r.course_id}>{r.course}</option>
@@ -164,73 +231,96 @@ export default function Index({ courseWiseRows = [], finalCourseRows = [] }) {
                     </div>
 
                     {/* Active filter summary */}
-                    {activeFilters > 0 && (
-                        <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: 12, color: '#6366f1', fontWeight: 600 }}>
+                    {activeFilters > 0 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <span style={{
+                                fontSize:     12,
+                                fontWeight:   600,
+                                color:        ORG,
+                                background:   `${ORG}12`,
+                                borderRadius: 20,
+                                padding:      '3px 10px',
+                            }}>
                                 {activeFilters} filter{activeFilters > 1 ? 's' : ''} active
                             </span>
-                            <button onClick={resetFilters} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#94a3b8', padding: 0, textDecoration: 'underline' }}>
+                            <button
+                                className="rpt-clear-btn"
+                                onClick={resetFilters}
+                                style={{
+                                    background:     'none',
+                                    border:         'none',
+                                    cursor:         'pointer',
+                                    fontSize:       12,
+                                    color:          MUTED,
+                                    padding:        0,
+                                    textDecoration: 'underline',
+                                    transition:     'color 0.15s',
+                                }}
+                            >
                                 Clear all
                             </button>
                         </div>
+                    ) : (
+                        <p style={{ fontSize: 12, color: MUTED, margin: 0 }}>
+                            No extra filters applied — showing all leads in date range.
+                        </p>
                     )}
                 </div>
 
-                {/* Download card */}
-                <div style={{ background: '#fff', borderRadius: 18, padding: '24px 26px', boxShadow: '0 1px 8px rgba(15,23,42,.08)' }}>
-                    <SectionTitle icon="download" title="Download Report" sub="Export filtered leads in your preferred format" />
+                {/* ── Download card ── */}
+                <div style={{ ...card(), padding: '20px 22px' }}>
+                    <SectionHeader title="Download Report" />
 
-                    <div className="row g-3">
-                        <div className="col-md-6">
-                            <a
-                                href={buildUrl('excel')}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                    padding: '18px 22px', borderRadius: 14,
-                                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                                    color: '#fff', textDecoration: 'none',
-                                    boxShadow: '0 4px 14px rgba(16,185,129,.3)',
-                                    transition: 'opacity .15s',
-                                }}
-                                onMouseOver={e => e.currentTarget.style.opacity = '.9'}
-                                onMouseOut={e => e.currentTarget.style.opacity = '1'}
-                            >
-                                <span className="material-icons" style={{ fontSize: 32, opacity: .9 }}>table_view</span>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 15 }}>Download Excel</div>
-                                    <div style={{ fontSize: 12, opacity: .85, marginTop: 2 }}>Spreadsheet (.xlsx) — up to 1,000 leads</div>
-                                </div>
-                            </a>
-                        </div>
-                        <div className="col-md-6">
-                            <a
-                                href={buildUrl('pdf')}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={{
-                                    display: 'flex', alignItems: 'center', gap: 14,
-                                    padding: '18px 22px', borderRadius: 14,
-                                    background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-                                    color: '#fff', textDecoration: 'none',
-                                    boxShadow: '0 4px 14px rgba(239,68,68,.3)',
-                                    transition: 'opacity .15s',
-                                }}
-                                onMouseOver={e => e.currentTarget.style.opacity = '.9'}
-                                onMouseOut={e => e.currentTarget.style.opacity = '1'}
-                            >
-                                <span className="material-icons" style={{ fontSize: 32, opacity: .9 }}>picture_as_pdf</span>
-                                <div>
-                                    <div style={{ fontWeight: 700, fontSize: 15 }}>Download PDF</div>
-                                    <div style={{ fontSize: 12, opacity: .85, marginTop: 2 }}>Printable report (landscape A4)</div>
-                                </div>
-                            </a>
-                        </div>
+                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                        {/* Excel */}
+                        <a
+                            href={buildUrl('excel')}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rpt-dl-btn"
+                            style={{
+                                display:        'inline-flex',
+                                alignItems:     'center',
+                                gap:            8,
+                                padding:        '10px 20px',
+                                borderRadius:   10,
+                                background:     ORG,
+                                color:          WHITE,
+                                textDecoration: 'none',
+                                fontSize:       13,
+                                fontWeight:     600,
+                            }}
+                        >
+                            <span className="material-icons" style={{ fontSize: 18 }}>download</span>
+                            Download Excel
+                        </a>
+
+                        {/* PDF */}
+                        <a
+                            href={buildUrl('pdf')}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rpt-dl-btn"
+                            style={{
+                                display:        'inline-flex',
+                                alignItems:     'center',
+                                gap:            8,
+                                padding:        '10px 20px',
+                                borderRadius:   10,
+                                background:     ORG,
+                                color:          WHITE,
+                                textDecoration: 'none',
+                                fontSize:       13,
+                                fontWeight:     600,
+                            }}
+                        >
+                            <span className="material-icons" style={{ fontSize: 18 }}>download</span>
+                            Download PDF
+                        </a>
                     </div>
 
-                    <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 16, marginBottom: 0 }}>
-                        <span className="material-icons" style={{ fontSize: 14, verticalAlign: 'middle', marginRight: 4 }}>info</span>
+                    <p style={{ fontSize: 12, color: MUTED, marginTop: 14, marginBottom: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span className="material-icons" style={{ fontSize: 14, verticalAlign: 'middle' }}>info</span>
                         Reports include only your assigned leads matching the selected filters.
                     </p>
                 </div>

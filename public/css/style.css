@@ -46,6 +46,14 @@ body {
     font-feature-settings: 'kern' 1, 'liga' 1;
 }
 
+.nav-item.active {
+    background: #e8f3fd;
+    color: var(--primary-color) !important;
+    font-weight: 600;
+    border-left: none !important;
+    padding-left: 9px;
+}
+
 /* ========================================
    SIDEBAR STYLES  — Premium Dark Theme
    ======================================== */
@@ -285,10 +293,16 @@ body.role-telecaller .page-header-subtitle {
     font-weight: 400;
 }
 
-/* Telecaller header — indigo accent top border */
+/* Telecaller header — white background, no coloured top border, tighter padding */
 body.role-telecaller .top-header {
-    border-top: 3px solid #6366f1;
-    padding-top: 11px;
+    border-top: none;
+    padding: 10px 24px;
+    border-bottom: 1px solid #EAEAED;
+}
+
+/* Hide the standard hamburger button in the header for telecaller (toggle is inside sidebar) */
+body.role-telecaller .mobile-menu-btn {
+    display: none !important;
 }
 
 body.role-telecaller #tcnReadyBtn {
@@ -306,122 +320,334 @@ body.role-telecaller #tcnStatusDot {
     transition: background .25s;
 }
 
-/* ── Zoho-matched: #1d2c4e blue-navy, Lato 400, compact items ── */
+/* ═══════════════════════════════════════════════════════════════════════════
+   TELECALLER SIDEBAR — Figma: dark #111116, Work Sans, orange accent
+   Two states: expanded (220px) ↔ icon-only collapsed (72px)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+   TELECALLER SIDEBAR
+   - overflow: visible  → toggle circle can hang at right edge
+   - z-index: 1042      → above sticky header (1040) so button is clickable
+   ═══════════════════════════════════════════════════════════════════ */
 .sidebar-telecaller {
-    background: #1d2c4e;
-    box-shadow: 2px 0 16px rgba(0,0,0,0.28);
+    background: #111116;
+    width: 220px;
+    box-shadow: 4px 0 28px rgba(0,0,0,0.35);
+    transition: width 0.28s cubic-bezier(.4,0,.2,1);
+    overflow: visible;          /* lets the toggle circle stick out at right edge */
+    z-index: 1042;              /* above sticky header (1040) */
 }
 
+.sidebar-telecaller.tc-collapsed {
+    width: 72px;
+}
+
+/* ── Main-content offset ── */
+body.role-telecaller .main-content {
+    margin-left: 220px !important;
+    transition: margin-left 0.28s cubic-bezier(.4,0,.2,1);
+}
+body.role-telecaller .main-content.tc-sidebar-collapsed {
+    margin-left: 72px !important;
+}
+
+/* ── Sidebar header ── */
+.sidebar-telecaller .sidebar-header {
+    padding: 14px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    background: transparent;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+    overflow: visible;          /* MUST be visible — overflow:hidden clips abs-positioned children */
+    position: relative;         /* positioned ancestor for .tc-header-toggle */
+}
+.sidebar-telecaller.tc-collapsed .sidebar-header {
+    justify-content: center;
+    padding: 14px 0;
+    gap: 0;
+}
+
+/* Logo square — orange */
 .sidebar-telecaller .sidebar-logo {
-    background: linear-gradient(135deg, #4f6fe8, #2d4fd4);
-    box-shadow: 0 4px 14px rgba(79,111,232,0.35);
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    background: #FF5C1A;
+    border-radius: 10px;
+    box-shadow: 0 4px 14px rgba(255,92,26,0.40);
+    flex-shrink: 0;
 }
 
-.sidebar-telecaller .sidebar-title h1 {
-    color: #dce6f5;
+.sidebar-telecaller .sidebar-logo .material-icons {
+    color: #fff;
+    font-size: 20px;
+}
+
+/* Site name — clips its own text and animates max-width */
+.sidebar-telecaller .tc-sidebar-title {
+    flex: 1;
+    overflow: hidden;           /* clips title text (header overflow:visible so this handles it) */
+    min-width: 0;
+    max-width: 160px;
+    white-space: nowrap;
+    transition: max-width 0.28s cubic-bezier(.4,0,.2,1), opacity 0.20s ease;
+}
+.sidebar-telecaller.tc-collapsed .tc-sidebar-title {
+    max-width: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+.sidebar-telecaller .sidebar-title h1,
+.sidebar-telecaller .tc-sidebar-title h1 {
+    color: #f1f5f9;
+    font-size: 13px;
     font-weight: 700;
     letter-spacing: 0;
+    white-space: nowrap;
+    margin: 0;
+}
+.sidebar-telecaller .sidebar-title p,
+.sidebar-telecaller .tc-sidebar-title p {
+    color: rgba(180,198,228,0.45);
+    font-size: 9px;
+    letter-spacing: 1.2px;
+    white-space: nowrap;
+    margin: 2px 0 0;
 }
 
-.sidebar-telecaller .sidebar-title p {
-    color: rgba(180,198,228,0.55);
-    letter-spacing: 1px;
+/* ── Toggle circle — hangs at the right edge of the sidebar header ──
+   position: absolute inside .sidebar-header (position: relative)
+   right: -13px → button center sits exactly on the sidebar's right edge
+   Moves automatically with the sidebar width transition.
+   Never clipped — sidebar has overflow: visible.
+   ─────────────────────────────────────────────────────────────────── */
+.tc-header-toggle {
+    position: absolute;
+    right: -13px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: #FF5C1A;
+    border: 2.5px solid #111116;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(255,92,26,0.45);
+    transition: background 0.18s, box-shadow 0.18s;
+    flex-shrink: 0;
+}
+.tc-header-toggle:hover {
+    background: #FF7A3D;
+    box-shadow: 0 3px 12px rgba(255,92,26,0.60);
+}
+.tc-header-toggle .tc-toggle-icon {
+    font-size: 16px;
+    transition: transform 0.28s cubic-bezier(.4,0,.2,1);
+}
+/* Rotate arrow when collapsed */
+.sidebar-telecaller.tc-collapsed .tc-header-toggle .tc-toggle-icon {
+    transform: rotate(180deg);
 }
 
-/* Nav items: Lato 400, compact, Zoho-weight */
-.sidebar-telecaller .nav-item {
-    font-weight: 400;
-    font-size: 13.5px;
-    color: rgba(255,255,255,0.88);
-    padding: 8px 12px;
-    border-radius: 8px;
-    letter-spacing: 0.1px;
+/* Close button (mobile — non-telecaller only) */
+.sidebar-telecaller .sidebar-close-btn {
+    color: rgba(180,200,228,0.50);
 }
 
-.sidebar-telecaller .nav-item .material-icons {
-    font-size: 18px;
-    color: rgba(255,255,255,0.70);
+/* Nav — clips overflowing text & scrolls vertically.
+   overflow-x: hidden here (not on the sidebar) so the toggle circle
+   can still stick out at the sidebar's right edge.                    */
+.sidebar-telecaller .sidebar-nav {
+    flex: 1;
+    padding: 8px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    min-height: 0;
 }
-
-/* Active item: Zoho-style lighter blue fill */
-.sidebar-telecaller .nav-item.active,
-.sidebar-telecaller button.nav-item.active {
+.sidebar-telecaller .sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-telecaller .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-telecaller .sidebar-nav::-webkit-scrollbar-thumb {
     background: rgba(255,255,255,0.12);
-    color: #ffffff;
-    font-weight: 600;
+    border-radius: 3px;
 }
 
-.sidebar-telecaller .nav-item.active .material-icons {
-    color: #7eb3ff;
+/* Section labels — hidden when collapsed */
+.sidebar-telecaller .nav-section-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.22);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding: 12px 10px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    transition: opacity 0.18s, height 0.28s, padding 0.28s;
+}
+.sidebar-telecaller.tc-collapsed .nav-section-label {
+    opacity: 0;
+    height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    overflow: hidden;
 }
 
-.sidebar-telecaller .nav-item.active::before {
-    background: linear-gradient(180deg, #5b8cf5, #3b6de8);
+/* Nav items */
+.sidebar-telecaller .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 11px;
+    border-radius: 10px;
+    margin: 1px 0;
+    font-size: 13px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.52);
+    text-decoration: none;
+    transition: background 0.18s, color 0.18s, padding 0.28s, justify-content 0.18s;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    border: none;
+}
+.sidebar-telecaller.tc-collapsed .nav-item {
+    padding: 10px !important;
+    justify-content: center !important;
+    gap: 0;
+}
+
+/* Icons */
+.sidebar-telecaller .nav-item .material-icons {
+    font-size: 19px;
+    flex-shrink: 0;
+    color: rgba(255,255,255,0.38);
+    transition: color 0.18s;
+}
+
+/* Text labels — hide when collapsed */
+.sidebar-telecaller.tc-collapsed .nav-item > span:not(.material-icons):not(.badge),
+.sidebar-telecaller.tc-collapsed button.nav-item > span.material-icons:last-child {
+    display: none !important;
 }
 
 /* Hover */
 .sidebar-telecaller .nav-item:hover {
-    background: rgba(255,255,255,0.08);
-    color: #ffffff;
+    background: rgba(255,255,255,0.07);
+    color: rgba(255,255,255,0.88);
 }
-
 .sidebar-telecaller .nav-item:hover .material-icons {
-    color: rgba(255,255,255,0.90);
+    color: rgba(255,255,255,0.75);
 }
 
-/* Avatar */
-.sidebar-telecaller .user-avatar {
-    background: linear-gradient(135deg, #4f6fe8, #2d4fd4);
-    box-shadow: 0 2px 10px rgba(79,111,232,0.40);
+/* Active — orange fill */
+.sidebar-telecaller .nav-item.active,
+.sidebar-telecaller button.nav-item.active {
+    background: #FF5C1A !important;
+    color: #fff !important;
+    font-weight: 600;
+}
+.sidebar-telecaller .nav-item.active .material-icons,
+.sidebar-telecaller button.nav-item.active .material-icons {
+    color: #fff !important;
+}
+.sidebar-telecaller .nav-item.active::before,
+.sidebar-telecaller button.nav-item.active::before {
+    display: none;
 }
 
-/* Header / footer borders */
-.sidebar-telecaller .sidebar-header {
-    border-bottom-color: rgba(255,255,255,0.07);
-    background: transparent;
+/* Badges — hide when collapsed */
+.sidebar-telecaller.tc-collapsed .nav-item .badge {
+    display: none !important;
 }
 
+/* Sub-menu collapse — fully hide when icon-only */
+.sidebar-telecaller.tc-collapsed .collapse,
+.sidebar-telecaller.tc-collapsed .collapse.show {
+    display: none !important;
+    height: 0 !important;
+}
+
+/* Sub-menu items */
+.sidebar-telecaller .collapse .nav-item {
+    padding-left: 11px;
+    font-size: 12px;
+}
+.sidebar-telecaller .collapse .nav-item.active {
+    background: #FF5C1A !important;
+    color: #fff !important;
+}
+.sidebar-telecaller .collapse .nav-item.active .material-icons {
+    color: #fff !important;
+}
+.sidebar-telecaller .collapse .nav-item.active::before {
+    display: none;
+}
+
+/* ── CSS tooltip — shown when sidebar is icon-only (collapsed) ──────────────
+   initNavTooltips() (sidebar.blade.php) extracts each nav item's label text
+   and stores it in the element's title attribute.  These rules pick that up
+   and paint a right-side popover so the user still knows what each icon does.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Establish stacking context on the nav item itself */
+.sidebar-telecaller.tc-collapsed .sidebar-nav a.nav-item[title],
+.sidebar-telecaller.tc-collapsed .sidebar-nav button.nav-item[title] {
+    position: relative;
+    overflow: visible !important; /* override the collapsed overflow:hidden */
+}
+
+/* Arrow (pointing right → tooltip) */
+.sidebar-telecaller.tc-collapsed .sidebar-nav a.nav-item[title]:hover::before,
+.sidebar-telecaller.tc-collapsed .sidebar-nav button.nav-item[title]:hover::before {
+    content: '';
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 6px solid transparent;
+    border-right-color: #1A1A2E;
+    z-index: 1102;
+    pointer-events: none;
+}
+
+/* Tooltip bubble */
+.sidebar-telecaller.tc-collapsed .sidebar-nav a.nav-item[title]:hover::after,
+.sidebar-telecaller.tc-collapsed .sidebar-nav button.nav-item[title]:hover::after {
+    content: attr(title);
+    position: absolute;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #1A1A2E;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    white-space: nowrap;
+    z-index: 1101;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.32);
+    pointer-events: none;
+}
+
+/* Footer (not rendered for telecaller) */
 .sidebar-telecaller .sidebar-footer {
     border-top-color: rgba(255,255,255,0.07);
     background: rgba(0,0,0,0.14);
 }
-
-/* User profile card */
-.sidebar-telecaller .user-profile {
-    background: rgba(255,255,255,0.06);
-    border-color: rgba(255,255,255,0.08);
-}
-
-.sidebar-telecaller .user-profile:hover {
-    background: rgba(255,255,255,0.10);
-}
-
-/* Section labels — Zoho style: small, uppercase, readable */
-.sidebar-telecaller .nav-section-label {
-    color: rgba(255,255,255,0.38);
-    font-size: 9.5px;
-    letter-spacing: 1.5px;
-    font-weight: 700;
-    padding: 14px 12px 4px;
-}
-
-.sidebar-telecaller .sidebar-close-btn {
-    color: rgba(180,200,228,0.55);
-}
-
-.sidebar-telecaller .sidebar-nav::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.10);
-}
-
-/* User info text */
-.sidebar-telecaller .user-info p {
-    color: rgba(255,255,255,0.92);
-    font-weight: 600;
-}
-
-.sidebar-telecaller .user-info span {
-    color: rgba(255,255,255,0.48);
-}
+.sidebar-telecaller .user-profile { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.08); }
+.sidebar-telecaller .user-profile:hover { background: rgba(255,255,255,0.10); }
+.sidebar-telecaller .user-info p { color: rgba(255,255,255,0.92); font-weight: 600; }
+.sidebar-telecaller .user-info span { color: rgba(255,255,255,0.48); }
+.sidebar-telecaller .user-avatar { background: #FF5C1A; box-shadow: 0 2px 10px rgba(255,92,26,0.38); }
 
 /* ── Sidebar submenu: fix parent/child active overlap ─────────────── */
 
@@ -537,6 +763,24 @@ button.nav-item[aria-expanded="true"] .material-icons:last-child {
     font-size: 12.5px;
     color: var(--text-muted);
 }
+
+/* Telecaller live-clock pill in header */
+.tc-live-clock {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1A1A2E;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 7px 16px;
+    border-radius: 22px;
+    letter-spacing: 0.4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.tc-live-clock .material-icons { font-size: 14px; opacity: 0.7; }
 
 /* TCN Ready button in header */
 #tcnReadyBtn {

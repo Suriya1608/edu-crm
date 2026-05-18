@@ -1,5 +1,19 @@
 import { Head, Link } from '@inertiajs/react';
 
+const ORG    = '#FF5C1A';
+const DARKC  = '#1A1A2E';
+const WHITE  = '#FFFFFF';
+const BORDER = '#EAEAED';
+const TEXT   = '#1A1A2E';
+const MUTED  = '#9EA3B0';
+
+const card = (extra = {}) => ({
+    background: WHITE, borderRadius: 14,
+    boxShadow: '0 2px 16px rgba(0,0,0,0.07)',
+    border: `1px solid ${BORDER}`,
+    ...extra,
+});
+
 // ─── Status badge ─────────────────────────────────────────────────────────────
 const STATUS_COLORS = {
     active:    { bg: '#dcfce7', color: '#16a34a', label: 'Active' },
@@ -13,10 +27,97 @@ function StatusPill({ status }) {
     return (
         <span style={{
             background: s.bg, color: s.color,
-            fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 99,
+            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 99,
+            whiteSpace: 'nowrap',
         }}>
             {s.label}
         </span>
+    );
+}
+
+// ─── Campaign Card ────────────────────────────────────────────────────────────
+function CampaignCard({ campaign }) {
+    return (
+        <div
+            style={{
+                background: WHITE, border: `1px solid ${BORDER}`, borderRadius: 14,
+                padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 14,
+                transition: 'box-shadow .15s, transform .15s',
+            }}
+            onMouseEnter={e => {
+                e.currentTarget.style.boxShadow = '0 8px 28px rgba(0,0,0,.10)';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={e => {
+                e.currentTarget.style.boxShadow = '';
+                e.currentTarget.style.transform = '';
+            }}
+        >
+            {/* Header row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                    <div style={{
+                        width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                        background: `${ORG}15`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                        <span className="material-icons" style={{ color: ORG, fontSize: 20 }}>campaign</span>
+                    </div>
+                    <h5 style={{ fontSize: 15, fontWeight: 700, color: TEXT, margin: 0, lineHeight: 1.35, paddingTop: 2 }}>
+                        {campaign.name}
+                    </h5>
+                </div>
+                <StatusPill status={campaign.status} />
+            </div>
+
+            {/* Description */}
+            {campaign.description && (
+                <p style={{ fontSize: 12.5, color: MUTED, margin: 0, lineHeight: 1.6 }}>
+                    {campaign.description.length > 90
+                        ? campaign.description.slice(0, 90) + '…'
+                        : campaign.description}
+                </p>
+            )}
+
+            {/* Contacts count */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 10, background: '#F5F5F7' }}>
+                <span className="material-icons" style={{ fontSize: 16, color: '#6366f1' }}>people</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>
+                    {(campaign.my_contacts_count ?? 0).toLocaleString()}
+                </span>
+                <span style={{ fontSize: 12, color: MUTED }}>contacts assigned to you</span>
+            </div>
+
+            {/* CTA */}
+            <Link
+                href={`/telecaller/campaigns/${campaign.encrypted_id}`}
+                style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    padding: '10px 16px', borderRadius: 10,
+                    background: `linear-gradient(135deg, ${ORG}, #FF8042)`,
+                    color: WHITE, fontSize: 13, fontWeight: 700,
+                    textDecoration: 'none',
+                    transition: 'opacity .15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '.88'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}
+            >
+                <span className="material-icons" style={{ fontSize: 16 }}>phone_in_talk</span>
+                Start Calling
+            </Link>
+        </div>
+    );
+}
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+function StatCard({ icon, iconColor, iconBg, label, value }) {
+    return (
+        <div style={{ ...card(), padding: '20px 24px' }}>
+            <div style={{ width: 42, height: 42, borderRadius: 10, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                <span className="material-icons" style={{ color: iconColor, fontSize: 22 }}>{icon}</span>
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: TEXT }}>{value}</div>
+        </div>
     );
 }
 
@@ -29,87 +130,37 @@ export default function Index({ campaigns, totalStats }) {
             <Head title="My Campaigns" />
 
             {/* ── Stat cards ──────────────────────────────────────────────── */}
-            <div className="row g-3 mb-4">
-                <div className="col-6 col-md-3">
-                    <div className="stat-card">
-                        <div className="stat-icon" style={{ background: '#6366f122' }}>
-                            <span className="material-icons" style={{ color: '#6366f1' }}>campaign</span>
-                        </div>
-                        <div className="stat-label">Assigned Campaigns</div>
-                        <div className="stat-value">{stats.total ?? 0}</div>
-                    </div>
-                </div>
-                <div className="col-6 col-md-3">
-                    <div className="stat-card">
-                        <div className="stat-icon" style={{ background: '#f59e0b22' }}>
-                            <span className="material-icons" style={{ color: '#f59e0b' }}>people</span>
-                        </div>
-                        <div className="stat-label">Total Contacts</div>
-                        <div className="stat-value">
-                            {(stats.contacts ?? 0).toLocaleString()}
-                        </div>
-                    </div>
-                </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+                <StatCard icon="campaign" iconColor="#6366f1" iconBg="#6366f115" label="Assigned Campaigns" value={stats.total ?? 0} />
+                <StatCard icon="people" iconColor="#f59e0b" iconBg="#f59e0b15" label="Total Contacts" value={(stats.contacts ?? 0).toLocaleString()} />
             </div>
 
-            {/* ── Campaign cards ──────────────────────────────────────────── */}
-            <div className="chart-card">
-                <div className="chart-header mb-3">
-                    <h3>My Campaigns</h3>
+            {/* ── Campaign list ────────────────────────────────────────────── */}
+            <div style={card({ padding: '24px 28px' })}>
+                {/* Section header */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 22, paddingBottom: 18, borderBottom: `1px solid ${BORDER}` }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `${ORG}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <span className="material-icons" style={{ color: ORG, fontSize: 18 }}>campaign</span>
+                    </div>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: TEXT, margin: 0 }}>My Campaigns</h3>
                 </div>
 
                 {campaigns.data.length === 0 ? (
-                    <div className="text-center py-5">
-                        <span className="material-icons" style={{ fontSize: 48, color: '#cbd5e1' }}>campaign</span>
-                        <p className="text-muted mt-2">No campaigns assigned to you yet.</p>
+                    <div style={{ textAlign: 'center', padding: '60px 0' }}>
+                        <span className="material-icons" style={{ fontSize: 52, color: BORDER, display: 'block', marginBottom: 14 }}>campaign</span>
+                        <p style={{ color: MUTED, margin: 0, fontSize: 14, fontWeight: 500 }}>No campaigns assigned to you yet.</p>
                     </div>
                 ) : (
                     <>
-                        <div className="row g-3">
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
                             {campaigns.data.map(campaign => (
-                                <div className="col-12 col-md-6 col-lg-4" key={campaign.id}>
-                                    <div className="card border h-100">
-                                        <div className="card-body">
-                                            <div className="d-flex justify-content-between align-items-start mb-2">
-                                                <h5 className="card-title mb-0 fw-semibold" style={{ fontSize: 15 }}>
-                                                    {campaign.name}
-                                                </h5>
-                                                <StatusPill status={campaign.status} />
-                                            </div>
-
-                                            {campaign.description && (
-                                                <p className="text-muted small mb-3">
-                                                    {campaign.description.length > 80
-                                                        ? campaign.description.slice(0, 80) + '…'
-                                                        : campaign.description}
-                                                </p>
-                                            )}
-
-                                            <div className="d-flex align-items-center gap-1 mb-3">
-                                                <span className="material-icons text-primary" style={{ fontSize: 16 }}>people</span>
-                                                <span className="fw-semibold">
-                                                    {(campaign.my_contacts_count ?? 0).toLocaleString()}
-                                                </span>
-                                                <span className="text-muted small">contacts assigned to you</span>
-                                            </div>
-
-                                            {/* Inertia Link — keeps SIP connection alive */}
-                                            <Link
-                                                href={`/telecaller/campaigns/${campaign.encrypted_id}`}
-                                                className="btn btn-primary btn-sm w-100 d-flex align-items-center justify-content-center gap-1"
-                                            >
-                                                <span className="material-icons" style={{ fontSize: 15 }}>phone_in_talk</span>
-                                                Start Calling
-                                            </Link>
-                                        </div>
-                                    </div>
-                                </div>
+                                <CampaignCard key={campaign.id} campaign={campaign} />
                             ))}
                         </div>
 
                         {/* ── Pagination ────────────────────────────────────── */}
                         {campaigns.last_page > 1 && (
-                            <div className="mt-4">
+                            <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center' }}>
                                 <nav>
                                     <ul className="pagination pagination-sm mb-0">
                                         {campaigns.links.map((link, i) => (

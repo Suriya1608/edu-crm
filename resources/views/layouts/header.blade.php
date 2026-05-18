@@ -18,7 +18,7 @@
 
         <div class="d-flex align-items-center gap-2 flex-wrap">
 
-            @if (auth()->check() && in_array(auth()->user()->role, ['telecaller', 'manager']) && \App\Models\Setting::get('primary_call_provider') === 'tcn')
+            @if (auth()->check() && auth()->user()->role === 'telecaller' && \App\Models\Setting::get('primary_call_provider') === 'tcn')
                 {{-- TCN Ready / Not Ready toggle --}}
                 <button id="tcnReadyBtn" type="button"
                     title="Start / Stop calling session"
@@ -96,6 +96,12 @@
             @endif
 
             @if (auth()->check() && auth()->user()->role === 'telecaller')
+                {{-- Live clock pill --}}
+                <span class="tc-live-clock" id="tcLiveClock">
+                    <span class="material-icons">schedule</span>
+                    <span id="tcClockTime">--:--:-- --</span>
+                </span>
+
                 {{-- Notification Bell --}}
                 <div class="dropdown">
                     <button class="btn btn-sm position-relative"
@@ -167,57 +173,6 @@
 
             @yield('header_actions')
 
-            @if(auth()->check() && auth()->user()->role === 'manager')
-                <div style="width:1px;height:22px;background:var(--border-color);flex-shrink:0;"></div>
-                @php $hdrInitials = strtoupper(substr(auth()->user()->name, 0, 1)); @endphp
-                <div class="dropdown">
-                    <button type="button"
-                        data-bs-toggle="dropdown"
-                        data-bs-auto-close="outside"
-                        title="{{ auth()->user()->name }}"
-                        style="width:36px;height:36px;padding:0;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(99,102,241,.35);flex-shrink:0;letter-spacing:0;">
-                        {{ $hdrInitials }}
-                    </button>
-                    <div class="dropdown-menu dropdown-menu-end p-0 shadow-lg"
-                        style="width:230px;border-radius:14px;border:1px solid var(--border-color);overflow:hidden;">
-                        <div class="p-3 d-flex align-items-center gap-3"
-                            style="background:linear-gradient(135deg,#6366f1,#4f46e5);">
-                            <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.2);color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                {{ $hdrInitials }}
-                            </div>
-                            <div style="overflow:hidden;min-width:0;">
-                                <div style="color:#fff;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                                    {{ auth()->user()->name }}
-                                </div>
-                                <div style="color:rgba(255,255,255,.75);font-size:11px;display:flex;align-items:center;gap:3px;margin-top:2px;">
-                                    <span class="material-icons" style="font-size:11px;">manage_accounts</span>
-                                    Manager
-                                </div>
-                            </div>
-                        </div>
-                        <div class="py-1" style="background:#fff;">
-                            <a href="{{ route('password.change') }}"
-                                class="dropdown-item d-flex align-items-center gap-2 py-2 px-3"
-                                style="font-size:13px;color:#0f172a;font-weight:500;">
-                                <span class="material-icons" style="font-size:17px;color:#6366f1;">lock_reset</span>
-                                Change Password
-                            </a>
-                        </div>
-                        <div style="border-top:1px solid var(--border-color);" class="py-1 bg-white">
-                            <form method="POST" action="{{ route('logout') }}">
-                                @csrf
-                                <button type="submit"
-                                    class="dropdown-item d-flex align-items-center gap-2 py-2 px-3"
-                                    style="font-size:13px;color:#ef4444;font-weight:500;background:transparent;border:none;width:100%;text-align:left;">
-                                    <span class="material-icons" style="font-size:17px;color:#ef4444;">logout</span>
-                                    Sign Out
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            @endif
-
             @if(auth()->check() && auth()->user()->role === 'telecaller')
                 <div style="width:1px;height:22px;background:var(--border-color);flex-shrink:0;"></div>
                 @php $hdrInitials = strtoupper(substr(auth()->user()->name, 0, 1)); @endphp
@@ -226,14 +181,14 @@
                         data-bs-toggle="dropdown"
                         data-bs-auto-close="outside"
                         title="{{ auth()->user()->name }}"
-                        style="width:36px;height:36px;padding:0;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#4f46e5);color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(99,102,241,.35);flex-shrink:0;letter-spacing:0;">
+                        style="width:36px;height:36px;padding:0;border:none;border-radius:10px;background:linear-gradient(135deg,#FF5C1A,#FF8042);color:#fff;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(255,92,26,.35);flex-shrink:0;letter-spacing:0;">
                         {{ $hdrInitials }}
                     </button>
                     <div class="dropdown-menu dropdown-menu-end p-0 shadow-lg"
                         style="width:230px;border-radius:14px;border:1px solid var(--border-color);overflow:hidden;">
                         {{-- User info --}}
                         <div class="p-3 d-flex align-items-center gap-3"
-                            style="background:linear-gradient(135deg,#6366f1,#4f46e5);">
+                            style="background:linear-gradient(135deg,#FF5C1A,#FF8042);">
                             <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.2);color:#fff;font-size:16px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                                 {{ $hdrInitials }}
                             </div>
@@ -252,7 +207,7 @@
                             <a href="{{ route('password.change') }}"
                                 class="dropdown-item d-flex align-items-center gap-2 py-2 px-3"
                                 style="font-size:13px;color:#0f172a;font-weight:500;">
-                                <span class="material-icons" style="font-size:17px;color:#6366f1;">lock_reset</span>
+                                <span class="material-icons" style="font-size:17px;color:#FF5C1A;">lock_reset</span>
                                 Change Password
                             </a>
                         </div>
