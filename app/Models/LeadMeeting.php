@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\Auditable;
 
 class LeadMeeting extends Model
 {
+    use Auditable;
+
     protected $fillable = [
         'lead_id', 'created_by', 'title', 'meeting_link',
         'google_event_id', 'zoom_meeting_id', 'meeting_time', 'duration',

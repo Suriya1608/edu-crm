@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\Auditable;
 
 class CallLog extends Model
 {
+    use Auditable;
+
     protected $fillable = [
         'lead_id',
         'user_id',

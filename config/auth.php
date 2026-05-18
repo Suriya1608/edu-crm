@@ -40,10 +40,6 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
-        'superadmin' => [
-            'driver'   => 'session',
-            'provider' => 'superadmins',
-        ],
     ],
 
     /*
@@ -68,11 +64,6 @@ return [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
         ],
-        'superadmins' => [
-            'driver' => 'eloquent',
-            'model'  => App\Models\SuperAdmin::class,
-        ],
-
         // 'users' => [
         //     'driver' => 'database',
         //     'table' => 'users',

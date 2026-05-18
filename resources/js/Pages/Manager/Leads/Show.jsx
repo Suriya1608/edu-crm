@@ -55,7 +55,7 @@ function todayDateStr() {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-function ProfileCard({ lead, telecallers, assignUrl }) {
+function ProfileCard({ lead, telecallers, assignUrl, onEditContact }) {
     const today = todayDateStr();
     const form = useForm({ assigned_to: lead.assigned_to ?? '', assignment_date: today });
 
@@ -86,17 +86,55 @@ function ProfileCard({ lead, telecallers, assignUrl }) {
                 <div className="profile-info">
                     <h1 className="profile-name">{lead.name}</h1>
                     <span className="status-badge hot-lead">{lead.status?.toUpperCase()}</span>
+                    {lead.is_active
+                        ? <span className="badge rounded-pill ms-1" style={{ background: '#dcfce7', color: '#16a34a', fontSize: 11, fontWeight: 600, letterSpacing: '.4px' }}>
+                            <span className="material-icons" style={{ fontSize: 12, verticalAlign: -2 }}>circle</span> ACTIVE
+                          </span>
+                        : <span className="badge rounded-pill ms-1" style={{ background: '#fee2e2', color: '#dc2626', fontSize: 11, fontWeight: 600, letterSpacing: '.4px' }}>
+                            <span className="material-icons" style={{ fontSize: 12, verticalAlign: -2 }}>circle</span> INACTIVE
+                          </span>
+                    }
                     <p className="profile-id">ID: {lead.lead_code}</p>
                 </div>
             </div>
             <div className="profile-details">
+                {/* Phone — editable */}
+                <div className="detail-item">
+                    <span className="material-icons">phone</span>
+                    <div className="flex-grow-1">
+                        <p className="detail-label">Phone</p>
+                        <div className="d-flex justify-content-between align-items-center">
+                            <p className="detail-value mb-0">{lead.phone}</p>
+                            <button type="button" className="btn btn-link p-0 ms-2"
+                                style={{ color: '#6366f1' }}
+                                onClick={() => onEditContact(lead.phone, lead.email)}
+                                title="Edit contact">
+                                <span className="material-icons" style={{ fontSize: 17 }}>edit</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {/* Email — editable */}
+                <div className="detail-item">
+                    <span className="material-icons">mail</span>
+                    <div className="flex-grow-1">
+                        <p className="detail-label">Email</p>
+                        <div className="d-flex justify-content-between align-items-center">
+                            <p className="detail-value mb-0">{lead.email || '—'}</p>
+                            <button type="button" className="btn btn-link p-0 ms-2"
+                                style={{ color: '#6366f1' }}
+                                onClick={() => onEditContact(lead.phone, lead.email)}
+                                title="Edit contact">
+                                <span className="material-icons" style={{ fontSize: 17 }}>edit</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 {[
-                    { icon: 'phone',        label: 'Phone',          value: lead.phone },
-                    { icon: 'mail',         label: 'Email',          value: lead.email || '—' },
-                    { icon: 'school',       label: 'Course Applied', value: lead.course || '—' },
-                    { icon: 'calendar_month', label: 'Academic Year', value: lead.academic_year || '—' },
-                    { icon: 'how_to_reg',   label: 'Quota',          value: lead.quota ? lead.quota.charAt(0).toUpperCase() + lead.quota.slice(1) : '—' },
-                    { icon: 'ads_click',    label: 'Source',         value: sourceLabel(lead) },
+                    { icon: 'school',         label: 'Course Applied', value: lead.course || '—' },
+                    { icon: 'calendar_month', label: 'Academic Year',  value: lead.academic_year || '—' },
+                    { icon: 'how_to_reg',     label: 'Quota',          value: lead.quota ? lead.quota.charAt(0).toUpperCase() + lead.quota.slice(1) : '—' },
+                    { icon: 'ads_click',      label: 'Source',         value: sourceLabel(lead) },
                 ].map(d => (
                     <div className="detail-item" key={d.label}>
                         <span className="material-icons">{d.icon}</span>
@@ -106,6 +144,57 @@ function ProfileCard({ lead, telecallers, assignUrl }) {
                         </div>
                     </div>
                 ))}
+
+                {/* Demographics divider */}
+                {(lead.gender || lead.dob || lead.city || lead.district || lead.state || lead.pincode || lead.address) && (
+                    <div style={{ borderTop: '1px solid #f1f5f9', margin: '8px 0 4px', paddingTop: 8 }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '.6px',
+                            textTransform: 'uppercase', margin: '0 0 6px' }}>Demographics</p>
+                    </div>
+                )}
+
+                {lead.gender && (
+                    <div className="detail-item">
+                        <span className="material-icons">wc</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Gender</p>
+                            <p className="detail-value">{lead.gender.charAt(0).toUpperCase() + lead.gender.slice(1)}</p>
+                        </div>
+                    </div>
+                )}
+
+                {lead.dob && (
+                    <div className="detail-item">
+                        <span className="material-icons">cake</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Date of Birth</p>
+                            <p className="detail-value">{lead.dob}</p>
+                        </div>
+                    </div>
+                )}
+
+                {(lead.city || lead.district || lead.state || lead.pincode) && (
+                    <div className="detail-item">
+                        <span className="material-icons">location_on</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Location</p>
+                            <p className="detail-value">
+                                {[lead.city, lead.district, lead.state].filter(Boolean).join(', ')}
+                                {lead.pincode && <span style={{ color: '#94a3b8', marginLeft: 4 }}>– {lead.pincode}</span>}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {lead.address && (
+                    <div className="detail-item">
+                        <span className="material-icons">home</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Address</p>
+                            <p className="detail-value" style={{ whiteSpace: 'pre-wrap' }}>{lead.address}</p>
+                        </div>
+                    </div>
+                )}
 
                 {/* Assign telecaller */}
                 <div className="detail-item">
@@ -594,10 +683,11 @@ const STATUS_OPTIONS_MGR = [
     { value: 'converted',      label: 'Converted',     icon: 'check_circle',  bg: '#8b5cf6' },
 ];
 
-function StatusPanel({ lead, url, onClose }) {
-    const form          = useForm({ status: lead.status, quota: lead.quota ?? '', next_followup: '', followup_time: '', remarks: '' });
+function StatusPanel({ lead, url, courses, onClose }) {
+    const form          = useForm({ status: lead.status, quota: lead.quota ?? '', final_course_id: lead.final_course_id ?? lead.course_id ?? '', next_followup: '', followup_time: '', remarks: '' });
     const needsFollowup = form.data.status === 'follow_up';
     const needsQuota    = form.data.status === 'converted';
+    const isSameCourse  = Number(form.data.final_course_id) === Number(lead.course_id);
 
     function submit(e) {
         e.preventDefault();
@@ -674,6 +764,48 @@ function StatusPanel({ lead, url, onClose }) {
                         })}
                     </div>
                     {form.errors.quota && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{form.errors.quota}</div>}
+
+                    {/* Final Course selector */}
+                    <div style={{ marginTop: 10 }}>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                            <span className="material-icons" style={{ fontSize: 13, verticalAlign: 'middle', marginRight: 3 }}>school</span>
+                            Final Selected Course <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                            <button type="button"
+                                onClick={() => form.setData('final_course_id', lead.course_id ?? '')}
+                                style={{
+                                    flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                    border: `1.5px solid ${isSameCourse ? '#6366f1' : '#e2e8f0'}`,
+                                    background: isSameCourse ? '#6366f1' : '#f8fafc',
+                                    color: isSameCourse ? '#fff' : '#64748b',
+                                }}>
+                                {isSameCourse && <span className="material-icons" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>check</span>}
+                                Same as Enquired
+                            </button>
+                            <button type="button"
+                                onClick={() => { if (isSameCourse) form.setData('final_course_id', ''); }}
+                                style={{
+                                    flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                    border: `1.5px solid ${!isSameCourse ? '#6366f1' : '#e2e8f0'}`,
+                                    background: !isSameCourse ? '#6366f118' : '#f8fafc',
+                                    color: !isSameCourse ? '#6366f1' : '#64748b',
+                                }}>
+                                Different Course
+                            </button>
+                        </div>
+                        {!isSameCourse && (
+                            <select className="form-select form-select-sm"
+                                value={form.data.final_course_id}
+                                onChange={e => form.setData('final_course_id', e.target.value)}>
+                                <option value="">— Select course —</option>
+                                {courses.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        )}
+                        {form.errors.final_course_id && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{form.errors.final_course_id}</div>}
+                    </div>
                 </div>
             )}
 
@@ -705,7 +837,7 @@ function StatusPanel({ lead, url, onClose }) {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>Cancel</button>
                 <button type="submit" className="btn btn-sm btn-primary"
-                    disabled={form.processing || form.data.status === lead.status || (needsQuota && !form.data.quota)}>
+                    disabled={form.processing || form.data.status === lead.status || (needsQuota && (!form.data.quota || !form.data.final_course_id))}>
                     {form.processing ? 'Saving…' : 'Apply Status'}
                 </button>
             </div>
@@ -1523,9 +1655,50 @@ function CallButton({ phone, leadId }) {
 }
 
 // ─── Main Show ────────────────────────────────────────────────────────────────
-export default function Show({ lead, telecallers, whatsapp_messages, wa_template_name, wa_session_active, urls, meetings: initialMeetings, email_templates }) {
-    const [meetings, setMeetings]       = useState(initialMeetings ?? []);
-    const [statusOpen, setStatusOpen]   = useState(false);
+export default function Show({ lead, telecallers, courses, whatsapp_messages, wa_template_name, wa_session_active, urls, meetings: initialMeetings, email_templates }) {
+    const [meetings, setMeetings]         = useState(initialMeetings ?? []);
+    const [statusOpen, setStatusOpen]     = useState(false);
+    const [editContact, setEditContact]   = useState(false);
+    const [editPhone, setEditPhone]       = useState('');
+    const [editEmail, setEditEmail]       = useState('');
+    const [contactErr, setContactErr]     = useState('');
+    const [toggling, setToggling]         = useState(false);
+    const [currentLead, setCurrentLead]   = useState(lead);
+
+    const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    function openEditContact(phone, email) {
+        setEditPhone(phone || '');
+        setEditEmail(email || '');
+        setContactErr('');
+        setEditContact(true);
+    }
+
+    async function submitEditContact(e) {
+        e.preventDefault();
+        setContactErr('');
+        const res = await fetch(urls.update_contact, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+            body: JSON.stringify({ phone: editPhone, email: editEmail }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { setContactErr(data.message || 'Failed to update.'); return; }
+        setCurrentLead(prev => ({ ...prev, phone: editPhone, email: editEmail }));
+        setEditContact(false);
+    }
+
+    async function handleToggleActive() {
+        const label = currentLead.is_active ? 'Deactivate' : 'Activate';
+        if (!confirm(`${label} this lead?`)) return;
+        setToggling(true);
+        const res = await fetch(urls.toggle_active, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken(), Accept: 'application/json' },
+        });
+        if (res.ok) setCurrentLead(prev => ({ ...prev, is_active: !prev.is_active }));
+        setToggling(false);
+    }
 
     function scrollToChat() {
         document.getElementById('waChatBody')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1561,12 +1734,12 @@ export default function Show({ lead, telecallers, whatsapp_messages, wa_template
             <div className="dashboard-content">
                 <div className="row g-4">
                     <div className="col-lg-4">
-                        <ProfileCard lead={lead} telecallers={telecallers} assignUrl={urls.assign} />
+                        <ProfileCard lead={currentLead} telecallers={telecallers} assignUrl={urls.assign} onEditContact={openEditContact} />
                     </div>
 
                     <div className="col-lg-8">
                         <div className="action-bar mb-4">
-                            <CallButton phone={lead.phone} leadId={lead.id} />
+                            <CallButton phone={currentLead.phone} leadId={currentLead.id} />
 
                             <button className="btn btn-success" type="button" onClick={scrollToChat}>
                                 <span className="material-icons">chat</span>
@@ -1605,9 +1778,21 @@ export default function Show({ lead, telecallers, whatsapp_messages, wa_template
 
                             <button className="btn btn-outline-secondary" type="button"
                                 data-bs-toggle="modal" data-bs-target="#emailModal"
-                                title={!lead.email ? 'No email address on file' : 'Send email to lead'}>
+                                title={!currentLead.email ? 'No email address on file' : 'Send email to lead'}>
                                 <span className="material-icons">email</span>
                                 Email
+                            </button>
+
+                            <button type="button" onClick={openEditContact.bind(null, currentLead.phone, currentLead.email)}
+                                className="btn btn-outline-secondary">
+                                <span className="material-icons">edit</span>
+                                Edit Contact
+                            </button>
+
+                            <button type="button" onClick={handleToggleActive} disabled={toggling}
+                                className={`btn ${currentLead.is_active ? 'btn-outline-danger' : 'btn-outline-success'}`}>
+                                <span className="material-icons">{currentLead.is_active ? 'toggle_off' : 'toggle_on'}</span>
+                                {toggling ? '...' : (currentLead.is_active ? 'Deactivate' : 'Activate')}
                             </button>
                         </div>
 
@@ -1615,6 +1800,7 @@ export default function Show({ lead, telecallers, whatsapp_messages, wa_template
                             <StatusPanel
                                 lead={lead}
                                 url={urls.change_status}
+                                courses={courses ?? []}
                                 onClose={() => setStatusOpen(false)}
                             />
                         )}
@@ -1654,9 +1840,52 @@ export default function Show({ lead, telecallers, whatsapp_messages, wa_template
             </div>
 
             <CallOutcomeModal url={urls.call_outcome} />
-            <ScheduleMeetModal url={urls.meet_schedule} lead={lead} onCreated={handleMeetingCreated} />
-            <ScheduleZoomModal url={urls.zoom_schedule} lead={lead} onCreated={handleMeetingCreated} />
-            <EmailModal url={urls.email} lead={lead} templates={email_templates ?? []} />
+            <ScheduleMeetModal url={urls.meet_schedule} lead={currentLead} onCreated={handleMeetingCreated} />
+            <ScheduleZoomModal url={urls.zoom_schedule} lead={currentLead} onCreated={handleMeetingCreated} />
+            <EmailModal url={urls.email} lead={currentLead} templates={email_templates ?? []} />
+
+            {/* ── Edit Contact Modal ───────────────────────────── */}
+            {editContact && (
+                <div className="modal fade show" style={{ display: 'block', background: 'rgba(0,0,0,.4)' }} tabIndex={-1}>
+                    <div className="modal-dialog">
+                        <form onSubmit={submitEditContact}>
+                            <div className="modal-content">
+                                <div className="modal-header">
+                                    <h5 className="modal-title">
+                                        <span className="material-icons me-2" style={{ verticalAlign: -5, color: '#6366f1' }}>edit</span>
+                                        Edit Contact Details
+                                    </h5>
+                                    <button type="button" className="btn-close" onClick={() => setEditContact(false)} />
+                                </div>
+                                <div className="modal-body">
+                                    {contactErr && (
+                                        <div className="alert alert-danger py-2" style={{ fontSize: 13 }}>{contactErr}</div>
+                                    )}
+                                    <div className="mb-3">
+                                        <label className="form-label fw-semibold">Mobile Number <span className="text-danger">*</span></label>
+                                        <input type="text" className="form-control" required maxLength={20}
+                                            value={editPhone} onChange={e => setEditPhone(e.target.value)}
+                                            placeholder="e.g. 9876543210" />
+                                    </div>
+                                    <div className="mb-3">
+                                        <label className="form-label fw-semibold">Email Address</label>
+                                        <input type="email" className="form-control" maxLength={255}
+                                            value={editEmail} onChange={e => setEditEmail(e.target.value)}
+                                            placeholder="e.g. student@example.com" />
+                                    </div>
+                                </div>
+                                <div className="modal-footer">
+                                    <button type="button" className="btn btn-secondary" onClick={() => setEditContact(false)}>Cancel</button>
+                                    <button type="submit" className="btn btn-primary">
+                                        <span className="material-icons me-1" style={{ fontSize: 16, verticalAlign: -3 }}>save</span>
+                                        Save Changes
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </>
     );
 }

@@ -148,6 +148,8 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::get('/period', [AdminReportsController::class, 'period'])->name('period');
             Route::get('/call-efficiency', [AdminReportsController::class, 'callEfficiency'])->name('call-efficiency');
             Route::get('/response-time', [AdminReportsController::class, 'responseTime'])->name('response-time');
+            Route::get('/telecaller-lead-activity', [AdminReportsController::class, 'telecallerLeadActivity'])->name('telecaller-lead-activity');
+            Route::get('/telecaller-lead-activity/export/{format}', [AdminReportsController::class, 'exportLeadActivity'])->name('telecaller-lead-activity.export');
             Route::get('/export/{report}/{format}', [AdminReportsController::class, 'export'])->name('export');
         });
 
@@ -395,6 +397,8 @@ Route::middleware(['auth'])
         Route::post('/leads/{id}/assign', [ManagerLeadController::class, 'assign'])->name('assign');
         Route::post('/leads/{id}/change-status', [ManagerLeadController::class, 'changeStatus'])->name('leads.changeStatus');
         Route::post('/leads/{id}/add-note', [ManagerLeadController::class, 'addNote'])->name('leads.addNote');
+        Route::post('/leads/{id}/update-contact', [ManagerLeadController::class, 'updateContact'])->name('leads.updateContact');
+        Route::post('/leads/{id}/toggle-active', [ManagerLeadController::class, 'toggleActive'])->name('leads.toggleActive');
         Route::post('/leads/{id}/whatsapp', [MetaWhatsAppController::class, 'sendLeadMessage'])->name('leads.whatsapp.store');
         Route::post('/leads/{id}/whatsapp/template', [MetaWhatsAppController::class, 'sendLeadTemplate'])->name('leads.whatsapp.template');
         Route::post('/leads/{id}/whatsapp/media', [MetaWhatsAppController::class, 'sendMedia'])->name('leads.whatsapp.media');
@@ -420,6 +424,7 @@ Route::middleware(['auth'])
         Route::prefix('reports')->name('reports.')->group(function () {
             Route::get('/home', [ManagerReportsController::class, 'home'])->name('home');
             Route::get('/telecaller-performance', [ManagerReportsController::class, 'telecallerPerformance'])->name('telecaller-performance');
+            Route::get('/telecaller-detail', [ManagerReportsController::class, 'telecallerDetail'])->name('telecaller-detail');
             Route::get('/conversion', [ManagerReportsController::class, 'conversion'])->name('conversion');
             Route::get('/source-performance', [ManagerReportsController::class, 'sourcePerformance'])->name('source-performance');
             Route::get('/period', [ManagerReportsController::class, 'period'])->name('period');
@@ -548,6 +553,8 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':report
             Route::get('/call-efficiency',        [ReportViewerReportsController::class, 'callEfficiency'])->name('call-efficiency');
             Route::get('/response-time',          [ReportViewerReportsController::class, 'responseTime'])->name('response-time');
             Route::get('/escalation-matrix',      [ReportViewerReportsController::class, 'escalationMatrix'])->name('escalation-matrix');
+            Route::get('/telecaller-lead-activity', [AdminReportsController::class, 'telecallerLeadActivity'])->name('telecaller-lead-activity');
+            Route::get('/telecaller-lead-activity/export/{format}', [AdminReportsController::class, 'exportLeadActivity'])->name('telecaller-lead-activity.export');
             Route::get('/export/{report}/{format}',[ReportViewerReportsController::class, 'export'])->name('export');
         });
 
@@ -558,7 +565,7 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':report
 | TELECALLER
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth'])
+Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':telecaller'])
     ->prefix('telecaller')
     ->name('telecaller.')
     ->group(function () {
@@ -624,7 +631,13 @@ Route::middleware(['auth'])
             Route::get('/daily', [TelePerformanceController::class, 'daily'])->name('daily');
             Route::get('/weekly', [TelePerformanceController::class, 'weekly'])->name('weekly');
             Route::get('/monthly', [TelePerformanceController::class, 'monthly'])->name('monthly');
+            Route::get('/custom', [TelePerformanceController::class, 'custom'])->name('custom');
             Route::get('/{scope}/export', [TelePerformanceController::class, 'export'])->name('export');
+        });
+
+        Route::prefix('reports')->name('reports.')->group(function () {
+            Route::get('/', [TelePerformanceController::class, 'reportsPage'])->name('index');
+            Route::get('/download', [TelePerformanceController::class, 'leadReport'])->name('download');
         });
 
         /*

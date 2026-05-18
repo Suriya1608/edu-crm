@@ -13,10 +13,17 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class LeadExportController extends Controller
 {
+    private static array $FILTER_KEYS = [
+        'search', 'telecaller', 'status', 'date_range', 'date_from', 'date_to',
+        'course_id', 'academic_year_id', 'quota', 'source', 'gender',
+        'state', 'city', 'district', 'followup', 'no_activity_days',
+        'sla', 'is_duplicate', 'is_active', 'aged_min', 'aged_max',
+    ];
+
     public function export(Request $request)
     {
         $managerId = Auth::id();
-        $filters   = $request->only(['search', 'telecaller', 'status', 'date_range']);
+        $filters   = $request->only(self::$FILTER_KEYS);
 
         AuditLogService::log('lead.exported', 'Lead', null, [], [
             'manager_id' => $managerId,
@@ -24,51 +31,27 @@ class LeadExportController extends Controller
         ]);
 
         if ($request->query('format') === 'pdf') {
-            $query = Lead::with(['assignedUser', 'enrolledCourse'])
-                ->where('assigned_by', $managerId);
-
-            if (! empty($filters['search'])) {
-                $s = $filters['search'];
-                $query->where(fn($q) => $q
-                    ->where('lead_code', 'like', "%{$s}%")
-                    ->orWhere('name', 'like', "%{$s}%")
-                    ->orWhere('phone', 'like', "%{$s}%")
-                    ->orWhere('email', 'like', "%{$s}%")
-                    ->orWhere('source', 'like', "%{$s}%")
-                    ->orWhereHas('enrolledCourse', fn($cq) => $cq->where('name', 'like', "%{$s}%"))
-                );
-            }
-
-            if (! empty($filters['telecaller'])) {
-                $query->where('assigned_to', $filters['telecaller']);
-            }
-
-            if (! empty($filters['status'])) {
-                $query->where('status', $filters['status']);
-            }
-
-            if (! empty($filters['date_range'])) {
-                match ($filters['date_range']) {
-                    'today' => $query->whereDate('created_at', now()),
-                    '7'     => $query->whereDate('created_at', '>=', now()->subDays(7)),
-                    '30'    => $query->whereDate('created_at', '>=', now()->subDays(30)),
-                    default => null,
-                };
-            }
-
+            $query = ManagerLeadsExport::buildQuery($managerId, $filters);
             $leads = $query->orderBy('id', 'desc')->get();
 
-            $headers = ['Lead Code', 'Name', 'Phone', 'Email', 'Course', 'Source', 'Status', 'Assigned To', 'Duplicate', 'Created At'];
+            $headers = ['Lead Code', 'Name', 'Phone', 'Email', 'Course', 'Academic Year', 'Quota', 'Source', 'Gender', 'State', 'City', 'Status', 'Assigned To', 'Duplicate', 'Active', 'Days Aged', 'Created At'];
             $rows = $leads->map(fn($l) => [
                 $l->lead_code,
                 $l->name,
                 $l->phone,
                 $l->email ?? '',
                 $l->course ?? '',
+                $l->academicYear?->name ?? '',
+                $l->quota ? ucfirst($l->quota) : '',
                 $l->source ?? '',
+                $l->gender ? ucfirst($l->gender) : '',
+                $l->state ?? '',
+                $l->city ?? '',
                 ucfirst(str_replace('_', ' ', $l->status)),
-                $l->assignedUser->name ?? 'Unassigned',
+                $l->assignedUser?->name ?? 'Unassigned',
                 $l->is_duplicate ? 'Yes' : 'No',
+                $l->is_active ? 'Yes' : 'No',
+                $l->days_aged . 'd',
                 $l->created_at->format('d M Y H:i'),
             ])->all();
 

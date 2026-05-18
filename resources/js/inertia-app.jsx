@@ -35,6 +35,7 @@ window._inertiaRouter = router;
         /\/manager\/telecallers/,
         /\/manager\/followups\//,
         /\/manager\/campaigns(?:-performance)?(?:\/[^/?#]*)?(?:[?#]|$)/,
+        /\/manager\/reports(?:\/|$|\?)/,
         /\/telecaller\//,
         /\/report-viewer\/dashboard/,
     ];

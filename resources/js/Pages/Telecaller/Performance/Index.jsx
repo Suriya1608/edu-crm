@@ -17,12 +17,12 @@ const OUTCOME_META = {
 };
 
 const STATUS_META = {
-    new:         { label: 'New',         color: '#6366f1' },
-    contacted:   { label: 'Contacted',   color: '#06b6d4' },
-    interested:  { label: 'Interested',  color: '#10b981' },
-    converted:   { label: 'Converted',   color: '#f59e0b' },
-    not_interested: { label: 'Not Interested', color: '#ef4444' },
-    lost:        { label: 'Lost',        color: '#94a3b8' },
+    new:            { label: 'New',           color: '#6366f1' },
+    assigned:       { label: 'Assigned',      color: '#8b5cf6' },
+    contacted:      { label: 'Contacted',     color: '#06b6d4' },
+    interested:     { label: 'Interested',    color: '#10b981' },
+    converted:      { label: 'Converted',     color: '#f59e0b' },
+    not_interested: { label: 'Not Interested',color: '#ef4444' },
 };
 
 function scoreGrade(score) {
@@ -446,6 +446,201 @@ function DailyLineChart({ dailyBreakdown, scope }) {
     );
 }
 
+// ─── Course breakdown ─────────────────────────────────────────────────────────
+function CourseBreakdown({ rows, title, icon, valueKey = 'enquiries', emptyMsg = 'No data for this period' }) {
+    const max = Math.max(...rows.map(r => r[valueKey] ?? 0), 1);
+    return (
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 1px 6px rgba(15,23,42,.07)', height: '100%' }}>
+            <SectionTitle icon={icon} title={title} right={`${rows.length} course${rows.length !== 1 ? 's' : ''}`} />
+            {rows.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: '#94a3b8', fontSize: 13 }}>
+                    <span className="material-icons" style={{ fontSize: 32, display: 'block', marginBottom: 8, color: '#e2e8f0' }}>school</span>
+                    {emptyMsg}
+                </div>
+            ) : rows.map((r, i) => {
+                const val  = r[valueKey] ?? 0;
+                const pct  = Math.round((val / max) * 100);
+                const conv = r.conversions ?? r.count ?? 0;
+                return (
+                    <div key={i} style={{ marginBottom: 14 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#334155', flex: 1, marginRight: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {r.course}
+                            </span>
+                            <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
+                                <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>{val}</span>
+                                {r.conversions !== undefined && conv > 0 && (
+                                    <span style={{ fontSize: 10, background: '#10b98118', color: '#10b981', padding: '1px 7px', borderRadius: 20, fontWeight: 700 }}>
+                                        {conv} ✓
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                        <div style={{ background: '#f1f5f9', borderRadius: 99, height: 6 }}>
+                            <div style={{ width: pct + '%', height: '100%', background: '#6366f1', borderRadius: 99, minWidth: pct > 0 ? 4 : 0, transition: 'width .5s ease' }} />
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ─── Gender breakdown ─────────────────────────────────────────────────────────
+const GENDER_META = {
+    male:          { label: 'Male',          color: '#6366f1', icon: 'male' },
+    female:        { label: 'Female',        color: '#ec4899', icon: 'female' },
+    not_specified: { label: 'Not Specified', color: '#94a3b8', icon: 'person' },
+};
+
+function GenderBreakdown({ rows }) {
+    const total = rows.reduce((s, r) => s + r.total, 0);
+    return (
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 1px 6px rgba(15,23,42,.07)', height: '100%' }}>
+            <SectionTitle icon="wc" title="Gender-wise Analysis" right={`${total} leads`} />
+            {total === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: '#94a3b8', fontSize: 13 }}>No gender data</div>
+            ) : rows.map((r, i) => {
+                const meta     = GENDER_META[r.gender] || { label: r.gender, color: '#64748b', icon: 'person' };
+                const pct      = total > 0 ? Math.round((r.total / total) * 100) : 0;
+                const convPct  = r.total > 0 ? Math.round((r.conversions / r.total) * 100) : 0;
+                return (
+                    <div key={i} style={{ marginBottom: 18 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <span className="material-icons" style={{ fontSize: 18, color: meta.color }}>{meta.icon}</span>
+                            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#334155' }}>{meta.label}</span>
+                            <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>{r.total}</span>
+                            <span style={{ fontSize: 11, background: meta.color + '18', color: meta.color, padding: '2px 8px', borderRadius: 20, fontWeight: 700 }}>{pct}%</span>
+                        </div>
+                        <div style={{ background: '#f1f5f9', borderRadius: 99, height: 8 }}>
+                            <div style={{ width: pct + '%', height: '100%', background: meta.color, borderRadius: 99, minWidth: pct > 0 ? 4 : 0, transition: 'width .5s ease' }} />
+                        </div>
+                        {r.conversions > 0 && (
+                            <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>
+                                {r.conversions} converted · {convPct}% conversion rate
+                            </div>
+                        )}
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ─── Quota breakdown ──────────────────────────────────────────────────────────
+const QUOTA_META = {
+    management:  { label: 'Management Quota',  color: '#f59e0b', icon: 'business_center' },
+    counselling: { label: 'Counselling Quota', color: '#8b5cf6', icon: 'school' },
+};
+
+function QuotaBreakdown({ rows }) {
+    const total = rows.reduce((s, r) => s + r.total, 0);
+    return (
+        <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 1px 6px rgba(15,23,42,.07)', height: '100%' }}>
+            <SectionTitle icon="category" title="Quota Breakdown" right={total > 0 ? `${total} categorised` : ''} />
+            {total === 0 ? (
+                <div style={{ textAlign: 'center', padding: '30px 0', color: '#94a3b8', fontSize: 13 }}>No quota data for this period</div>
+            ) : rows.map((r, i) => {
+                const meta    = QUOTA_META[r.quota] || { label: r.quota, color: '#64748b', icon: 'label' };
+                const pct     = total > 0 ? Math.round((r.total / total) * 100) : 0;
+                const convPct = r.total > 0 ? Math.round((r.conversions / r.total) * 100) : 0;
+                return (
+                    <div key={i} style={{
+                        marginBottom: 16, background: meta.color + '0d',
+                        borderRadius: 12, padding: '14px 16px',
+                        borderLeft: `3px solid ${meta.color}`,
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                            <span className="material-icons" style={{ fontSize: 18, color: meta.color }}>{meta.icon}</span>
+                            <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{meta.label}</span>
+                            <span style={{ fontSize: 20, fontWeight: 800, color: meta.color }}>{r.total}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+                            {[
+                                { label: 'Converted', val: r.conversions, color: '#10b981' },
+                                { label: 'Conv. Rate', val: convPct + '%', color: meta.color },
+                                { label: 'Share', val: pct + '%', color: '#64748b' },
+                            ].map(item => (
+                                <div key={item.label}>
+                                    <div style={{ fontSize: 10, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: .5 }}>{item.label}</div>
+                                    <div style={{ fontSize: 16, fontWeight: 700, color: item.color }}>{item.val}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+// ─── Converted leads table ────────────────────────────────────────────────────
+function ConvertedLeadsTable({ leads }) {
+    return (
+        <div style={{ background: '#fff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 1px 6px rgba(15,23,42,.07)', marginBottom: 24 }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="material-icons" style={{ fontSize: 20, color: '#10b981' }}>check_circle</span>
+                <span style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>Converted Lead Details</span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94a3b8' }}>{leads.length} lead{leads.length !== 1 ? 's' : ''}</span>
+            </div>
+            {leads.length === 0 ? (
+                <div style={{ padding: '36px 22px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                    <span className="material-icons" style={{ fontSize: 32, display: 'block', marginBottom: 8 }}>emoji_events</span>
+                    No conversions in this period
+                </div>
+            ) : (
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                            <tr style={{ background: '#f8fafc' }}>
+                                {['Lead', 'Code', 'Gender', 'Enquired Course', 'Final Course', 'Quota', 'Date'].map(h => (
+                                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .6, whiteSpace: 'nowrap' }}>
+                                        {h}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {leads.map((l, i) => (
+                                <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
+                                    <td style={{ padding: '12px 16px' }}>
+                                        <a href={`/telecaller/leads/${l.encrypted_id}`}
+                                            style={{ fontWeight: 600, color: '#6366f1', textDecoration: 'none', fontSize: 13 }}>
+                                            {l.name}
+                                        </a>
+                                    </td>
+                                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#64748b', fontFamily: 'monospace' }}>{l.lead_code}</td>
+                                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#334155', textTransform: 'capitalize' }}>
+                                        {l.gender || '-'}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', fontSize: 13, color: '#334155' }}>{l.enquired_course}</td>
+                                    <td style={{ padding: '12px 16px', fontSize: 13 }}>
+                                        {l.final_course !== '-'
+                                            ? <span style={{ fontWeight: 600, color: '#10b981' }}>{l.final_course}</span>
+                                            : <span style={{ color: '#94a3b8' }}>-</span>
+                                        }
+                                    </td>
+                                    <td style={{ padding: '12px 16px' }}>
+                                        {l.quota ? (
+                                            <span style={{
+                                                fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                                                background: l.quota === 'management' ? '#f59e0b18' : '#8b5cf618',
+                                                color: l.quota === 'management' ? '#f59e0b' : '#8b5cf6',
+                                                textTransform: 'capitalize',
+                                            }}>{l.quota}</span>
+                                        ) : <span style={{ color: '#94a3b8', fontSize: 13 }}>-</span>}
+                                    </td>
+                                    <td style={{ padding: '12px 16px', fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>{l.created_at}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function Index({
     title, scope, period,
@@ -462,13 +657,23 @@ export default function Index({
     trends, prevPeriodLabel,
     callTarget, callTargetPct, uniqueLeadsCalled, totalLeadsEver,
     dateFrom, dateTo,
+    courseWiseRows = [], finalCourseRows = [], genderRows = [],
+    quotaRows = [], convertedLeadsList = [],
 }) {
     const { grade, label: gradeLabel, color: gradeColor } = scoreGrade(productivityScore);
     const totalOutcomeCalls = Object.values(outcomeBreakdown).reduce((a, b) => a + b, 0);
     const totalLeads = Object.values(leadStatusRows).reduce((a, b) => a + b, 0);
 
-    const [lastUpdated, setLastUpdated] = useState(() => new Date());
-    const [refreshing,  setRefreshing]  = useState(false);
+    const [lastUpdated,       setLastUpdated]       = useState(() => new Date());
+    const [refreshing,        setRefreshing]        = useState(false);
+    const [showCustomPicker,  setShowCustomPicker]  = useState(scope === 'custom');
+    const [customFrom,        setCustomFrom]        = useState(dateFrom || '');
+    const [customTo,          setCustomTo]          = useState(dateTo   || '');
+
+    const applyCustomRange = () => {
+        if (!customFrom || !customTo) return;
+        router.visit(`/telecaller/performance/custom?date_from=${customFrom}&date_to=${customTo}`);
+    };
 
     useEffect(() => {
         if (scope !== 'daily') return;
@@ -551,19 +756,59 @@ export default function Index({
                 </div>
 
                 {/* Scope tabs + export */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, flexWrap: 'wrap', gap: 10 }}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {TABS.map(tab => (
-                            <Link key={tab.key} href={tab.href} style={{
-                                padding: '6px 18px', borderRadius: 99, fontSize: 13, fontWeight: 600,
-                                textDecoration: 'none', transition: 'all .2s',
-                                background: scope === tab.key ? '#fff' : 'rgba(255,255,255,.18)',
-                                color: scope === tab.key ? '#4f46e5' : '#fff',
-                                border: 'none',
-                            }}>
-                                {tab.label}
-                            </Link>
-                        ))}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginTop: 20, flexWrap: 'wrap', gap: 10 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {/* Tab pills */}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {TABS.map(tab => (
+                                <Link key={tab.key} href={tab.href} style={{
+                                    padding: '6px 18px', borderRadius: 99, fontSize: 13, fontWeight: 600,
+                                    textDecoration: 'none', transition: 'all .2s',
+                                    background: scope === tab.key ? '#fff' : 'rgba(255,255,255,.18)',
+                                    color: scope === tab.key ? '#4f46e5' : '#fff',
+                                }}>
+                                    {tab.label}
+                                </Link>
+                            ))}
+                            <button
+                                onClick={() => setShowCustomPicker(v => !v)}
+                                style={{
+                                    padding: '6px 18px', borderRadius: 99, fontSize: 13, fontWeight: 600,
+                                    background: scope === 'custom' ? '#fff' : 'rgba(255,255,255,.18)',
+                                    color: scope === 'custom' ? '#4f46e5' : '#fff',
+                                    border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                                }}>
+                                <span className="material-icons" style={{ fontSize: 14 }}>date_range</span>
+                                {scope === 'custom' ? period : 'Custom Range'}
+                            </button>
+                        </div>
+
+                        {/* Custom date picker (shown when toggled or scope=custom) */}
+                        {showCustomPicker && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <input
+                                    type="date" value={customFrom}
+                                    onChange={e => setCustomFrom(e.target.value)}
+                                    style={{ borderRadius: 8, border: '1px solid rgba(255,255,255,.4)', background: 'rgba(255,255,255,.15)', color: '#fff', padding: '5px 10px', fontSize: 12, colorScheme: 'dark' }}
+                                />
+                                <span style={{ color: 'rgba(255,255,255,.7)', fontSize: 12 }}>to</span>
+                                <input
+                                    type="date" value={customTo}
+                                    onChange={e => setCustomTo(e.target.value)}
+                                    style={{ borderRadius: 8, border: '1px solid rgba(255,255,255,.4)', background: 'rgba(255,255,255,.15)', color: '#fff', padding: '5px 10px', fontSize: 12, colorScheme: 'dark' }}
+                                />
+                                <button
+                                    onClick={applyCustomRange}
+                                    disabled={!customFrom || !customTo}
+                                    style={{
+                                        padding: '5px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                                        background: '#fff', color: '#4f46e5', border: 'none', cursor: 'pointer',
+                                        opacity: (!customFrom || !customTo) ? .5 : 1,
+                                    }}>
+                                    Apply
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     {/* Export dropdown */}
@@ -580,7 +825,7 @@ export default function Index({
                         <ul className="dropdown-menu dropdown-menu-end">
                             <li>
                                 <a className="dropdown-item d-flex align-items-center gap-2"
-                                    href={`/telecaller/performance/${scope}/export?format=excel`}
+                                    href={`/telecaller/performance/${scope}/export?format=excel${scope === 'custom' ? `&date_from=${dateFrom}&date_to=${dateTo}` : ''}`}
                                     target="_blank" rel="noreferrer">
                                     <span className="material-icons" style={{ fontSize: 16, color: '#10b981' }}>table_view</span>
                                     Excel (.xlsx)
@@ -588,7 +833,7 @@ export default function Index({
                             </li>
                             <li>
                                 <a className="dropdown-item d-flex align-items-center gap-2"
-                                    href={`/telecaller/performance/${scope}/export?format=pdf`}
+                                    href={`/telecaller/performance/${scope}/export?format=pdf${scope === 'custom' ? `&date_from=${dateFrom}&date_to=${dateTo}` : ''}`}
                                     target="_blank" rel="noreferrer">
                                     <span className="material-icons" style={{ fontSize: 16, color: '#ef4444' }}>picture_as_pdf</span>
                                     PDF
@@ -752,6 +997,41 @@ export default function Index({
                     </div>
                 </div>
             </div>
+
+            {/* ── Course-wise enquiry + Final course ─────────────────────── */}
+            <div className="row g-3 mb-4">
+                <div className="col-md-6">
+                    <CourseBreakdown
+                        rows={courseWiseRows}
+                        title="Enquired Course Breakdown"
+                        icon="menu_book"
+                        valueKey="enquiries"
+                        emptyMsg="No course enquiry data for this period"
+                    />
+                </div>
+                <div className="col-md-6">
+                    <CourseBreakdown
+                        rows={finalCourseRows}
+                        title="Final Selected Course"
+                        icon="verified"
+                        valueKey="count"
+                        emptyMsg="No conversions with final course data"
+                    />
+                </div>
+            </div>
+
+            {/* ── Gender + Quota breakdown ────────────────────────────────── */}
+            <div className="row g-3 mb-4">
+                <div className="col-md-6">
+                    <GenderBreakdown rows={genderRows} />
+                </div>
+                <div className="col-md-6">
+                    <QuotaBreakdown rows={quotaRows} />
+                </div>
+            </div>
+
+            {/* ── Converted leads detail table ────────────────────────────── */}
+            <ConvertedLeadsTable leads={convertedLeadsList} />
 
             {/* ── Hourly heatmap (daily) / Calls-per-day line (weekly+monthly) */}
             <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 1px 6px rgba(15,23,42,.07)', marginBottom: 24 }}>

@@ -219,20 +219,37 @@ const CARDS = [
     { label: 'Converted (Month)',  icon: 'check_circle',  grad: 'purple' },
 ];
 
+const ADV_KEYS = ['academic_year_id', 'quota', 'gender', 'state', 'city', 'followup', 'last_call_days', 'has_whatsapp'];
+function hasAdvancedFilter(form) {
+    return ADV_KEYS.some(k => form[k] !== '' && form[k] != null);
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function Index({ stats, leads, filters, courses, sources }) {
+export default function Index({ stats, leads, filters, courses, sources, academicYears }) {
     const s = stats ?? {};
 
     const sort    = filters?.sort     ?? '';
     const sortDir = filters?.sort_dir ?? 'desc';
 
     const [form, setForm] = useState({
-        search:     filters?.search     ?? '',
-        status:     filters?.status     ?? '',
-        date_range: filters?.date_range ?? '',
-        course_id:  filters?.course_id  ?? '',
-        source:     filters?.source     ?? '',
+        search:           filters?.search           ?? '',
+        status:           filters?.status           ?? '',
+        date_range:       filters?.date_range       ?? '',
+        date_from:        filters?.date_from        ?? '',
+        date_to:          filters?.date_to          ?? '',
+        course_id:        filters?.course_id        ?? '',
+        source:           filters?.source           ?? '',
+        academic_year_id: filters?.academic_year_id ?? '',
+        quota:            filters?.quota            ?? '',
+        gender:           filters?.gender           ?? '',
+        state:            filters?.state            ?? '',
+        city:             filters?.city             ?? '',
+        followup:         filters?.followup         ?? '',
+        last_call_days:   filters?.last_call_days   ?? '',
+        has_whatsapp:     filters?.has_whatsapp     ?? '',
     });
+
+    const [showAdvanced, setShowAdvanced] = useState(() => hasAdvancedFilter({ ...form }));
 
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkStatus, setBulkStatus]   = useState('');
@@ -247,14 +264,13 @@ export default function Index({ stats, leads, filters, courses, sources }) {
 
     function buildParams(overrides = {}) {
         const base = {};
-        if (form.search)        base.search     = form.search;
-        if (form.status)        base.status     = form.status;
-        if (form.date_range)    base.date_range = form.date_range;
-        if (form.course_id)     base.course_id  = form.course_id;
-        if (form.source)        base.source     = form.source;
-        if (sort)               base.sort       = sort;
-        if (sortDir)            base.sort_dir   = sortDir;
-        if (filters?.per_page)  base.per_page   = filters.per_page;
+        const keys = ['search', 'status', 'date_range', 'date_from', 'date_to',
+            'course_id', 'source', 'academic_year_id', 'quota', 'gender',
+            'state', 'city', 'followup', 'last_call_days', 'has_whatsapp'];
+        keys.forEach(k => { if (form[k]) base[k] = form[k]; });
+        if (sort)              base.sort      = sort;
+        if (sortDir)           base.sort_dir  = sortDir;
+        if (filters?.per_page) base.per_page  = filters.per_page;
         return { ...base, ...overrides };
     }
 
@@ -309,7 +325,12 @@ export default function Index({ stats, leads, filters, courses, sources }) {
     }
 
     function resetFilter() {
-        setForm({ search: '', status: '', date_range: '', course_id: '', source: '' });
+        setForm({
+            search: '', status: '', date_range: '', date_from: '', date_to: '',
+            course_id: '', source: '', academic_year_id: '', quota: '', gender: '',
+            state: '', city: '', followup: '', last_call_days: '', has_whatsapp: '',
+        });
+        setShowAdvanced(false);
         router.get('/telecaller/leads', {}, { preserveState: false });
     }
 
@@ -357,20 +378,28 @@ export default function Index({ stats, leads, filters, courses, sources }) {
             {/* ── Filter panel ─────────────────────────────────────────────── */}
             <div className="card border-0 shadow-sm mb-3" style={{ borderRadius: 14 }}>
                 <div className="card-body" style={{ padding: '20px 24px' }}>
-                    <div className="mb-3">
-                        <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Filter Leads</div>
-                        <div style={{ fontSize: 12, color: '#64748b' }}>Refine by date, status, and lead details</div>
+                    <div className="d-flex align-items-start justify-content-between mb-3">
+                        <div>
+                            <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Filter Leads</div>
+                            <div style={{ fontSize: 12, color: '#64748b' }}>Refine by date, status, and lead details</div>
+                        </div>
+                        {Object.entries(form).filter(([k, v]) => !['sort','sort_dir','per_page'].includes(k) && v !== '').length > 0 && (
+                            <span style={{ background: '#6366f1', color: '#fff', fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 20 }}>
+                                {Object.entries(form).filter(([k, v]) => !['sort','sort_dir','per_page'].includes(k) && v !== '').length} active
+                            </span>
+                        )}
                     </div>
                     <form onSubmit={handleFilter}>
-                        <div className="row g-2">
+                        {/* Basic row */}
+                        <div className="row g-2 mb-2">
                             <div className="col-md-4">
-                                <input className="form-control" type="text"
+                                <input className="form-control form-control-sm" type="text"
                                     placeholder="Search by name, phone or lead code…"
                                     value={form.search}
                                     onChange={e => setForm({ ...form, search: e.target.value })} />
                             </div>
                             <div className="col-md-2">
-                                <select className="form-select" value={form.status}
+                                <select className="form-select form-select-sm" value={form.status}
                                     onChange={e => setForm({ ...form, status: e.target.value })}>
                                     <option value="">All Statuses</option>
                                     <option value="new">New</option>
@@ -384,16 +413,17 @@ export default function Index({ stats, leads, filters, courses, sources }) {
                                 </select>
                             </div>
                             <div className="col-md-2">
-                                <select className="form-select" value={form.date_range}
+                                <select className="form-select form-select-sm" value={form.date_range}
                                     onChange={e => setForm({ ...form, date_range: e.target.value })}>
-                                    <option value="">Date Range</option>
+                                    <option value="">Any Date</option>
                                     <option value="today">Today</option>
                                     <option value="7">Last 7 Days</option>
                                     <option value="30">Last 30 Days</option>
+                                    <option value="custom">Custom Range</option>
                                 </select>
                             </div>
                             <div className="col-md-2">
-                                <select className="form-select" value={form.course_id}
+                                <select className="form-select form-select-sm" value={form.course_id}
                                     onChange={e => setForm({ ...form, course_id: e.target.value })}>
                                     <option value="">All Courses</option>
                                     {(courses ?? []).map(c => (
@@ -402,7 +432,7 @@ export default function Index({ stats, leads, filters, courses, sources }) {
                                 </select>
                             </div>
                             <div className="col-md-2">
-                                <select className="form-select" value={form.source}
+                                <select className="form-select form-select-sm" value={form.source}
                                     onChange={e => setForm({ ...form, source: e.target.value })}>
                                     <option value="">All Sources</option>
                                     {(sources ?? []).map(s => (
@@ -411,10 +441,118 @@ export default function Index({ stats, leads, filters, courses, sources }) {
                                 </select>
                             </div>
                         </div>
-                        <div className="mt-3 d-flex gap-2 flex-wrap align-items-center">
-                            <button type="submit" className="btn btn-primary btn-sm px-3">
-                                <span className="material-icons me-1" style={{ fontSize: 14, verticalAlign: 'middle' }}>search</span>
-                                Apply
+
+                        {/* Custom date range inputs */}
+                        {form.date_range === 'custom' && (
+                            <div className="row g-2 mb-2">
+                                <div className="col-md-2 col-6">
+                                    <input type="date" className="form-control form-control-sm"
+                                        value={form.date_from} title="From date"
+                                        onChange={e => setForm({ ...form, date_from: e.target.value })} />
+                                </div>
+                                <div className="col-md-2 col-6">
+                                    <input type="date" className="form-control form-control-sm"
+                                        value={form.date_to} title="To date"
+                                        onChange={e => setForm({ ...form, date_to: e.target.value })} />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Advanced toggle */}
+                        <div className="mb-2">
+                            <button type="button"
+                                className={`btn btn-sm ${showAdvanced ? 'btn-outline-primary' : 'btn-outline-secondary'} d-inline-flex align-items-center gap-1`}
+                                style={{ fontSize: 12 }}
+                                onClick={() => setShowAdvanced(v => !v)}>
+                                <span className="material-icons" style={{ fontSize: 14 }}>{showAdvanced ? 'expand_less' : 'tune'}</span>
+                                {showAdvanced ? 'Hide Advanced Filters' : 'Advanced Filters'}
+                                {hasAdvancedFilter(form) && (
+                                    <span style={{ background: '#6366f1', color: '#fff', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10, marginLeft: 2 }}>ON</span>
+                                )}
+                            </button>
+                        </div>
+
+                        {/* Advanced section */}
+                        {showAdvanced && (
+                            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: '14px 16px', marginBottom: 8 }}>
+                                <div className="row g-2 mb-2">
+                                    <div className="col-md-3 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>ACADEMIC YEAR</label>
+                                        <select className="form-select form-select-sm" value={form.academic_year_id}
+                                            onChange={e => setForm({ ...form, academic_year_id: e.target.value })}>
+                                            <option value="">All Years</option>
+                                            {(academicYears ?? []).map(y => (
+                                                <option key={y.id} value={y.id}>{y.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="col-md-2 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>QUOTA</label>
+                                        <select className="form-select form-select-sm" value={form.quota}
+                                            onChange={e => setForm({ ...form, quota: e.target.value })}>
+                                            <option value="">All Quotas</option>
+                                            <option value="management">Management</option>
+                                            <option value="counselling">Counselling</option>
+                                        </select>
+                                    </div>
+                                    <div className="col-md-2 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>GENDER</label>
+                                        <select className="form-select form-select-sm" value={form.gender}
+                                            onChange={e => setForm({ ...form, gender: e.target.value })}>
+                                            <option value="">All Genders</option>
+                                            <option value="male">Male</option>
+                                            <option value="female">Female</option>
+                                            <option value="other">Other</option>
+                                        </select>
+                                    </div>
+                                    <div className="col-md-2 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>STATE</label>
+                                        <input className="form-control form-control-sm" type="text"
+                                            placeholder="e.g. Tamil Nadu" value={form.state}
+                                            onChange={e => setForm({ ...form, state: e.target.value })} />
+                                    </div>
+                                    <div className="col-md-2 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>CITY</label>
+                                        <input className="form-control form-control-sm" type="text"
+                                            placeholder="e.g. Chennai" value={form.city}
+                                            onChange={e => setForm({ ...form, city: e.target.value })} />
+                                    </div>
+                                </div>
+                                <div className="row g-2">
+                                    <div className="col-md-3 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>FOLLOW-UP</label>
+                                        <select className="form-select form-select-sm" value={form.followup}
+                                            onChange={e => setForm({ ...form, followup: e.target.value })}>
+                                            <option value="">Any</option>
+                                            <option value="today">Due Today</option>
+                                            <option value="overdue">Overdue</option>
+                                            <option value="this_week">This Week</option>
+                                            <option value="none">No Follow-up Set</option>
+                                        </select>
+                                    </div>
+                                    <div className="col-md-3 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>NOT CALLED IN (DAYS)</label>
+                                        <input className="form-control form-control-sm" type="number"
+                                            min="1" max="365" placeholder="e.g. 7"
+                                            value={form.last_call_days}
+                                            onChange={e => setForm({ ...form, last_call_days: e.target.value })} />
+                                    </div>
+                                    <div className="col-md-3 col-6">
+                                        <label style={{ fontSize: 11, color: '#64748b', fontWeight: 600, display: 'block', marginBottom: 3 }}>WHATSAPP</label>
+                                        <select className="form-select form-select-sm" value={form.has_whatsapp}
+                                            onChange={e => setForm({ ...form, has_whatsapp: e.target.value })}>
+                                            <option value="">All Leads</option>
+                                            <option value="1">Has WhatsApp Conversation</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="mt-2 d-flex gap-2 flex-wrap align-items-center">
+                            <button type="submit" className="btn btn-primary btn-sm px-3 d-flex align-items-center gap-1">
+                                <span className="material-icons" style={{ fontSize: 14 }}>filter_list</span>
+                                Apply Filters
                             </button>
                             <button type="button" className="btn btn-outline-secondary btn-sm px-3"
                                 onClick={resetFilter}>Reset</button>

@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Manager;
 use App\Http\Controllers\Controller;
 use App\Models\Followup;
 use App\Models\Lead;
+use App\Notifications\LeadAssignmentNotification;
+use App\Notifications\MissedFollowupEscalationNotification;
+use App\Notifications\SlaViolationEscalationNotification;
 use App\Notifications\WhatsAppInboundNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -214,49 +217,56 @@ class FollowupManagementController extends Controller
 
         if (!Schema::hasTable('notifications')) {
             return response()->json([
-                'ok'                     => true,
-                'badge_count'            => 0,
+                'ok'                   => true,
+                'badge_count'          => 0,
+                'lead_notifications'   => [],
+                'followup_notifications' => [],
+                'sla_notifications'    => [],
                 'whatsapp_notifications' => [],
-                'system_notifications'   => [],
             ]);
         }
 
-        $allUnread = $user->unreadNotifications()->latest()->limit(15)->get();
+        $allUnread = $user->unreadNotifications()->latest()->limit(30)->get();
+
+        $mapItem = fn($n) => [
+            'id'      => $n->id,
+            'title'   => $n->data['title']   ?? 'Notification',
+            'message' => $n->data['message'] ?? $n->data['body'] ?? '-',
+            'link'    => $n->data['link']    ?? '#',
+            'time'    => optional($n->created_at)->diffForHumans(),
+        ];
+
+        $leadNotifications = $allUnread
+            ->where('type', LeadAssignmentNotification::class)
+            ->take(5)->map($mapItem)->values();
+
+        $followupNotifications = $allUnread
+            ->filter(fn($n) =>
+                $n->type === MissedFollowupEscalationNotification::class ||
+                ($n->type === SlaViolationEscalationNotification::class && ($n->data['type'] ?? '') === 'followup_reminder')
+            )
+            ->take(5)->map($mapItem)->values();
+
+        $slaNotifications = $allUnread
+            ->filter(fn($n) =>
+                $n->type === SlaViolationEscalationNotification::class &&
+                ($n->data['type'] ?? '') !== 'followup_reminder'
+            )
+            ->take(5)->map($mapItem)->values();
 
         $whatsappNotifications = $allUnread
             ->where('type', WhatsAppInboundNotification::class)
-            ->take(5)
-            ->map(function ($n) {
-                return [
-                    'id'      => $n->id,
-                    'title'   => $n->data['title']   ?? 'WhatsApp message',
-                    'message' => $n->data['message']  ?? '',
-                    'link'    => $n->data['link']     ?? '#',
-                    'time'    => optional($n->created_at)->diffForHumans(),
-                ];
-            })->values();
+            ->take(5)->map($mapItem)->values();
 
-        $systemNotifications = $allUnread
-            ->where('type', '!=', WhatsAppInboundNotification::class)
-            ->take(5)
-            ->map(function ($n) {
-                $payload = $n->data ?? [];
-                return [
-                    'id'      => $n->id,
-                    'title'   => $payload['title']   ?? 'Notification',
-                    'message' => $payload['message'] ?? $payload['body'] ?? '-',
-                    'link'    => $payload['link']    ?? '#',
-                    'time'    => optional($n->created_at)->diffForHumans(),
-                ];
-            })->values();
-
-        $badgeCount = $whatsappNotifications->count() + $systemNotifications->count();
+        $badgeCount = $user->unreadNotifications()->count();
 
         return response()->json([
             'ok'                     => true,
             'badge_count'            => $badgeCount,
+            'lead_notifications'     => $leadNotifications,
+            'followup_notifications' => $followupNotifications,
+            'sla_notifications'      => $slaNotifications,
             'whatsapp_notifications' => $whatsappNotifications,
-            'system_notifications'   => $systemNotifications,
         ]);
     }
 

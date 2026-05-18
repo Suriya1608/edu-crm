@@ -129,7 +129,7 @@
 
         <div style="font-size:11px;color:#94a3b8;margin-top:8px;">
             <span class="material-icons align-middle" style="font-size:13px;">info</span>
-            Accepted: PDF, Word, Excel, PowerPoint, images, CSV, ZIP &mdash; max 10 MB each.
+            Accepted: PDF, Word, Excel, PowerPoint, images, CSV, ZIP &mdash; max 50 MB each.
         </div>
     </div>
 
@@ -445,6 +445,12 @@ if (btnAttachFile) {
     attachFileInput.addEventListener('change', function () {
         const file = this.files[0];
         if (!file) return;
+
+        if (file.size > 50 * 1024 * 1024) {
+            alert('File is too large. Maximum allowed size is 50 MB.');
+            attachFileInput.value = '';
+            return;
+        }
 
         const formData = new FormData();
         formData.append('file', file);

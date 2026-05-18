@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Contracts\Encryption\DecryptException;
+use App\Traits\Auditable;
 
 class Setting extends Model
 {
+    use Auditable;
+
     protected $fillable = ['key', 'value'];
 
     public static function get($key, $default = null)

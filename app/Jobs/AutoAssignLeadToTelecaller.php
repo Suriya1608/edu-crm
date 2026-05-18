@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Jobs\Concerns\HasTenantContext;
 use App\Models\Lead;
 use App\Models\LeadActivity;
 use App\Services\AutomationSettings;
@@ -16,17 +15,10 @@ use Illuminate\Support\Facades\Log;
 
 class AutoAssignLeadToTelecaller implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HasTenantContext;
-
-    public function __construct()
-    {
-        $this->initTenantContext();
-    }
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public function handle(AutomationSettings $settings, LeadAssignmentService $service): void
     {
-        $this->switchTenantConnection();
-
         if (!$settings->autoAssignTelecallerEnabled()) {
             return;
         }

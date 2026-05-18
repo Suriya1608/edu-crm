@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\Auditable;
 
 class Followup extends Model
 {
+    use Auditable;
+
     protected $table = 'followups';
 
     protected $fillable = [

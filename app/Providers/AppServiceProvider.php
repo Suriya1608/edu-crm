@@ -54,7 +54,5 @@ class AppServiceProvider extends ServiceProvider
             };
         });
         Schema::defaultStringLength(191);
-        // Settings config (mail, broadcast, timezone) is applied per-request
-        // in TenantMiddleware after the correct tenant DB is selected.
     }
 }

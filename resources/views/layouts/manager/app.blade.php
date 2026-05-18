@@ -7,7 +7,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="call-provider" content="tcn">
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
-    <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
+    <title>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</title>
 
     @php
         $favicon = \App\Models\Setting::get('site_favicon');

@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\Auditable;
 
 class AcademicYear extends Model
 {
+    use Auditable;
+
     protected $fillable = ['name', 'start_date', 'end_date', 'is_active'];
 
     protected $casts = [

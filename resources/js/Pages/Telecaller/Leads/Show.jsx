@@ -44,6 +44,10 @@ function ProfileCard({ lead }) {
         { icon: 'school', label: 'Course Applied',  value: lead.course  || '—' },
         { icon: 'person', label: 'Assigned By',     value: lead.assigned_by || '—', green: true },
     ];
+
+    const hasDemographics = lead.gender || lead.dob || lead.city || lead.district || lead.state || lead.pincode || lead.address;
+    const locationStr = [lead.city, lead.district, lead.state].filter(Boolean).join(', ');
+
     return (
         <div className="profile-card mb-4">
             <div className="profile-header">
@@ -63,6 +67,56 @@ function ProfileCard({ lead }) {
                         </div>
                     </div>
                 ))}
+
+                {hasDemographics && (
+                    <div style={{ borderTop: '1px solid #f1f5f9', margin: '8px 0 4px', paddingTop: 8 }}>
+                        <p style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', letterSpacing: '.6px',
+                            textTransform: 'uppercase', margin: '0 0 6px' }}>Demographics</p>
+                    </div>
+                )}
+
+                {lead.gender && (
+                    <div className="detail-item">
+                        <span className="material-icons">wc</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Gender</p>
+                            <p className="detail-value">{lead.gender.charAt(0).toUpperCase() + lead.gender.slice(1)}</p>
+                        </div>
+                    </div>
+                )}
+
+                {lead.dob && (
+                    <div className="detail-item">
+                        <span className="material-icons">cake</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Date of Birth</p>
+                            <p className="detail-value">{lead.dob}</p>
+                        </div>
+                    </div>
+                )}
+
+                {(locationStr || lead.pincode) && (
+                    <div className="detail-item">
+                        <span className="material-icons">location_on</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Location</p>
+                            <p className="detail-value">
+                                {locationStr}
+                                {lead.pincode && <span style={{ color: '#94a3b8', marginLeft: 4 }}>– {lead.pincode}</span>}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
+                {lead.address && (
+                    <div className="detail-item">
+                        <span className="material-icons">home</span>
+                        <div className="flex-grow-1">
+                            <p className="detail-label">Address</p>
+                            <p className="detail-value" style={{ whiteSpace: 'pre-wrap' }}>{lead.address}</p>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -602,10 +656,11 @@ const STATUS_OPTIONS_TC = [
     { value: 'converted',      label: 'Converted',      icon: 'check_circle',  bg: '#8b5cf6' },
 ];
 
-function StatusPanel({ lead, url, onClose }) {
-    const form          = useForm({ status: lead.status, quota: lead.quota ?? '', next_followup: '', followup_time: '', remarks: '' });
+function StatusPanel({ lead, url, courses, onClose }) {
+    const form          = useForm({ status: lead.status, quota: lead.quota ?? '', final_course_id: lead.final_course_id ?? lead.course_id ?? '', next_followup: '', followup_time: '', remarks: '' });
     const needsFollowup = form.data.status === 'follow_up';
     const needsQuota    = form.data.status === 'converted';
+    const isSameCourse  = Number(form.data.final_course_id) === Number(lead.course_id);
 
     function submit(e) {
         e.preventDefault();
@@ -682,6 +737,48 @@ function StatusPanel({ lead, url, onClose }) {
                         })}
                     </div>
                     {form.errors.quota && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{form.errors.quota}</div>}
+
+                    {/* Final Course selector */}
+                    <div style={{ marginTop: 10 }}>
+                        <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                            <span className="material-icons" style={{ fontSize: 13, verticalAlign: 'middle', marginRight: 3 }}>school</span>
+                            Final Selected Course <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+                            <button type="button"
+                                onClick={() => form.setData('final_course_id', lead.course_id ?? '')}
+                                style={{
+                                    flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                    border: `1.5px solid ${isSameCourse ? '#6366f1' : '#e2e8f0'}`,
+                                    background: isSameCourse ? '#6366f1' : '#f8fafc',
+                                    color: isSameCourse ? '#fff' : '#64748b',
+                                }}>
+                                {isSameCourse && <span className="material-icons" style={{ fontSize: 12, verticalAlign: 'middle', marginRight: 3 }}>check</span>}
+                                Same as Enquired
+                            </button>
+                            <button type="button"
+                                onClick={() => { if (isSameCourse) form.setData('final_course_id', ''); }}
+                                style={{
+                                    flex: 1, padding: '6px 0', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                                    border: `1.5px solid ${!isSameCourse ? '#6366f1' : '#e2e8f0'}`,
+                                    background: !isSameCourse ? '#6366f118' : '#f8fafc',
+                                    color: !isSameCourse ? '#6366f1' : '#64748b',
+                                }}>
+                                Different Course
+                            </button>
+                        </div>
+                        {!isSameCourse && (
+                            <select className="form-select form-select-sm"
+                                value={form.data.final_course_id}
+                                onChange={e => form.setData('final_course_id', e.target.value)}>
+                                <option value="">— Select course —</option>
+                                {courses.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        )}
+                        {form.errors.final_course_id && <div style={{ fontSize: 11, color: '#ef4444', marginTop: 4 }}>{form.errors.final_course_id}</div>}
+                    </div>
                 </div>
             )}
 
@@ -713,7 +810,7 @@ function StatusPanel({ lead, url, onClose }) {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
                 <button type="button" className="btn btn-sm btn-outline-secondary" onClick={onClose}>Cancel</button>
                 <button type="submit" className="btn btn-sm btn-primary"
-                    disabled={form.processing || form.data.status === lead.status || (needsQuota && !form.data.quota)}>
+                    disabled={form.processing || form.data.status === lead.status || (needsQuota && (!form.data.quota || !form.data.final_course_id))}>
                     {form.processing ? 'Saving…' : 'Apply Status'}
                 </button>
             </div>
@@ -1557,7 +1654,7 @@ function MeetHistory({ meetings, statusUrl, onStatusChanged }) {
 }
 
 // ─── Main Show component ──────────────────────────────────────────────────────
-export default function Show({ lead, whatsapp_messages, wa_template_name, wa_session_active, urls, meetings: initialMeetings, email_templates }) {
+export default function Show({ lead, courses, whatsapp_messages, wa_template_name, wa_session_active, urls, meetings: initialMeetings, email_templates }) {
     const [meetings, setMeetings]       = useState(initialMeetings ?? []);
     const [statusOpen, setStatusOpen]   = useState(false);
 
@@ -1655,6 +1752,7 @@ export default function Show({ lead, whatsapp_messages, wa_template_name, wa_ses
                             <StatusPanel
                                 lead={lead}
                                 url={urls.change_status}
+                                courses={courses ?? []}
                                 onClose={() => setStatusOpen(false)}
                             />
                         )}

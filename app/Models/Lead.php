@@ -7,15 +7,25 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\CallLog;
 use App\Models\WhatsAppMessage;
+use App\Traits\Auditable;
 
 class Lead extends Model
 {
+    use Auditable;
+
     protected $fillable = [
         'lead_code',
         'name',
         'phone',
         'email',
         'email_valid',
+        'gender',
+        'dob',
+        'address',
+        'city',
+        'district',
+        'state',
+        'pincode',
         'course_id',
         'academic_year_id',
         'quota',
@@ -32,18 +42,23 @@ class Lead extends Model
         'sla_manager_deadline_at',
         'is_duplicate',
         'merged_into_lead_id',
+        'is_active',
+        'final_course_id',
     ];
 
     protected $casts = [
-        'sla_escalated_at'      => 'datetime',
-        'sla_level'             => 'integer',
+        'sla_escalated_at'        => 'datetime',
+        'sla_level'               => 'integer',
         'sla_manager_deadline_at' => 'datetime',
-        'manager_assigned_at'   => 'datetime',
-        'is_duplicate'        => 'boolean',
-        'email_valid'         => 'boolean',
-        'merged_into_lead_id'  => 'integer',
-        'course_id'            => 'integer',
-        'academic_year_id'     => 'integer',
+        'manager_assigned_at'     => 'datetime',
+        'dob'                     => 'date',
+        'is_duplicate'            => 'boolean',
+        'email_valid'             => 'boolean',
+        'merged_into_lead_id'     => 'integer',
+        'course_id'               => 'integer',
+        'academic_year_id'        => 'integer',
+        'is_active'               => 'boolean',
+        'final_course_id'         => 'integer',
     ];
 
     // ─── Relationships ──────────────────────────────────────────────────────────
@@ -51,6 +66,11 @@ class Lead extends Model
     public function enrolledCourse(): BelongsTo
     {
         return $this->belongsTo(Course::class, 'course_id');
+    }
+
+    public function finalCourse(): BelongsTo
+    {
+        return $this->belongsTo(Course::class, 'final_course_id');
     }
 
     public function academicYear(): BelongsTo
