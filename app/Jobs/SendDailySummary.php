@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Jobs\Concerns\HasTenantContext;
 use App\Mail\TelecallerDailySummary;
 use App\Models\CallLog;
 use App\Models\Followup;
@@ -14,27 +13,19 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 
 class SendDailySummary implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HasTenantContext;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries   = 2;
     public int $timeout = 180;
 
-    public function __construct()
-    {
-        $this->initTenantContext();
-    }
-
     public function handle(): void
     {
-        $this->switchTenantConnection();
-
         if (Setting::get('daily_summary_email_enabled', '0') !== '1') {
             return;
         }

@@ -35,7 +35,7 @@ function useLiveClock() {
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const G = {
-    violet:  { grad: 'linear-gradient(135deg,#6366f1 0%,#4f46e5 100%)', soft: 'rgba(99,102,241,0.12)',  shadow: 'rgba(99,102,241,0.28)',  text: '#4f46e5' },
+    violet:  { grad: 'linear-gradient(135deg,#253769 0%,#1d2c4e 100%)', soft: 'rgba(29,44,78,0.10)',   shadow: 'rgba(29,44,78,0.28)',    text: '#1d2c4e' },
     emerald: { grad: 'linear-gradient(135deg,#10b981 0%,#059669 100%)', soft: 'rgba(16,185,129,0.12)',  shadow: 'rgba(16,185,129,0.28)',  text: '#059669' },
     amber:   { grad: 'linear-gradient(135deg,#f59e0b 0%,#d97706 100%)', soft: 'rgba(245,158,11,0.12)',  shadow: 'rgba(245,158,11,0.28)',  text: '#d97706' },
     rose:    { grad: 'linear-gradient(135deg,#f43f5e 0%,#e11d48 100%)', soft: 'rgba(244,63,94,0.12)',   shadow: 'rgba(244,63,94,0.28)',   text: '#e11d48' },
@@ -64,7 +64,7 @@ function KpiCard({ label, value, icon, tone = 'violet', badge }) {
                 padding: '22px 22px 20px',
                 boxShadow: hov
                     ? `0 16px 48px ${t.shadow}, 0 4px 16px rgba(0,0,0,0.06)`
-                    : '0 4px 24px rgba(99,102,241,0.07), 0 1px 4px rgba(0,0,0,0.04)',
+                    : '0 4px 24px rgba(29,44,78,0.07), 0 1px 4px rgba(0,0,0,0.04)',
                 transform: hov ? 'translateY(-3px) scale(1.01)' : 'translateY(0) scale(1)',
                 transition: 'all 0.28s cubic-bezier(.4,0,.2,1)',
                 position: 'relative',
@@ -135,7 +135,7 @@ function GlassCard({ title, subtitle, icon, tone = 'emerald', children, minH, ac
             ...glass(0.80),
             borderRadius: 24,
             padding: '24px 26px',
-            boxShadow: '0 6px 32px rgba(99,102,241,0.07), 0 2px 8px rgba(0,0,0,0.04)',
+            boxShadow: '0 6px 32px rgba(29,44,78,0.07), 0 2px 8px rgba(0,0,0,0.04)',
             height: '100%',
             minHeight: minH,
             position: 'relative',
@@ -327,7 +327,7 @@ function TalkTimeDisplay({ stats, callbacks }) {
             {/* Big time display */}
             <div style={{
                 display: 'inline-flex', alignItems: 'baseline', gap: 6,
-                background: 'linear-gradient(135deg,#6366f1,#4f46e5)',
+                background: 'linear-gradient(135deg,#253769,#1d2c4e)',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
@@ -347,9 +347,9 @@ function TalkTimeDisplay({ stats, callbacks }) {
                 <div style={{ background: 'rgba(241,245,249,0.9)', borderRadius: 20, height: 8, overflow: 'hidden', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.06)' }}>
                     <div style={{
                         width: `${pct}%`, height: '100%',
-                        background: 'linear-gradient(90deg,#6366f1,#8b5cf6)',
+                        background: 'linear-gradient(90deg,#1d2c4e,#253769)',
                         borderRadius: 20,
-                        boxShadow: '0 0 10px rgba(99,102,241,0.4)',
+                        boxShadow: '0 0 10px rgba(29,44,78,0.4)',
                         transition: 'width 0.8s cubic-bezier(.4,0,.2,1)',
                     }} />
                 </div>
@@ -362,7 +362,7 @@ function TalkTimeDisplay({ stats, callbacks }) {
                 borderTop: '1px solid rgba(226,232,240,0.6)',
             }}>
                 {[
-                    { val: stats.calls ?? 0,        label: 'Total Calls',  color: '#6366f1', bg: 'rgba(99,102,241,0.08)',  icon: 'phone' },
+                    { val: stats.calls ?? 0,        label: 'Total Calls',  color: '#1d2c4e', bg: 'rgba(29,44,78,0.08)',    icon: 'phone' },
                     { val: callbacks.length,         label: 'Missed',       color: '#f43f5e', bg: 'rgba(244,63,94,0.08)',   icon: 'phone_missed' },
                     { val: stats.active_calls ?? 0, label: 'Active Now',   color: '#10b981', bg: 'rgba(16,185,129,0.08)',  icon: 'phone_in_talk' },
                 ].map(m => (
@@ -431,7 +431,7 @@ function FollowupCalendar({ initialData }) {
             ...glass(0.80),
             borderRadius: 24,
             padding: '24px 26px',
-            boxShadow: '0 6px 32px rgba(99,102,241,0.07), 0 2px 8px rgba(0,0,0,0.04)',
+            boxShadow: '0 6px 32px rgba(29,44,78,0.07), 0 2px 8px rgba(0,0,0,0.04)',
             position: 'relative', overflow: 'hidden',
         }}>
             {/* Background blob */}
@@ -513,8 +513,8 @@ function FollowupCalendar({ initialData }) {
                         const ds    = densityStyle(count);
                         const isToday = isThisMonth && d === todayD;
                         const isPast  = new Date(year, month - 1, d) < new Date(todayY, todayM - 1, todayD);
-                        const bg = ds ? ds.bg : isToday ? 'rgba(99,102,241,0.08)' : isPast ? 'rgba(248,250,252,0.7)' : 'rgba(255,255,255,0.5)';
-                        const border = ds ? ds.border : isToday ? 'rgba(99,102,241,0.4)' : 'rgba(226,232,240,0.6)';
+                        const bg = ds ? ds.bg : isToday ? 'rgba(29,44,78,0.08)' : isPast ? 'rgba(248,250,252,0.7)' : 'rgba(255,255,255,0.5)';
+                        const border = ds ? ds.border : isToday ? 'rgba(29,44,78,0.40)' : 'rgba(226,232,240,0.6)';
                         const numColor = ds ? ds.color : isPast ? '#cbd5e1' : '#475569';
                         let href = '';
                         if (count > 0) {
@@ -527,10 +527,10 @@ function FollowupCalendar({ initialData }) {
                             background: bg, padding: '5px 2px',
                             textAlign: 'center',
                             cursor: count > 0 ? 'pointer' : 'default',
-                            outline: isToday ? '2px solid rgba(99,102,241,0.5)' : 'none',
+                            outline: isToday ? '2px solid rgba(29,44,78,0.50)' : 'none',
                             outlineOffset: 2,
                             transition: 'all 0.15s',
-                            boxShadow: isToday ? '0 0 0 3px rgba(99,102,241,0.1)' : 'none',
+                            boxShadow: isToday ? '0 0 0 3px rgba(29,44,78,0.10)' : 'none',
                             display: 'block', textDecoration: 'none',
                         };
                         const cellInner = (
@@ -591,7 +591,7 @@ function SkeletonKpiCard() {
         <div style={{
             background: 'rgba(255,255,255,0.82)',
             borderRadius: 22, padding: '22px 22px 20px',
-            boxShadow: '0 4px 24px rgba(99,102,241,0.07)',
+            boxShadow: '0 4px 24px rgba(29,44,78,0.07)',
             height: '100%', overflow: 'hidden', position: 'relative',
         }}>
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -658,18 +658,18 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
 
             {/* ── Hero greeting card ─────────────────────────────────────────── */}
             <div style={{
-                background: 'linear-gradient(135deg,#4f46e5 0%,#6366f1 40%,#8b5cf6 100%)',
+                background: 'linear-gradient(135deg,#0f172a 0%,#1d2c4e 45%,#253769 75%,#1a3460 100%)',
                 borderRadius: 28,
                 padding: '28px 32px',
                 marginBottom: 22,
                 position: 'relative',
                 overflow: 'hidden',
-                boxShadow: '0 16px 56px rgba(99,102,241,0.3), 0 4px 16px rgba(79,70,229,0.2)',
+                boxShadow: '0 16px 56px rgba(13,20,50,0.42), 0 4px 16px rgba(15,23,42,0.22)',
             }}>
                 {/* Decorative blobs */}
-                <div style={{ position:'absolute', top:-40, right:-20, width:180, height:180, borderRadius:'50%', background:'rgba(255,255,255,0.06)', pointerEvents:'none' }} />
-                <div style={{ position:'absolute', bottom:-50, right:60, width:140, height:140, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }} />
-                <div style={{ position:'absolute', top:10, left:'40%', width:80, height:80, borderRadius:'50%', background:'rgba(255,255,255,0.05)', pointerEvents:'none' }} />
+                <div style={{ position:'absolute', top:-40, right:-20, width:180, height:180, borderRadius:'50%', background:'rgba(99,145,255,0.10)', pointerEvents:'none' }} />
+                <div style={{ position:'absolute', bottom:-50, right:60, width:140, height:140, borderRadius:'50%', background:'rgba(147,197,253,0.07)', pointerEvents:'none' }} />
+                <div style={{ position:'absolute', top:10, left:'40%', width:80, height:80, borderRadius:'50%', background:'rgba(255,255,255,0.04)', pointerEvents:'none' }} />
 
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:16, position:'relative' }}>
                     <div>
@@ -840,7 +840,7 @@ export default function Dashboard({ stats: initialStats, missed_callbacks: initi
                 padding:'16px 22px',
                 marginBottom:22,
                 display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
-                boxShadow:'0 4px 20px rgba(99,102,241,0.06)',
+                boxShadow:'0 4px 20px rgba(29,44,78,0.06)',
             }}>
                 <span style={{ fontSize:10, fontWeight:800, color:'#b0bec5', textTransform:'uppercase', letterSpacing:'1.2px', marginRight:4 }}>
                     Quick Actions

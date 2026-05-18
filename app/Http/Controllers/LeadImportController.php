@@ -16,6 +16,19 @@ use Maatwebsite\Excel\Facades\Excel;
 class LeadImportController extends Controller
 {
     // ── Source label → DB enum slug ──────────────────────────────────────────
+    private static array $GENDER_MAP = [
+        'm'      => 'male',
+        'male'   => 'male',
+        'f'      => 'female',
+        'female' => 'female',
+        'other'  => 'other',
+    ];
+
+    private function mapGender(string $raw): ?string
+    {
+        return self::$GENDER_MAP[strtolower(trim($raw))] ?? null;
+    }
+
     private static array $SOURCE_MAP = [
         'facebook ads'     => 'facebook_ads',
         'facebook'         => 'facebook_ads',
@@ -113,6 +126,18 @@ class LeadImportController extends Controller
                 if ($email !== '') $seenEmails[$email] = true;
             }
 
+            $dobRaw = trim($row[6] ?? '');
+            $dob    = null;
+            if ($dobRaw !== '') {
+                foreach (['d-m-Y', 'd/m/Y', 'Y-m-d', 'm/d/Y'] as $fmt) {
+                    $parsed = \DateTime::createFromFormat($fmt, $dobRaw);
+                    if ($parsed && $parsed->format($fmt) === $dobRaw) {
+                        $dob = $parsed->format('Y-m-d');
+                        break;
+                    }
+                }
+            }
+
             return [
                 'row'              => $row,
                 'course_matched'   => $matched !== null,
@@ -121,6 +146,12 @@ class LeadImportController extends Controller
                 'source_mapped'    => $this->mapSourceCategory($sourceRaw),
                 'duplicate'        => $dup,
                 'duplicate_reason' => $reason,
+                'gender'           => $this->mapGender(trim($row[5] ?? '')),
+                'dob'              => $dob,
+                'city'             => trim($row[7] ?? '') ?: null,
+                'district'         => trim($row[8] ?? '') ?: null,
+                'state'            => trim($row[9] ?? '') ?: null,
+                'pincode'          => trim($row[10] ?? '') ?: null,
             ];
         }, $rows);
 
@@ -185,11 +216,29 @@ class LeadImportController extends Controller
             $sourceRaw      = trim($row[4] ?? '');
             $sourceCategory = $this->mapSourceCategory($sourceRaw);
 
+            $dobRaw = trim($row[6] ?? '');
+            $dob    = null;
+            if ($dobRaw !== '') {
+                foreach (['d-m-Y', 'd/m/Y', 'Y-m-d', 'm/d/Y'] as $fmt) {
+                    $parsed = \DateTime::createFromFormat($fmt, $dobRaw);
+                    if ($parsed && $parsed->format($fmt) === $dobRaw) {
+                        $dob = $parsed->format('Y-m-d');
+                        break;
+                    }
+                }
+            }
+
             $lead = Lead::create([
                 'lead_code'        => $this->generateLeadCode(),
                 'name'             => $row[0],
                 'phone'            => $row[1],
                 'email'            => $row[2] ?? null,
+                'gender'           => $this->mapGender(trim($row[5] ?? '')),
+                'dob'              => $dob,
+                'city'             => trim($row[7] ?? '') ?: null,
+                'district'         => trim($row[8] ?? '') ?: null,
+                'state'            => trim($row[9] ?? '') ?: null,
+                'pincode'          => trim($row[10] ?? '') ?: null,
                 'course_id'        => $courseId,
                 'academic_year_id' => $academicYearId,
                 'source'           => $sourceRaw ?: 'import',

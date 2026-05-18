@@ -9,7 +9,7 @@
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
 
     {{-- Dynamic Title --}}
-    <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
+    <title>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</title>
     {{-- Dynamic Favicon --}}
     @php
         $favicon = \App\Models\Setting::get('site_favicon');
@@ -25,12 +25,26 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
-    <link href="{{ asset('css/style.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/style.css') }}?v={{ filemtime(public_path('css/style.css')) }}" rel="stylesheet">
+
+    @if(auth()->check() && auth()->user()->role === 'telecaller')
+    {{-- Telecaller: force Lato font across entire panel (loaded inline so no external dependency) --}}
+    <style>
+        *, *::before, *::after {
+            font-family: 'Lato', sans-serif !important;
+        }
+        .material-icons {
+            font-family: 'Material Icons' !important;
+        }
+    </style>
+    @endif
 
     {{-- Global 419 handler: intercept all fetch() calls and redirect to login on session expiry --}}
     <script>
@@ -74,7 +88,7 @@
     @vite(['resources/js/app.js'])
 </head>
 
-<body>
+<body class="{{ auth()->user()?->role === 'telecaller' ? 'role-telecaller' : '' }}">
 
     {{-- Sidebar backdrop (mobile/tablet) --}}
     <div id="sidebarBackdrop" onclick="closeSidebar()"></div>
@@ -431,7 +445,7 @@
           • The iframe loads once; SIP connects once; calls never drop on nav.
           • data-turbo-eval="false" on the script prevents duplicate event listeners.
     --}}
-    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn' && auth()->user()->role === 'telecaller')
+    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn' && in_array(auth()->user()->role, ['telecaller', 'manager']))
     <div id="tcnWidget" data-turbo-permanent>
         <iframe id="tcnSoftphoneFrame"
             src="/softphone"
@@ -474,15 +488,20 @@
             var btn = document.getElementById('tcnReadyBtn');
             var ico = document.getElementById('tcnReadyIco');
             var lbl = document.getElementById('tcnReadyLabel');
+            var dot = document.getElementById('tcnStatusDot');
             if (!btn) return;
             if (active) {
                 btn.style.background = '#10b981';
+                btn.style.boxShadow = '0 2px 10px rgba(16,185,129,.4)';
                 if (ico) ico.textContent = 'phone';
                 if (lbl) lbl.textContent = 'Ready';
+                if (dot) dot.style.background = 'rgba(255,255,255,.95)';
             } else {
-                btn.style.background = '#64748b';
+                btn.style.background = '#475569';
+                btn.style.boxShadow = '0 1px 6px rgba(0,0,0,.18)';
                 if (ico) ico.textContent = 'phone_disabled';
                 if (lbl) lbl.textContent = 'Not Ready';
+                if (dot) dot.style.background = 'rgba(255,255,255,.35)';
             }
         }
 
@@ -490,10 +509,13 @@
             var btn = document.getElementById('tcnReadyBtn');
             var ico = document.getElementById('tcnReadyIco');
             var lbl = document.getElementById('tcnReadyLabel');
+            var dot = document.getElementById('tcnStatusDot');
             if (!btn) return;
             btn.style.background = '#f59e0b';
+            btn.style.boxShadow = '0 2px 10px rgba(245,158,11,.4)';
             if (ico) ico.textContent = 'hourglass_empty';
             if (lbl) lbl.textContent = 'Connecting\u2026';
+            if (dot) dot.style.background = 'rgba(255,255,255,.7)';
         }
 
         // ── Set initial header button state on hard page load ─────────────
@@ -539,6 +561,12 @@
                 // STOP — send silent logout (no browser confirm needed; user just clicked Stop)
                 if (window.GC && typeof window.GC.disableCallingMode === 'function') {
                     window.GC.disableCallingMode();
+                } else {
+                    // Manager path: no GC — directly clear localStorage and tell iframe to logout
+                    try { localStorage.removeItem('tcn_sip_active'); } catch (_) {}
+                    if (_frame && _frame.contentWindow) {
+                        _frame.contentWindow.postMessage({ type: 'LOGOUT_SILENT' }, '*');
+                    }
                 }
                 _sipReady = false;
                 _rdyUpdate(false);
@@ -548,6 +576,22 @@
                 _rdyConnecting();
                 if (window.GC && typeof window.GC.enableCallingMode === 'function') {
                     window.GC.enableCallingMode();
+                } else {
+                    // Manager path: no GC — directly persist and send START_SIP to iframe
+                    try { localStorage.setItem('tcn_sip_active', '1'); } catch (_) {}
+                    if (_frame) {
+                        var _sendStart = function () {
+                            try { if (_frame.contentWindow && _frame.contentWindow._sipBooted) return; } catch (_) {}
+                            if (_frame && _frame.contentWindow) {
+                                _frame.contentWindow.postMessage({ type: 'START_SIP' }, '*');
+                            }
+                        };
+                        if (_frame.contentDocument && _frame.contentDocument.readyState === 'complete') {
+                            _sendStart();
+                        } else {
+                            _frame.addEventListener('load', _sendStart, { once: true });
+                        }
+                    }
                 }
                 show();
             }
@@ -736,7 +780,8 @@
     <script>
         function _applyChartDefaults() {
             if (typeof Chart !== 'undefined') {
-                Chart.defaults.font.family    = "'Plus Jakarta Sans', sans-serif";
+                const isTelecaller = document.body.classList.contains('role-telecaller');
+                Chart.defaults.font.family    = isTelecaller ? "'Lato', sans-serif" : "'Plus Jakarta Sans', sans-serif";
                 Chart.defaults.font.size      = 12;
                 Chart.defaults.color          = '#64748b';
                 Chart.defaults.plugins.legend.labels.usePointStyle = true;
@@ -1007,6 +1052,96 @@
         resetTimers();
     })();
     </script>
+    @endauth
+
+    {{-- Manager Notification Bell Polling --}}
+    @auth
+    @if(auth()->user()->role === 'manager')
+    <script data-turbo-eval="false">
+    (function () {
+        const SNAPSHOT_URL = @json(route('manager.notifications.snapshot'));
+        const MARK_READ_URL = @json(route('manager.notifications.read-all'));
+        const CSRF = document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+        function esc(s) {
+            return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        }
+
+        function renderItems(containerId, items, emptyMsg) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (!items || items.length === 0) {
+                el.innerHTML = '<span class="text-muted" style="font-size:12px;">' + esc(emptyMsg) + '</span>';
+                return;
+            }
+            el.innerHTML = items.map(function (n) {
+                const link = n.link && n.link !== '#'
+                    ? '<a href="' + esc(n.link) + '" style="font-size:12px;color:#6366f1;text-decoration:none;font-weight:600;display:block;margin-top:2px;">View &rarr;</a>'
+                    : '';
+                return '<div style="padding:6px 0;border-bottom:1px solid #f1f5f9;">' +
+                    '<div style="font-size:12px;font-weight:600;color:#0f172a;line-height:1.3;">' + esc(n.title) + '</div>' +
+                    '<div style="font-size:11px;color:#64748b;margin-top:1px;">' + esc(n.message) + '</div>' +
+                    '<div style="font-size:10px;color:#94a3b8;margin-top:2px;">' + esc(n.time) + '</div>' +
+                    link +
+                    '</div>';
+            }).join('');
+        }
+
+        window.mgrFetchNotifs = async function () {
+            try {
+                const res = await fetch(SNAPSHOT_URL, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data.ok) return;
+
+                // Badge
+                const badge = document.getElementById('mgrNotifBadge');
+                if (badge) {
+                    const count = data.badge_count || 0;
+                    badge.textContent = count > 99 ? '99+' : count;
+                    badge.style.display = count > 0 ? '' : 'none';
+                }
+
+                renderItems('mgrNotifLeads',     data.lead_notifications,     'No lead assignments.');
+                renderItems('mgrNotifFollowups',  data.followup_notifications, 'No follow-up alerts.');
+                renderItems('mgrNotifSla',        data.sla_notifications,      'No SLA escalations.');
+                renderItems('mgrNotifWhatsapp',   data.whatsapp_notifications, 'No WhatsApp messages.');
+            } catch (e) {}
+        };
+
+        // Mark all read
+        function bindMarkRead() {
+            var btn = document.getElementById('mgrNotifMarkRead');
+            if (btn && !btn.dataset.mgrBound) {
+                btn.dataset.mgrBound = '1';
+                btn.addEventListener('click', async function () {
+                    try {
+                        await fetch(MARK_READ_URL, {
+                            method: 'POST',
+                            headers: { 'X-CSRF-TOKEN': CSRF, 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        window.mgrFetchNotifs();
+                    } catch (e) {}
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            window.mgrFetchNotifs();
+            bindMarkRead();
+        });
+        document.addEventListener('turbo:load', function () {
+            window.mgrFetchNotifs();
+            bindMarkRead();
+        });
+
+        // Poll every 45 seconds
+        setInterval(window.mgrFetchNotifs, 45000);
+    })();
+    </script>
+    @endif
     @endauth
 </body>
 

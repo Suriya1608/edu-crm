@@ -25,6 +25,12 @@
                     <th>C — Email</th>
                     <th>D — Course</th>
                     <th>E — Source</th>
+                    <th>F — Gender</th>
+                    <th>G — Date of Birth</th>
+                    <th>H — City</th>
+                    <th>I — District</th>
+                    <th>J — State</th>
+                    <th>K — Pincode</th>
                 </tr>
             </thead>
             <tbody>
@@ -35,6 +41,12 @@
                     <td><span class="badge bg-secondary">Optional</span></td>
                     <td><span class="badge bg-secondary">Optional</span></td>
                     <td><span class="badge bg-secondary">Optional</span></td>
+                    <td><span class="badge bg-secondary">Optional</span></td>
+                    <td><span class="badge bg-secondary">Optional</span></td>
+                    <td><span class="badge bg-secondary">Optional</span></td>
+                    <td><span class="badge bg-secondary">Optional</span></td>
+                    <td><span class="badge bg-secondary">Optional</span></td>
+                    <td><span class="badge bg-secondary">Optional</span></td>
                 </tr>
                 <tr>
                     <td class="fw-semibold text-muted">Notes</td>
@@ -42,7 +54,13 @@
                     <td>10-digit mobile</td>
                     <td>Email address</td>
                     <td>Exact course name — see <em>Valid Courses</em> sheet in sample</td>
-                    <td>See <em>Valid Sources</em> sheet in sample for accepted values</td>
+                    <td>See <em>Valid Sources</em> sheet for accepted values</td>
+                    <td>Male / Female / Other</td>
+                    <td>DD-MM-YYYY format</td>
+                    <td>City name</td>
+                    <td>District name</td>
+                    <td>State name</td>
+                    <td>6-digit PIN</td>
                 </tr>
             </tbody>
         </table>
@@ -160,19 +178,26 @@
                         <th>Email</th>
                         <th>Course</th>
                         <th>Source</th>
+                        <th>Gender</th>
+                        <th>DOB</th>
+                        <th>City</th>
+                        <th>District</th>
+                        <th>State</th>
+                        <th>Pincode</th>
                         <th>Status</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach ($enriched as $i => $e)
+                        @php $dim = $e['duplicate'] ? 'opacity:.55;' : ''; @endphp
                         <tr @if ($e['duplicate']) style="background:#fef9f9;" @endif>
                             <td class="text-muted" style="font-size:12px;">{{ $i + 1 }}</td>
-                            <td class="fw-semibold" @if ($e['duplicate']) style="opacity:.55;" @endif>{{ $e['row'][0] ?? '—' }}</td>
-                            <td @if ($e['duplicate']) style="opacity:.55;" @endif>{{ $e['row'][1] ?? '—' }}</td>
-                            <td class="text-muted" style="font-size:12px;" @if ($e['duplicate']) style="opacity:.55;" @endif>{{ $e['row'][2] ?? '—' }}</td>
+                            <td class="fw-semibold" style="{{ $dim }}">{{ $e['row'][0] ?? '—' }}</td>
+                            <td style="{{ $dim }}">{{ $e['row'][1] ?? '—' }}</td>
+                            <td class="text-muted" style="font-size:12px;{{ $dim }}">{{ $e['row'][2] ?? '—' }}</td>
 
                             {{-- Course with match indicator --}}
-                            <td @if ($e['duplicate']) style="opacity:.55;" @endif>
+                            <td style="{{ $dim }}">
                                 @if ($e['course_name'] === '')
                                     <span class="text-muted">—</span>
                                 @elseif ($e['course_matched'])
@@ -190,7 +215,7 @@
                             </td>
 
                             {{-- Source with mapped badge --}}
-                            <td @if ($e['duplicate']) style="opacity:.55;" @endif>
+                            <td style="{{ $dim }}">
                                 @php
                                     $b = $sourceBadgeMap[$e['source_mapped']] ?? ['label' => $e['source_raw'] ?: 'Other', 'bg' => '#f8fafc', 'color' => '#94a3b8'];
                                 @endphp
@@ -204,6 +229,14 @@
                                     <span class="text-muted" style="font-size:12px;">—</span>
                                 @endif
                             </td>
+
+                            {{-- Demographics --}}
+                            <td style="font-size:12px;{{ $dim }}">{{ $e['gender'] ? ucfirst($e['gender']) : '—' }}</td>
+                            <td style="font-size:12px;{{ $dim }}">{{ $e['dob'] ?? '—' }}</td>
+                            <td style="font-size:12px;{{ $dim }}">{{ $e['city'] ?? '—' }}</td>
+                            <td style="font-size:12px;{{ $dim }}">{{ $e['district'] ?? '—' }}</td>
+                            <td style="font-size:12px;{{ $dim }}">{{ $e['state'] ?? '—' }}</td>
+                            <td style="font-size:12px;{{ $dim }}">{{ $e['pincode'] ?? '—' }}</td>
 
                             {{-- Duplicate / Ready status --}}
                             <td>

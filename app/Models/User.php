@@ -7,11 +7,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use App\Traits\Auditable;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, Auditable;
+
+    // Exclude heartbeat fields — these update every ~25s and would flood the audit log
+    protected array $auditExclude = ['last_seen_at', 'is_online'];
 
     protected $fillable = [
         'employee_id',

@@ -30,11 +30,25 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
     {{-- Fonts --}}
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 
     {{-- App styles --}}
-    <link href="{{ asset('css/style.css') }}" rel="stylesheet">
+    <link href="{{ asset('css/style.css') }}?v={{ filemtime(public_path('css/style.css')) }}" rel="stylesheet">
+
+    {{-- Telecaller: force Lato font across entire panel --}}
+    @if(auth()->check() && auth()->user()->role === 'telecaller')
+    <style>
+        *, *::before, *::after {
+            font-family: 'Lato', sans-serif !important;
+        }
+        .material-icons {
+            font-family: 'Material Icons' !important;
+        }
+    </style>
+    @endif
 
     {{-- WhatsApp chat widget styles (used by Telecaller/Leads/Show React page) --}}
     @include('layouts.whatsappchat')
@@ -62,7 +76,7 @@
     @vite(['resources/js/inertia-app.jsx'])
 </head>
 
-<body>
+<body class="{{ auth()->user()?->role === 'telecaller' ? 'role-telecaller' : '' }}">
 
     @include('layouts.sidebar')
 
@@ -169,6 +183,11 @@
             if (isReady) {
                 if (window.GC && typeof window.GC.disableCallingMode === 'function') {
                     window.GC.disableCallingMode();
+                } else {
+                    try { localStorage.removeItem('tcn_sip_active'); } catch (_) {}
+                    if (_frame && _frame.contentWindow) {
+                        _frame.contentWindow.postMessage({ type: 'LOGOUT_SILENT' }, '*');
+                    }
                 }
                 _sipReady = false;
                 _rdyUpdate(false);
@@ -177,6 +196,21 @@
                 _rdyConnecting();
                 if (window.GC && typeof window.GC.enableCallingMode === 'function') {
                     window.GC.enableCallingMode();
+                } else {
+                    try { localStorage.setItem('tcn_sip_active', '1'); } catch (_) {}
+                    if (_frame) {
+                        var _sendStart = function () {
+                            try { if (_frame.contentWindow && _frame.contentWindow._sipBooted) return; } catch (_) {}
+                            if (_frame && _frame.contentWindow) {
+                                _frame.contentWindow.postMessage({ type: 'START_SIP' }, '*');
+                            }
+                        };
+                        if (_frame.contentDocument && _frame.contentDocument.readyState === 'complete') {
+                            _sendStart();
+                        } else {
+                            _frame.addEventListener('load', _sendStart, { once: true });
+                        }
+                    }
                 }
                 show();
             }

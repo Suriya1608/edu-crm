@@ -5,9 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Contracts\Encryption\DecryptException;
+use App\Traits\Auditable;
 
 class EmailTemplate extends Model
 {
+    use Auditable;
+
     protected $fillable = [
         'name', 'subject', 'body', 'blocks_json', 'template_type', 'status', 'created_by', 'attachments',
     ];

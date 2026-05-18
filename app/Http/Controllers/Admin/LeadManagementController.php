@@ -401,18 +401,26 @@ class LeadManagementController extends Controller
 
     public function export(Request $request)
     {
-        if ($request->query('format') === 'pdf') {
-            $leads = Lead::with('enrolledCourse')->orderBy('id', 'desc')->get();
+        $filters = $request->only([
+            'search', 'manager_id', 'telecaller_id', 'status', 'date_range', 'date_from', 'date_to',
+            'course_id', 'academic_year_id', 'quota', 'source', 'gender',
+            'state', 'city', 'district', 'followup', 'no_activity_days',
+            'sla', 'is_duplicate', 'is_active', 'aged_min', 'aged_max',
+        ]);
 
-            $headers = ['Lead Code', 'Name', 'Phone', 'Email', 'Course', 'Source', 'Status'];
+        if ($request->query('format') === 'pdf') {
+            $leads = LeadsExport::buildQuery($filters)->get();
+
+            $headers = ['Lead Code', 'Name', 'Phone', 'Email', 'Course', 'Acad. Year', 'Quota', 'Source', 'Gender', 'State', 'City', 'Status', 'Manager', 'Telecaller', 'Duplicate', 'Active', 'Days Aged', 'Created'];
             $rows = $leads->map(fn($l) => [
-                $l->lead_code,
-                $l->name,
-                $l->phone,
-                $l->email ?? '',
-                $l->course ?? '',
-                $l->source ?? '',
+                $l->lead_code, $l->name, $l->phone, $l->email ?? '',
+                $l->course ?? '', $l->academicYear?->name ?? '', $l->quota ? ucfirst($l->quota) : '',
+                $l->source ?? '', $l->gender ? ucfirst($l->gender) : '',
+                $l->state ?? '', $l->city ?? '',
                 ucfirst(str_replace('_', ' ', $l->status)),
+                $l->assignedBy?->name ?? '—', $l->assignedUser?->name ?? '—',
+                $l->is_duplicate ? 'Yes' : 'No', $l->is_active ? 'Yes' : 'No',
+                $l->days_aged, $l->created_at->format('d M Y'),
             ])->all();
 
             return view('admin.reports.print', [
@@ -422,23 +430,98 @@ class LeadManagementController extends Controller
             ]);
         }
 
-        return Excel::download(new LeadsExport(), 'admin-leads.xlsx');
+        AuditLogService::log('lead.exported', 'Lead', null, [], ['filters' => array_filter($filters)]);
+
+        return Excel::download(new LeadsExport($filters), 'admin-leads-' . now()->format('Y-m-d') . '.xlsx');
     }
+
+    private static array $FILTER_KEYS = [
+        'search', 'manager_id', 'telecaller_id', 'status', 'date_range', 'date_from', 'date_to',
+        'course_id', 'academic_year_id', 'quota', 'source', 'gender',
+        'state', 'city', 'district', 'followup', 'no_activity_days',
+        'sla', 'is_duplicate', 'is_active', 'aged_min', 'aged_max',
+    ];
 
     private function renderIndex(Request $request, string $scope, string $title)
     {
-        $query = Lead::with(['assignedBy:id,name', 'assignedUser:id,name', 'lastActivity', 'enrolledCourse']);
+        $query = Lead::with(['assignedBy:id,name', 'assignedUser:id,name', 'lastActivity', 'enrolledCourse', 'academicYear:id,name']);
 
+        // ── Basic search ──────────────────────────────────────────────────────
         if ($request->filled('search')) {
             $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('lead_code', 'like', "%{$search}%")
-                    ->orWhere('name', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%");
-            });
+            $query->where(fn($q) => $q
+                ->where('lead_code', 'like', "%{$search}%")
+                ->orWhere('name',    'like', "%{$search}%")
+                ->orWhere('phone',   'like', "%{$search}%")
+                ->orWhere('email',   'like', "%{$search}%")
+            );
         }
 
+        // ── Advanced filters ──────────────────────────────────────────────────
+        if ($request->filled('manager_id'))       $query->where('assigned_by',       $request->manager_id);
+        if ($request->filled('telecaller_id'))    $query->where('assigned_to',        $request->telecaller_id);
+        if ($request->filled('status'))           $query->where('status',             $request->status);
+        if ($request->filled('course_id'))        $query->where('course_id',          $request->course_id);
+        if ($request->filled('academic_year_id')) $query->where('academic_year_id',   $request->academic_year_id);
+        if ($request->filled('quota'))            $query->where('quota',              $request->quota);
+        if ($request->filled('source'))           $query->where('source',             $request->source);
+        if ($request->filled('gender'))           $query->where('gender',             $request->gender);
+        if ($request->filled('state'))            $query->where('state',    'like',   '%' . $request->state    . '%');
+        if ($request->filled('city'))             $query->where('city',     'like',   '%' . $request->city     . '%');
+        if ($request->filled('district'))         $query->where('district', 'like',   '%' . $request->district . '%');
+
+        // Date range
+        if ($request->filled('date_range')) {
+            if ($request->date_range === 'custom') {
+                if ($request->filled('date_from')) $query->whereDate('created_at', '>=', $request->date_from);
+                if ($request->filled('date_to'))   $query->whereDate('created_at', '<=', $request->date_to);
+            } elseif ($request->date_range === 'today') {
+                $query->whereDate('created_at', today());
+            } elseif (is_numeric($request->date_range)) {
+                $query->whereDate('created_at', '>=', now()->subDays((int) $request->date_range));
+            }
+        }
+
+        // Follow-up
+        if ($request->filled('followup')) {
+            match ($request->followup) {
+                'today'     => $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', today())),
+                'overdue'   => $query->whereHas('followups', fn($q) => $q->whereDate('next_followup', '<', today())),
+                'this_week' => $query->whereHas('followups', fn($q) => $q
+                    ->whereDate('next_followup', '>=', today())
+                    ->whereDate('next_followup', '<=', today()->endOfWeek())),
+                'none'      => $query->whereDoesntHave('followups'),
+                default     => null,
+            };
+        }
+
+        // No activity in last N days
+        if ($request->filled('no_activity_days') && is_numeric($request->no_activity_days)) {
+            $cutoff = now()->subDays((int) $request->no_activity_days);
+            $recentIds = \App\Models\LeadActivity::where('activity_time', '>=', $cutoff)->distinct()->pluck('lead_id');
+            $query->whereNotIn('id', $recentIds);
+        }
+
+        // SLA
+        if ($request->filled('sla')) {
+            if ($request->sla === 'escalated') {
+                $query->whereNotNull('sla_escalated_at');
+            } elseif (is_numeric($request->sla)) {
+                $query->where('sla_level', '>=', (int) $request->sla);
+            }
+        }
+
+        // Boolean flags
+        if ($request->filled('is_duplicate')) $query->where('is_duplicate', (bool) $request->is_duplicate);
+        if ($request->filled('is_active'))    $query->where('is_active',    (bool) $request->is_active);
+
+        // Days aged
+        if ($request->filled('aged_min') && is_numeric($request->aged_min))
+            $query->whereDate('created_at', '<=', now()->subDays((int) $request->aged_min));
+        if ($request->filled('aged_max') && is_numeric($request->aged_max))
+            $query->whereDate('created_at', '>=', now()->subDays((int) $request->aged_max));
+
+        // ── Scope ─────────────────────────────────────────────────────────────
         $duplicatePhones = collect();
         $duplicateEmails = collect();
 
@@ -456,35 +539,33 @@ class LeadManagementController extends Controller
                 $query->where('status', 'not_interested');
                 break;
             case 'duplicates':
-                $duplicatePhones = Lead::select('phone')
-                    ->whereNotNull('phone')
-                    ->groupBy('phone')
-                    ->havingRaw('COUNT(*) > 1')
-                    ->pluck('phone');
-
-                $duplicateEmails = Lead::select('email')
-                    ->whereNotNull('email')
-                    ->where('email', '!=', '')
-                    ->groupBy('email')
-                    ->havingRaw('COUNT(*) > 1')
-                    ->pluck('email');
-
-                $query->where(function ($q) use ($duplicatePhones, $duplicateEmails) {
-                    $q->whereIn('phone', $duplicatePhones)
-                        ->orWhereIn('email', $duplicateEmails);
-                });
-                break;
-            case 'all':
-            default:
+                $duplicatePhones = Lead::select('phone')->whereNotNull('phone')
+                    ->groupBy('phone')->havingRaw('COUNT(*) > 1')->pluck('phone');
+                $duplicateEmails = Lead::select('email')->whereNotNull('email')->where('email', '!=', '')
+                    ->groupBy('email')->havingRaw('COUNT(*) > 1')->pluck('email');
+                $query->where(fn($q) => $q
+                    ->whereIn('phone', $duplicatePhones)
+                    ->orWhereIn('email', $duplicateEmails)
+                );
                 break;
         }
 
-        $leads = $query->latest('id')->paginate(15)->withQueryString();
-
-        $managers = User::where('role', 'manager')->where('status', 1)->orderBy('name')->get(['id', 'name']);
+        $leads       = $query->latest('id')->paginate(15)->withQueryString();
+        $managers    = User::where('role', 'manager')->where('status', 1)->orderBy('name')->get(['id', 'name']);
         $telecallers = User::where('role', 'telecaller')->where('status', 1)->orderBy('name')->get(['id', 'name']);
+        $courses     = Course::active()->orderBy('sort_order')->orderBy('name')->get(['id', 'name']);
+        $academicYears = AcademicYear::orderByDesc('id')->get(['id', 'name']);
+        $sources     = Lead::whereNotNull('source')->where('source', '!=', '')
+                        ->distinct()->orderBy('source')->pluck('source');
+        $activeFilters = array_filter($request->only(self::$FILTER_KEYS));
 
-        return view('admin.leads.index', compact('leads', 'scope', 'title', 'managers', 'telecallers', 'duplicatePhones', 'duplicateEmails'));
+        return view('admin.leads.index', compact(
+            'leads', 'scope', 'title',
+            'managers', 'telecallers',
+            'courses', 'academicYears', 'sources',
+            'duplicatePhones', 'duplicateEmails',
+            'activeFilters'
+        ));
     }
 
 }

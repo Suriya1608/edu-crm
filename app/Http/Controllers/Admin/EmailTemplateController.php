@@ -117,7 +117,7 @@ class EmailTemplateController extends Controller
     public function uploadAttachment(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,gif,webp,txt,csv,zip|max:10240',
+            'file' => 'required|file|mimes:pdf,doc,docx,xls,xlsx,ppt,pptx,jpg,jpeg,png,gif,webp,txt,csv,zip|max:51200',
         ]);
 
         $file         = $request->file('file');

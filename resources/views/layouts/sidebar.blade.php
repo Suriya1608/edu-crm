@@ -650,7 +650,7 @@
             {{-- ── Analytics ── --}}
             <div class="nav-section-label">Analytics</div>
 
-            {{-- My Performance (plain — not yet on Inertia) --}}
+            {{-- My Performance --}}
             <button class="nav-item w-100 border-0 {{ $telePerformanceMenuActive ? 'active' : 'bg-transparent' }}"
                 type="button" data-bs-toggle="collapse" data-bs-target="#telecallerPerformanceMenu"
                 aria-expanded="{{ $telePerformanceMenuActive ? 'true' : 'false' }}"
@@ -674,10 +674,19 @@
                     class="nav-item {{ request()->routeIs('telecaller.performance.monthly') ? 'active' : '' }}"
                     style="padding:8px 12px 8px 36px;font-size:13px;">Monthly</a>
             </div>
+
+            {{-- My Reports --}}
+            <a href="{{ route('telecaller.reports.index') }}"
+                onclick="inertiaVisit(event, this.href)"
+                class="nav-item {{ request()->routeIs('telecaller.reports.*') ? 'active' : '' }}">
+                <span class="material-icons">download</span>
+                <span>My Reports</span>
+            </a>
         @endif
 
     </nav>
 
+    @if(auth()->user()->role === 'admin')
     <div class="sidebar-footer">
         <div class="user-profile" style="position:relative;">
             <div class="user-avatar" role="button" onclick="toggleUserMenu()" title="Account options" style="cursor:pointer;">
@@ -713,6 +722,7 @@
             </div>
         </div>
     </div>
+    @endif
 </aside>
 
 <script>
@@ -760,8 +770,12 @@ function syncSidebarActive(url) {
             }
         });
 
-        // Close all collapse sub-menus
-        nav.querySelectorAll('.collapse').forEach(el => el.classList.remove('show'));
+        // Close all collapse sub-menus and reset their toggle buttons
+        nav.querySelectorAll('.collapse').forEach(el => {
+            el.classList.remove('show');
+            const btn = nav.querySelector(`[data-bs-target="#${el.id}"]`);
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        });
 
         // Find the best matching link
         let bestLink = null;
@@ -787,20 +801,55 @@ function syncSidebarActive(url) {
                 if (btn) {
                     btn.classList.add('active');
                     btn.classList.remove('bg-transparent');
+                    btn.setAttribute('aria-expanded', 'true');
                 }
             }
         }
     } catch (e) {}
 }
 
-// Sync on hard load and on every Inertia navigation
-document.addEventListener('DOMContentLoaded', function () {
+// Take full ownership of sidebar collapse toggles:
+// 1. Remove data-bs-toggle so Bootstrap's event delegation never sees these buttons.
+// 2. Attach our own click handler that directly toggles the .show class.
+// Must run on both DOMContentLoaded (first hard load) AND turbo:load (every
+// subsequent Turbo Drive navigation that replaces the body with fresh HTML).
+function initNavCollapseHandlers() {
+    document.querySelectorAll('.sidebar-nav button.nav-item[data-bs-toggle="collapse"]').forEach(function(btn) {
+        const targetSelector = btn.getAttribute('data-bs-target');
+
+        // Strip Bootstrap's hook — its document-level delegation selector
+        // [data-bs-toggle="collapse"] will no longer match these buttons.
+        btn.removeAttribute('data-bs-toggle');
+        btn.removeAttribute('data-bs-target');
+
+        btn.addEventListener('click', function() {
+            const target = document.querySelector(targetSelector);
+            if (!target) return;
+            const isOpen = target.classList.contains('show');
+            target.classList.toggle('show', !isOpen);
+            btn.setAttribute('aria-expanded', String(!isOpen));
+        });
+    });
+}
+
+function initSidebar() {
+    initNavCollapseHandlers();
     syncSidebarActive(window.location.href);
+}
+
+// Hard page load
+document.addEventListener('DOMContentLoaded', function () {
+    initSidebar();
     // Keep active state in sync across Inertia SPA navigations
     if (window._inertiaRouter && typeof window._inertiaRouter.on === 'function') {
         window._inertiaRouter.on('navigate', function () {
             syncSidebarActive(window.location.href);
         });
     }
+});
+
+// Turbo Drive navigation (replaces body — new buttons need fresh handlers)
+document.addEventListener('turbo:load', function () {
+    initSidebar();
 });
 </script>

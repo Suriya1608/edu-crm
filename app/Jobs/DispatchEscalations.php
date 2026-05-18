@@ -2,7 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Jobs\Concerns\HasTenantContext;
 use App\Services\AutomationEngine;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -14,21 +13,14 @@ use Illuminate\Support\Facades\Log;
 
 class DispatchEscalations implements ShouldQueue
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels, HasTenantContext;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries   = 2;
     public int $timeout = 300;
 
-    public function __construct()
-    {
-        $this->initTenantContext();
-    }
-
     public function handle(AutomationEngine $engine): void
     {
-        $this->switchTenantConnection();
-
-        $lockKey = 'crm_escalation_run_' . $this->tenantId;
+        $lockKey = 'crm_escalation_run';
         $lock = Cache::lock($lockKey, 300);
 
         if (!$lock->get()) {
