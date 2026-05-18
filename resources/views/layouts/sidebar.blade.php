@@ -699,11 +699,7 @@
 
     </nav>
 
-<<<<<<< HEAD
     @if(auth()->user()->role !== 'telecaller')
-=======
-    @if(auth()->user()->role === 'admin')
->>>>>>> origin/develop
     <div class="sidebar-footer">
         <div class="user-profile" style="position:relative;">
             <div class="user-avatar" role="button" onclick="toggleUserMenu()" title="Account options" style="cursor:pointer;">
@@ -904,13 +900,9 @@ function initNavCollapseHandlers() {
 }
 
 function initSidebar() {
-<<<<<<< HEAD
     restoreTcSidebarState();
     initNavCollapseHandlers();
     initNavTooltips();
-=======
-    initNavCollapseHandlers();
->>>>>>> origin/develop
     syncSidebarActive(window.location.href);
 }
 
