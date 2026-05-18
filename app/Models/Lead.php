@@ -7,9 +7,12 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\CallLog;
 use App\Models\WhatsAppMessage;
+use App\Traits\Auditable;
 
 class Lead extends Model
 {
+    use Auditable;
+
     protected $fillable = [
         'lead_code',
         'name',

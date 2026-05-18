@@ -148,6 +148,8 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':admin'
             Route::get('/period', [AdminReportsController::class, 'period'])->name('period');
             Route::get('/call-efficiency', [AdminReportsController::class, 'callEfficiency'])->name('call-efficiency');
             Route::get('/response-time', [AdminReportsController::class, 'responseTime'])->name('response-time');
+            Route::get('/telecaller-lead-activity', [AdminReportsController::class, 'telecallerLeadActivity'])->name('telecaller-lead-activity');
+            Route::get('/telecaller-lead-activity/export/{format}', [AdminReportsController::class, 'exportLeadActivity'])->name('telecaller-lead-activity.export');
             Route::get('/export/{report}/{format}', [AdminReportsController::class, 'export'])->name('export');
         });
 
@@ -551,6 +553,8 @@ Route::middleware(['auth', \App\Http\Middleware\RoleMiddleware::class . ':report
             Route::get('/call-efficiency',        [ReportViewerReportsController::class, 'callEfficiency'])->name('call-efficiency');
             Route::get('/response-time',          [ReportViewerReportsController::class, 'responseTime'])->name('response-time');
             Route::get('/escalation-matrix',      [ReportViewerReportsController::class, 'escalationMatrix'])->name('escalation-matrix');
+            Route::get('/telecaller-lead-activity', [AdminReportsController::class, 'telecallerLeadActivity'])->name('telecaller-lead-activity');
+            Route::get('/telecaller-lead-activity/export/{format}', [AdminReportsController::class, 'exportLeadActivity'])->name('telecaller-lead-activity.export');
             Route::get('/export/{report}/{format}',[ReportViewerReportsController::class, 'export'])->name('export');
         });
 

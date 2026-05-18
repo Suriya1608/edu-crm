@@ -299,8 +299,11 @@
         // Pulsing tab icon while calling
         D.dot.style.animation = (_state === 'calling') ? 'sp-pulse 1s ease-in-out infinite' : '';
 
-        // Clear error banner when leaving error state
-        if (_state !== 'error' && D.errBar) D.errBar.style.display = 'none';
+        // Clear error banner and unconfigured panel when leaving error state
+        if (_state !== 'error') {
+            if (D.errBar) D.errBar.style.display = 'none';
+            if (D.uncfg)  D.uncfg.style.display  = 'none';
+        }
     }
 
     function setState(s) { _state = s; render(); }
@@ -760,6 +763,7 @@
             D.dialSec.style.display = 'none';
             D.agent.style.display   = 'none';
             D.uncfg.style.display   = 'flex';
+            setState('error');
         }
     }
 

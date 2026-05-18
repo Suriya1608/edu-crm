@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Traits\Auditable;
 
 class Course extends Model
 {
+    use Auditable;
+
     protected $fillable = ['name', 'code', 'description', 'is_active', 'sort_order'];
 
     protected $casts = ['is_active' => 'boolean'];

@@ -9,7 +9,7 @@
     <meta name="user-role" content="{{ auth()->user()->role ?? '' }}">
 
     {{-- Dynamic Title --}}
-    <title>{{ $globalSettings['site_name'] ?? 'Admission CRM' }}</title>
+    <title>{{ \App\Models\Setting::get('site_name', 'Admission CRM') }}</title>
     {{-- Dynamic Favicon --}}
     @php
         $favicon = \App\Models\Setting::get('site_favicon');
@@ -445,7 +445,7 @@
           • The iframe loads once; SIP connects once; calls never drop on nav.
           • data-turbo-eval="false" on the script prevents duplicate event listeners.
     --}}
-    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn' && auth()->user()->role === 'telecaller')
+    @if(\App\Models\Setting::get('primary_call_provider') === 'tcn' && in_array(auth()->user()->role, ['telecaller', 'manager']))
     <div id="tcnWidget" data-turbo-permanent>
         <iframe id="tcnSoftphoneFrame"
             src="/softphone"
@@ -561,6 +561,12 @@
                 // STOP — send silent logout (no browser confirm needed; user just clicked Stop)
                 if (window.GC && typeof window.GC.disableCallingMode === 'function') {
                     window.GC.disableCallingMode();
+                } else {
+                    // Manager path: no GC — directly clear localStorage and tell iframe to logout
+                    try { localStorage.removeItem('tcn_sip_active'); } catch (_) {}
+                    if (_frame && _frame.contentWindow) {
+                        _frame.contentWindow.postMessage({ type: 'LOGOUT_SILENT' }, '*');
+                    }
                 }
                 _sipReady = false;
                 _rdyUpdate(false);
@@ -570,6 +576,22 @@
                 _rdyConnecting();
                 if (window.GC && typeof window.GC.enableCallingMode === 'function') {
                     window.GC.enableCallingMode();
+                } else {
+                    // Manager path: no GC — directly persist and send START_SIP to iframe
+                    try { localStorage.setItem('tcn_sip_active', '1'); } catch (_) {}
+                    if (_frame) {
+                        var _sendStart = function () {
+                            try { if (_frame.contentWindow && _frame.contentWindow._sipBooted) return; } catch (_) {}
+                            if (_frame && _frame.contentWindow) {
+                                _frame.contentWindow.postMessage({ type: 'START_SIP' }, '*');
+                            }
+                        };
+                        if (_frame.contentDocument && _frame.contentDocument.readyState === 'complete') {
+                            _sendStart();
+                        } else {
+                            _frame.addEventListener('load', _sendStart, { once: true });
+                        }
+                    }
                 }
                 show();
             }

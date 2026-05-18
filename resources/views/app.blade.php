@@ -183,6 +183,11 @@
             if (isReady) {
                 if (window.GC && typeof window.GC.disableCallingMode === 'function') {
                     window.GC.disableCallingMode();
+                } else {
+                    try { localStorage.removeItem('tcn_sip_active'); } catch (_) {}
+                    if (_frame && _frame.contentWindow) {
+                        _frame.contentWindow.postMessage({ type: 'LOGOUT_SILENT' }, '*');
+                    }
                 }
                 _sipReady = false;
                 _rdyUpdate(false);
@@ -191,6 +196,21 @@
                 _rdyConnecting();
                 if (window.GC && typeof window.GC.enableCallingMode === 'function') {
                     window.GC.enableCallingMode();
+                } else {
+                    try { localStorage.setItem('tcn_sip_active', '1'); } catch (_) {}
+                    if (_frame) {
+                        var _sendStart = function () {
+                            try { if (_frame.contentWindow && _frame.contentWindow._sipBooted) return; } catch (_) {}
+                            if (_frame && _frame.contentWindow) {
+                                _frame.contentWindow.postMessage({ type: 'START_SIP' }, '*');
+                            }
+                        };
+                        if (_frame.contentDocument && _frame.contentDocument.readyState === 'complete') {
+                            _sendStart();
+                        } else {
+                            _frame.addEventListener('load', _sendStart, { once: true });
+                        }
+                    }
                 }
                 show();
             }
